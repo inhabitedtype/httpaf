@@ -1,0 +1,14 @@
+OASISFormat: 0.4
+Name:        httpaf
+Version:     dev
+Authors:     Spiridon Eliopoulos <spiros@inhabitedtype.com>
+Maintainers: Spiridon Eliopoulos <spiros@inhabitedtype.com>
+License:     BSD-3-clause
+Plugins:     META (0.4), DevFiles (0.4)
+BuildTools:  ocamlbuild
+Synopsis:    A high-performance, memory-efficient, and scalable web server for OCaml.
+
+Library httpaf
+    Path:           lib
+    Findlibname:    httpaf
+    Modules:        Httpaf

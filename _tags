@@ -1,0 +1,19 @@
+# OASIS_START
+# DO NOT EDIT (digest: 68793ee791c0469fc287e280427780a6)
+# Ignore VCS directories, you can use the same kind of rule outside
+# OASIS_START/STOP if you want to exclude directories that contains
+# useless stuff for the build process
+true: annot, bin_annot
+<**/.svn>: -traverse
+<**/.svn>: not_hygienic
+".bzr": -traverse
+".bzr": not_hygienic
+".hg": -traverse
+".hg": not_hygienic
+".git": -traverse
+".git": not_hygienic
+"_darcs": -traverse
+"_darcs": not_hygienic
+# Library httpaf
+"lib/httpaf.cmxs": use_httpaf
+# OASIS_STOP

@@ -1,0 +1,12 @@
+# OASIS_START
+# DO NOT EDIT (digest: afcd8c13edc307542bb0e6694ea929dd)
+version = "dev"
+description =
+"A high-performance, memory-efficient, and scalable web server for OCaml."
+archive(byte) = "httpaf.cma"
+archive(byte, plugin) = "httpaf.cma"
+archive(native) = "httpaf.cmxa"
+archive(native, plugin) = "httpaf.cmxs"
+exists_if = "httpaf.cma"
+# OASIS_STOP
+
