@@ -44,6 +44,31 @@
 
 (** {2 Basic HTTP Types} *)
 
+
+(** Protocol Version
+
+    HTTP uses a "<major>.<minor>" numbering scheme to indicate versions of the
+    protocol. The protocol version as a whole indicates the sender's conformance
+    with the set of requirements laid out in that version's corresponding
+    specification of HTTP.
+
+    See {{:https://tools.ietf.org/html/rfc7230#section-2.6} RFC7230§2.6} for
+    more details. *)
+module Version : sig
+  type t =
+    { major : int (** The major protocol number. *)
+    ; minor : int (** The minor protocol number. *)
+    }
+
+  val compare : t -> t -> int
+
+  val to_string : t -> string
+  val of_string : string -> t
+
+  val pp_hum : Format.formatter -> t -> unit
+end
+
+
 (** Request Method
 
     The request method token is the primary source of request semantics;
