@@ -13,4 +13,5 @@ Library httpaf
     Pack:           true
     Findlibname:    httpaf
     Modules:        Method,
+                    Status,
                     Version
