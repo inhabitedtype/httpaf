@@ -10,5 +10,6 @@ Synopsis:    A high-performance, memory-efficient, and scalable web server for O
 
 Library httpaf
     Path:           lib
+    Pack:           true
     Findlibname:    httpaf
-    Modules:        Httpaf
+    Modules:        Method
