@@ -1,5 +1,5 @@
 # OASIS_START
-# DO NOT EDIT (digest: 1fa7bce88873479ace2138d00630a9ff)
+# DO NOT EDIT (digest: 682d42ed779522b5c177d352b00ea37c)
 # Ignore VCS directories, you can use the same kind of rule outside
 # OASIS_START/STOP if you want to exclude directories that contains
 # useless stuff for the build process
@@ -16,6 +16,7 @@ true: annot, bin_annot
 "_darcs": not_hygienic
 # Library httpaf
 "lib/httpaf.cmxs": use_httpaf
+"lib/headers.cmx": for-pack(Httpaf)
 "lib/method.cmx": for-pack(Httpaf)
 "lib/status.cmx": for-pack(Httpaf)
 "lib/version.cmx": for-pack(Httpaf)

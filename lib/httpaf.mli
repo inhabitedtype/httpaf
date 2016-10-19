@@ -291,3 +291,123 @@ module Status : sig
 
   val pp_hum : Format.formatter -> t -> unit
 end
+
+
+(** Header Fields
+
+    Each header field consists of a case-insensitive {b field name} and a {b
+    field value}. The order in which header fields {i with differing field
+    names} are received is not significant. However, it is good practice to
+    send header fields that contain control data first so that implementations
+    can decide when not to handle a message as early as possible.
+
+    A sender MUST NOT generate multiple header fields with the same field name
+    in a message unless either the entire field value for that header field is
+    defined as a comma-separated list or the header field is a well-known
+    exception, e.g., [Set-Cookie].
+
+    A recipient MAY combine multiple header fields with the same field name
+    into one "field-name: field-value" pair, without changing the semantics of
+    the message, by appending each subsequent field value to the combined field
+    value in order, separated by a comma. {i The order in which header fields
+    with the same field name are received is therefore significant to the
+    interpretation of the combined field value}; a proxy MUST NOT change the
+    order of these field values when forwarding a message.
+
+    {i Note.} Unless otherwise specified, all operations preserve header field
+    order and all reference to equality on names is assumed to be
+    case-insensitive.
+
+    See {{:https://tools.ietf.org/html/rfc7230#section-3.2} RFC7230§3.2} for
+    more details. *)
+module Headers : sig
+  type t
+
+  type name = string
+  (** The type of a case-insensitive header name. *)
+
+  type value = string
+  (** The type of a header value. *)
+
+  (** {3 Constructor} *)
+
+  val empty : t
+  (** [empty] is the empty collection of header fields. *)
+
+  val of_list : (name * value) list -> t
+  (** [of_list assoc] is a collection of header fields defined by the
+      association list [assoc]. [of_list] assumes the order of header fields in
+      [assoc] is the intended transmission order. The following equations
+      should hold:
+
+        {ul
+        {- [to_list (of_list lst) = lst] }
+        {- [get (of_list [("k", "v1"); ("k", "v2")]) "k" = Some "v2"]. }} *)
+
+  val of_rev_list : (name * value) list -> t
+  (** [of_list assoc] is a collection of header fields defined by the
+      association list [assoc]. [of_list] assumes the order of header fields in
+      [assoc] is the {i reverse} of the intended trasmission order. The
+      following equations should hold:
+
+        {ul
+        {- [to_list (of__rev_list lst) = List.rev lst] }
+        {- [get (of_list [("k", "v1"); ("k", "v2")]) "k" = Some "v1"]. }} *)
+
+  val to_list : t -> (name * value) list
+  (** [to_list t] is the assocition list of header fields contained in [t] in
+      transmission order. *)
+
+  val to_rev_list : t -> (name * value) list
+  (** [to_rev_list t] is the association list of header fields contained in [t]
+      in {i reverse} transmission order. *)
+
+  val add : t -> name -> value -> t
+  (** [add t name value] is a collection of header fields that is the same as
+      [t] except with [(name, value)] added at the beginning of the trasmission
+      order. The following equations should hold:
+
+        {ul
+        {- [get (add t name value) name = Some value] }} *)
+
+  val add_unless_exists : t -> name -> value -> t
+  (** [add_unless_exists t name value] is a collection of header fields that is
+      the same as [t] if [t] already inclues [name], and otherwise is
+      equivalent to [add t name value]. *)
+
+  val add_list : t -> (name * value) list -> t
+  (** [add_list t assoc] is a collection of header fields that is the same as
+      [t] except with all the header fields in [assoc] added to the beginning
+      of the transmission order. *)
+
+  val add_multi : t -> (name * value list) list -> t
+  (** [add_multi t headers] *)
+
+  val remove : t -> name -> t
+  (** [remove t name] is a collection of header fields that contains all the
+      header fields of [t] except those that have a header-field name that are
+      equal to [name]. If [t] contains multiple header fields whose name is
+      [name], they will all be removed. *)
+
+  val replace : t -> name -> value -> t
+
+  (** {3 Destructors} *)
+
+  val mem : t -> name -> bool
+  (** [mem t name] is true iff [t] includes a header field with a name that is
+      equal to [name]. *)
+
+  val get : t -> name -> value option
+  val get_multi : t -> name -> value list
+
+  (** {3 Iteration} *)
+
+  val iter : f:(name -> value -> unit) -> t -> unit
+  val fold : f:(name -> value -> 'a -> 'a) -> init:'a -> t -> 'a
+
+  (** {3 Utilities} *)
+
+  val to_string : t -> string
+
+  val pp_hum : Format.formatter -> t -> unit
+end

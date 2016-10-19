@@ -12,6 +12,7 @@ Library httpaf
     Path:           lib
     Pack:           true
     Findlibname:    httpaf
-    Modules:        Method,
+    Modules:        Headers,
+                    Method,
                     Status,
                     Version
