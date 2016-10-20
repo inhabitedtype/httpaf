@@ -411,3 +411,45 @@ module Headers : sig
 
   val pp_hum : Format.formatter -> t -> unit
 end
+
+
+(** {2 Message Types} *)
+
+(** Request
+
+    A client-initiated HTTP message. *)
+module Request : sig
+  type t =
+    { meth    : Method.t
+    ; target  : string
+    ; version : Version.t
+    ; headers : Headers.t }
+
+  val create
+    :  ?version:Version.t (** default is HTTP 1.1 *)
+    -> ?headers:Headers.t (** default is {!Headers.empty} *)
+    -> Method.t
+    -> string
+    -> t
+
+  val body_length : t -> [
+    | `Fixed of Int64.t
+    | `Chunked
+    | `Error of [`Bad_request]
+  ]
+  (** [body_length t] is the length of the message body accompanying [t]. It is
+      an error to generate a request with a close-delimited message body.
+
+      See {{:https://tools.ietf.org/html/rfc7230#section-3.3.3} RFC7230§3.3.3}
+      for more details. *)
+
+  val persistent_connection : ?proxy:bool -> t -> bool
+  (** [persistent_connection ?proxy t] indicates whether the connection for [t]
+      can be reused for multiple requests and responses. If the calling code
+      is acting as a proxy, it should pass [~proxy:true].
+
+      See {{:https://tools.ietf.org/html/rfc7230#section-6.3} RFC7230§6.3 for
+      more details. *)
+
+  val pp_hum : Format.formatter -> t -> unit
+end
