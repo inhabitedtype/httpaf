@@ -453,3 +453,49 @@ module Request : sig
 
   val pp_hum : Format.formatter -> t -> unit
 end
+
+
+(** Response
+
+    A server-generated message to a {Request}. *)
+module Response : sig
+  type t =
+    { version : Version.t
+    ; status  : Status.t
+    ; reason  : string
+    ; headers : Headers.t }
+
+  val create
+    :  ?reason:string     (** default is determined by {!Status.default_reason_phrase} *)
+    -> ?version:Version.t (** default is HTTP 1.1 *)
+    -> ?headers:Headers.t (** default is {!Headers.empty} *)
+    -> Status.t
+    -> t
+  (** [create ?reason ?version ?headers status] creates an HTTP response with
+      the given parameters. For typical use cases, it's sufficient to provide
+      values for [headers] and [status]. *)
+
+  val body_length : ?proxy:bool -> request_method:Method.standard -> t -> [
+    | `Fixed of Int64.t
+    | `Chunked
+    | `Close_delimited
+    | `Error of [`Bad_request | `Bad_gateway | `Internal_server_error ]
+  ]
+  (** [body_length ?proxy ~request_method t] is the length of the message body
+      accompanying [t] assuming it is a response to a request whose method was
+      [request_method]. If the calling code is acting as a proxy, it should
+      pass [~proxy:true]. This optional parameter only affects error reporting.
+
+      See {{:https://tools.ietf.org/html/rfc7230#section-3.3.3} RFC7230§3.3.3}
+      for more details. *)
+
+  val persistent_connection : ?proxy:bool -> t -> bool
+  (** [persistent_connection ?proxy t] indicates whether the connection for [t]
+      can be reused for multiple requests and responses. If the calling code
+      is acting as a proxy, it should pass [~proxy:true].
+
+      See {{:https://tools.ietf.org/html/rfc7230#section-6.3} RFC7230§6.3 for
+      more details. *)
+
+  val pp_hum : Format.formatter -> t -> unit
+end

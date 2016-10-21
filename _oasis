@@ -16,6 +16,7 @@ Library httpaf
         Headers,
         Method,
         Request,
+        Response,
         Status,
         Version
     InternalModules:
