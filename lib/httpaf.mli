@@ -566,3 +566,61 @@ module IOVec : sig
   val shift  : 'a t -> int -> 'a t
   val shiftv : 'a t list -> int -> 'a t list
 end
+
+
+(** Streaming Message Body *)
+module Body : sig
+  type 'mode t
+
+  module R : sig
+    type phantom
+    type nonrec t = phantom t
+  end
+
+  module W : sig
+    type phantom
+    type nonrec t = phantom t
+  end
+
+  val write_string : W.t -> ?off:int -> ?len:int -> string -> unit
+  (** [write_string w ?off ?len str] copies [str] into an internal buffer. If
+      possible, this write will be combined with previous and/or subsequent
+      writes before transmission. *)
+
+  val write_char : W.t -> char -> unit
+  (** [write_char w char] copies [hcar] into an internal buffer. If possible,
+      this write will be combined with previous and/or subsequent writes before
+      transmission. *)
+
+  val write_bigstring : W.t -> ?off:int -> ?len:int -> Bigstring.t -> unit
+  (** [write_bigstring w ?off ?len bs] copies [bs] into an internal buffer. If
+      possible, this write will be combined with previous and/or subsequent
+      writes before transmission. *)
+
+  val schedule_string : W.t -> ?off:int -> ?len:int -> string -> unit
+  (** [schedule_string w ?off ?len str] schedules [str] to be transmitted at
+      the next opportunity, without performing a copy. *)
+
+  val schedule_bigstring : W.t -> ?off:int -> ?len:int -> Bigstring.t -> unit
+  (** [schedule_bigstring w ?off ?len bs] schedules [bs] to be
+      transmitted at the next opportunity without performing a copy. [bs]
+      should not be modified until a subsequent call to {!flush} has
+      successfully completed. *)
+
+  val flush : W.t -> (unit -> unit) -> unit
+  (** [flush t f] *)
+
+  val schedule_read
+    :  R.t
+    -> readv:(IOVec.buffer IOVec.t list -> 'a * int)
+    -> result:([`Eof | `Ok of 'a] -> unit)
+    -> unit
+  (** [schedule_read r ~readv ~result] *)
+
+  val close : _ t -> unit
+  (** [close t] closes [t], causing subsequent read or write calls to raise. *)
+
+  val is_closed : _ t -> bool
+  (** [is_closed t] is true if {close} has been called on [t] and [false]
+      otherwise. A closed [t] may still have pending output. *)
+end
