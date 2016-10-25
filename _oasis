@@ -12,8 +12,10 @@ Library httpaf
     Path:           lib
     Pack:           true
     Findlibname:    httpaf
-    Modules:
+    BuildDepends:   faraday
+    Modules:    
         Headers,
+        IOVec,
         Method,
         Request,
         Response,

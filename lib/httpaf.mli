@@ -545,3 +545,24 @@ module Bigstring : sig
 
   val to_string : ?off:int -> ?len:int -> t -> string
 end
+
+
+(** IOVec *)
+module IOVec : sig
+  type buffer =
+    [ `String of string
+    | `Bytes of Bytes.t
+    | `Bigstring of Bigstring.t
+  ] as 'a constraint 'a = Faraday.buffer
+
+  type 'a t = 'a Faraday.iovec =
+    { buffer : 'a
+    ; off : int
+    ; len : int }
+
+  val length  : _ t -> int
+  val lengthv : _ t list -> int
+
+  val shift  : 'a t -> int -> 'a t
+  val shiftv : 'a t list -> int -> 'a t list
+end
