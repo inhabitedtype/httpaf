@@ -25,4 +25,5 @@ Library httpaf
     InternalModules:
         Bigstring,
         Message,
-        Parse
+        Parse,
+        Serialize

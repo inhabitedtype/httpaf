@@ -1,5 +1,5 @@
 # OASIS_START
-# DO NOT EDIT (digest: 1080701d263250cea87a6f7f33df4fc3)
+# DO NOT EDIT (digest: fe7500b804e16e7129077f6e9ec982eb)
 Body
 Headers
 IOVec
@@ -11,4 +11,5 @@ Version
 Bigstring
 Message
 Parse
+Serialize
 # OASIS_STOP
