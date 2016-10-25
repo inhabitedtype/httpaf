@@ -12,8 +12,8 @@ Library httpaf
     Path:           lib
     Pack:           true
     Findlibname:    httpaf
-    BuildDepends:   faraday
-    Modules:    
+    BuildDepends:   angstrom, faraday
+    Modules:
         Body,
         Headers,
         IOVec,
@@ -24,4 +24,5 @@ Library httpaf
         Version
     InternalModules:
         Bigstring,
-        Message
+        Message,
+        Parse
