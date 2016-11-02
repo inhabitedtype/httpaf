@@ -20,4 +20,5 @@ Library httpaf
         Status,
         Version
     InternalModules:
+        Bigstring,
         Message

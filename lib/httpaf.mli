@@ -499,3 +499,49 @@ module Response : sig
 
   val pp_hum : Format.formatter -> t -> unit
 end
+
+
+(** Bigstring
+
+    A block of memory allocated on the C heap. Bigstring payloads won't get
+    relocated by the OCaml GC, making it safe to use in blocking system calls
+    without holding the OCaml runtime lock. *)
+module Bigstring : sig
+  type t =
+    (char, Bigarray.int8_unsigned_elt, Bigarray.c_layout) Bigarray.Array1.t
+  (** For compatiblity with other libraries, [Bigstring.t] is not abstract. *)
+
+  val create : int -> t
+  (** [create len] allocates a bigstring of length [len]. *)
+
+  val of_string : ?off:int -> ?len:int -> string -> t
+  (** [of_string ?off ?len str] allocates a bigstring and copies the contents
+      of [str] into it. if [off] or [len] are provided, [t] will only have
+      length [len] and only the specified range of the string will be copied
+      into it. *)
+
+  val length : t -> int
+  (** [length t] returns the length of the bigstring. *)
+
+  val get        : t -> int -> char
+  val unsafe_get : t -> int -> char
+  (** [get        t n] returns the nth byte of [t] as a [char].
+      [unsafe_get t n] does the same but will not perform bounds checking. *)
+
+  val set        : t -> int -> char -> unit
+  val unsafe_set : t -> int -> char -> unit
+  (** [set        t n] returns the nth byte of [t] as a [char].
+      [unsafe_set t n] does the same but will not perform bounds checking. *)
+
+  val sub : off:int -> ?len:int -> t -> t
+  (** [sub ~off ?len t] returns a sub-view into the bigstring [t], specified by
+      [off] and [len]. This is a {i non-copying operation}: [t] and the
+      returned sub-view will share underlying bytes. Modifying one will modify
+      the other. *)
+
+  val blit : t -> int -> t -> int -> int -> unit
+  val blit_from_string : string  -> int -> t -> int -> int -> unit
+  val blit_from_bytes  : Bytes.t -> int -> t -> int -> int -> unit
+
+  val to_string : ?off:int -> ?len:int -> t -> string
+end
