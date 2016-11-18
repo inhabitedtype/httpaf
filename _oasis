@@ -28,3 +28,11 @@ Library httpaf
         Message,
         Parse,
         Serialize
+
+Executable test_angstrom
+  Path:             lib_test
+  MainIs:           test_httpaf.ml
+  Build$:           flag(tests)
+  CompiledObject:   best
+  Install:          false
+  BuildDepends:     httpaf

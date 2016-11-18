@@ -1,5 +1,5 @@
 # OASIS_START
-# DO NOT EDIT (digest: 5419832c6aab4079ae4dc8d2f4e422df)
+# DO NOT EDIT (digest: dd945ed9bdca87209cf8bb5aa2d07200)
 # Ignore VCS directories, you can use the same kind of rule outside
 # OASIS_START/STOP if you want to exclude directories that contains
 # useless stuff for the build process
@@ -32,4 +32,13 @@ true: annot, bin_annot
 <lib/*.ml{,i,y}>: pkg_angstrom
 <lib/*.ml{,i,y}>: pkg_faraday
 <lib/*.ml{,i,y}>: pkg_result
+# Executable test_angstrom
+<lib_test/test_httpaf.{native,byte}>: pkg_angstrom
+<lib_test/test_httpaf.{native,byte}>: pkg_faraday
+<lib_test/test_httpaf.{native,byte}>: pkg_result
+<lib_test/test_httpaf.{native,byte}>: use_httpaf
+<lib_test/*.ml{,i,y}>: pkg_angstrom
+<lib_test/*.ml{,i,y}>: pkg_faraday
+<lib_test/*.ml{,i,y}>: pkg_result
+<lib_test/*.ml{,i,y}>: use_httpaf
 # OASIS_STOP
