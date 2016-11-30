@@ -47,19 +47,19 @@ exception Local
 
 module CI = struct
   let lower c =
-    if (c >= 'A' && c <= 'Z')
-    then Char.code c + 32
-    else Char.code c
+    if c >= 0x41 && c <= 0x5a then c + 32 else c
 
   let equal x y =
-    String.length x = String.length y &&
-    match
-      String.iteri (fun i c ->
-        if lower (String.unsafe_get y i) <> lower c
-        then raise Local)
-      x
-    with
-    | _ -> true
+    let len = String.length x in
+    len = String.length y &&
+    match for i = 0 to len - 1 do
+      let c1 = Char.code (String.unsafe_get x i) in
+      let c2 = Char.code (String.unsafe_get y i) in
+      if c1 = c2
+      then ()
+      else if lower c1 <> lower c2 then raise Local
+    done with
+    | () -> true
     | exception Local -> false
 end
 
