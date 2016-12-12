@@ -1,9 +1,9 @@
 # OASIS_START
-# DO NOT EDIT (digest: c3b9ad68c56c35eb15e66746a72dacd8)
+# DO NOT EDIT (digest: 15fddb72d2f2540949e8aa90aa84565f)
 version = "dev"
 description =
 "A high-performance, memory-efficient, and scalable web server for OCaml."
-requires = "angstrom faraday"
+requires = "angstrom faraday result"
 archive(byte) = "httpaf.cma"
 archive(byte, plugin) = "httpaf.cma"
 archive(native) = "httpaf.cmxa"

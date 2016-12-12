@@ -42,6 +42,8 @@
     vectorized IO. *)
 
 
+open Result
+
 (** {2 Basic HTTP Types} *)
 
 
@@ -623,4 +625,103 @@ module Body : sig
   val is_closed : _ t -> bool
   (** [is_closed t] is true if {close} has been called on [t] and [false]
       otherwise. A closed [t] may still have pending output. *)
+end
+
+
+module Connection : sig
+  module Config : sig
+    type t =
+      { read_buffer_size  : int (** Default is [4096] *)
+      ; write_buffer_size : int (** Default is [4096] *)
+      }
+
+    val default : t
+    (** [default] is a configuration record with all parameters set to their
+        default values. *)
+  end
+
+  type t
+
+  type error =
+    [ `Bad_request | `Bad_gateway | `Internal_server_error | `Exn of exn ]
+
+  (* type request_handler = Reqd.t -> unit *)
+
+  type request_handler =
+    Request.t -> Body.R.t -> (Response.t -> Body.W.t) -> unit
+
+  type error_handler =
+    ?request:Request.t -> error -> (Headers.t -> Body.W.t) -> unit
+
+  val create
+    :  ?config:Config.t
+    -> ?error_handler:error_handler
+    -> request_handler:request_handler
+    -> t
+  (** [create ?config ?error_handler ~request_handler] creates a connection
+      handler that will service individual requests with [request_handler]. *)
+
+  val next_read_operation : t -> [ `Read of Bigstring.t | `Yield | `Close ]
+  (** [next_read_operation t] returns a value describing the next operation
+      that the caller should conduct on behalf of the connection. *)
+
+  val report_read_result : t -> [`Ok of int | `Eof] -> unit
+  (** [report_read_result t result] reports the result of the latest read
+      attempt to the connection. {report_read_result} should be called after a
+      call to {next_read_operation} that returns a [`Read buffer] value.
+
+        {ul
+        {- [`Ok n] indicates that the caller successfully received [n] bytes of
+        input and wrote them into the the read buffer that the caller was
+        provided by {next_read_operation}. }
+        {- [`Eof] indicates that the input source will no longer provide any
+        bytes to the read processor. }} *)
+
+  val yield_reader : t -> (unit -> unit) -> unit
+  (** [yield_reader t continue] registers with the connection to call
+      [continue] when reading should resume. {!yield_reader} should be called
+      after {next_read_operation} returns a [`Yield] value. *)
+
+  val next_write_operation : t -> [
+    | `Write of IOVec.buffer IOVec.t list
+    | `Yield
+    | `Close of int ]
+  (** [next_write_operation t] returns a value describing the next operation
+      that the caller should conduct on behalf of the connection. *)
+
+  val report_write_result : t -> [`Ok of int | `Closed] -> unit
+  (** [report_write_result t result] reports the result of the latest write
+      attempt to the connection. {report_write_result} should be called after a
+      call to {next_write_operation} that returns a [`Write buffer] value.
+
+        {ul
+        {- [`Ok n] indicates that the caller successfully wrote [n] bytes of
+        output from the buffer that the caller was provided by
+        {next_write_operation}. }
+        {- [`Closed] indicates that the output destination will no longer
+        accept bytes from the write processor. }} *)
+
+  val yield_writer : t -> (unit -> unit) -> unit
+  (** [yield_writer t continue] registers with the connection to call
+      [continue] when writing should resume. {!yield_writer} should be called
+      after {next_write_operation} returns a [`Yield] value. *)
+
+  val state : t -> [ `Running | `Closed_input | `Closed ]
+  (** [state t] is the state of the connection's input and output processors. A
+      connection's input processor may be closed while it's output processor is
+      still running (corresponding to the [`Closed_input] state), but the
+      output processor can never be closed while in the input processor is
+      open. *)
+
+  val report_exn : t -> exn -> unit
+  (** [report_exn t exn] reports that an error [exn] has been caught and
+      that it has been attributed to [t]. Calling this function will swithc [t]
+      into an error state. Depending on the state [t] is transitioning from, it
+      may call its error handler before terminating the connection. *)
+
+
+  (** / *)
+  val error_code : t -> error option
+  val shutdown_reader : t -> unit
+  val shutdown : t -> unit
 end

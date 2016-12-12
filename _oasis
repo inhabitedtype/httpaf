@@ -12,7 +12,7 @@ Library httpaf
     Path:           lib
     Pack:           true
     Findlibname:    httpaf
-    BuildDepends:   angstrom, faraday
+    BuildDepends:   angstrom, faraday, result
     Modules:
         Body,
         Connection,

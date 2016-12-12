@@ -338,3 +338,297 @@ module Rd = struct
   ;;
 
 end
+
+module Config = struct
+  type t =
+    { read_buffer_size        : int
+    ; write_buffer_size       : int
+    }
+
+  let default =
+    { read_buffer_size        = 0x1000
+    ; write_buffer_size       = 0x1000 }
+end
+
+type request_handler =
+  Request.t -> Body.R.t -> (Response.t -> Body.W.t) -> unit
+
+type error =
+  [ `Bad_gateway | `Bad_request | `Internal_server_error | `Exn of exn]
+
+type error_handler =
+  ?request:Request.t -> error -> (Headers.t -> Body.W.t) -> unit
+
+type active_request =
+  | Waiting
+  | Shutdown
+  | Active of Rd.t
+  | Error  of error * Body.W.t
+
+type t =
+  { reader                 : Reader.t
+  ; writer                 : Writer.t
+  ; request_handler        : request_handler
+  ; error_handler          : error_handler
+  ; request_queue          : Rd.t Queue.t
+  ; mutable active_request : active_request
+  ; mutable wakeup_writer  : (unit -> unit) list
+  ; mutable wakeup_reader  : (unit -> unit) list
+  }
+
+let invariant t =
+  let (=>) a b = b || (not a) in
+  Reader.invariant t.reader;
+  Writer.invariant t.writer;
+  assert (t.active_request = Waiting  => Queue.is_empty t.request_queue);
+  assert (t.active_request = Shutdown => Queue.is_empty t.request_queue);
+  assert (t.active_request = Shutdown => t.reader.Reader.closed);
+  assert (t.active_request = Shutdown => t.writer.Writer.closed);
+  assert (t.writer.Writer.closed => t.reader.Reader.closed);
+;;
+
+let default_error_handler ?request error handle =
+  let message =
+    match error with
+    | `Exn exn -> Printexc.to_string exn
+    | (#Status.client_error | #Status.server_error) as error -> Status.to_string error
+  in
+  let body = handle Headers.empty in
+  Body.write_string body message;
+  Body.close body
+
+let create ?(config=Config.default) ?(error_handler=default_error_handler) ~request_handler =
+  let
+    { Config
+    . read_buffer_size
+    ; write_buffer_size
+    } = config
+  in
+  let request_queue = Queue.create () in
+  let handler request request_body =
+    Queue.push (Rd.create request request_body) request_queue in
+  { reader          = Reader.create ~buffer_size:read_buffer_size handler
+  ; writer          = Writer.create ~buffer_size:write_buffer_size ()
+  ; request_handler = request_handler
+  ; error_handler   = error_handler
+  ; request_queue
+  ; active_request = Waiting
+  ; wakeup_writer   = []
+  ; wakeup_reader   = []
+  }
+
+let state t =
+  match t.reader.Reader.closed, t.writer.Writer.closed with
+  | false, false -> `Running
+  | true , true  -> `Closed
+  | true , false -> `Closed_input
+  | false, true  -> assert false
+
+let is_shutdown t =
+  match state t with
+  | `Closed | `Error -> true
+  | _                -> false
+
+let shutdown_reader t =
+  Reader.close t.reader;
+  match t.active_request with
+  | Active rd -> Rd.close_request_body rd
+  | _         -> ()
+
+let shutdown_writer t =
+  Writer.close t.writer;
+  match t.active_request with
+  | Active rd      -> Rd.close_response_body rd
+  | Error(_, body) -> Body.close body
+  | _              -> ()
+
+let error_code t =
+  match t.active_request with
+  | Error(error, _) -> Some error
+  | _               -> None
+
+let on_wakeup_reader t k =
+  if is_shutdown t
+  then failwith "on_wakeup_reader on closed conn"
+  else t.wakeup_reader <- k::t.wakeup_reader
+
+let on_wakeup_writer t k =
+  if is_shutdown t
+  then failwith "on_wakeup_writer on closed conn"
+  else t.wakeup_writer <- k::t.wakeup_writer
+
+let wakeup_writer t =
+  let callbacks = t.wakeup_writer in
+  t.wakeup_writer <- [];
+  List.iter (fun f -> f ()) callbacks
+
+let wakeup_reader t =
+  let callbacks = t.wakeup_reader in
+  t.wakeup_reader <- [];
+  List.iter (fun f -> f ()) callbacks
+
+let drain_request_queue t =
+  Queue.iter Rd.close_request_body t.request_queue;
+  Queue.clear t.request_queue;
+  wakeup_writer t
+
+let shutdown t =
+  shutdown_reader t;
+  shutdown_writer t;
+  t.active_request <- Shutdown;
+  wakeup_reader t;
+  wakeup_writer t
+
+let handle_error ?request t error =
+  let writer        = t.writer in
+  let response_body = Body.of_faraday writer.Writer.encoder in
+  let status =
+    match (error :> [error | Status.standard]) with
+    | `Exn _                     -> `Internal_server_error
+    | #Status.standard as status -> status
+  in
+  t.active_request <- Error(error, response_body);
+  t.error_handler ?request error (fun headers ->
+    (* XXX(seliopou): ensure that that the response is close-delimited *)
+    Writer.write_response writer (Response.create ~headers status);
+    response_body)
+
+let set_error_and_handle ?request t error =
+  (* XXX(seliopou): Once additional logging support is added, log the error
+   * in case it is not spurious. *)
+  match t.active_request with
+  | Shutdown -> ()
+  | Waiting  -> handle_error ?request t error
+  | Active rd ->
+    Rd.close_request_body rd;
+    (* XXX(seliopou): needs attention *)
+    if Rd.response_started rd then begin
+      Rd.close_response_body rd;
+      shutdown t;
+    end else begin
+      assert (request = None);
+      let request = rd.Rd.request in
+      handle_error ~request t error
+    end
+  | Error(_error, response_body) ->
+    begin match error with
+    | `Bad_request | `Bad_gateway | `Internal_server_error ->
+      (* Once error_code has been set, all subsequent errors should be ignored,
+       * as the process of shutting down the connection may result in further
+       * errors. For example, shutting down the reader while it was in the
+       * middle of parsing a request and awaiting additional input will almost
+       * inevitably result in an error. *)
+      ()
+    | `Exn exn ->
+      (* Two user-errors in a row, shut it down. *)
+      Body.close response_body;
+      shutdown t
+    end
+
+let report_exn t exn =
+  set_error_and_handle t (`Exn exn)
+
+exception Bad_response_length of [ `Bad_gateway | `Internal_server_error ]
+
+let advance_request_queue t =
+  let { Rd.request; request_body } as rd = Queue.take t.request_queue in
+  t.active_request <- Active rd;
+  let request_method = request.Request.meth in
+  let writer = t.writer in
+  begin try
+    t.request_handler request request_body (fun response ->
+      match Response.body_length ~request_method response with
+      | `Error err -> raise (Bad_response_length err)
+      | _          ->
+        Writer.write_response writer response;
+        let response_body = Body.create () in (* XXX(seliopou): buffer size *)
+        Rd.start_response rd response response_body;
+        response_body);
+  with
+  | Bad_response_length err -> set_error_and_handle ~request t (err :> error)
+  | exn                     -> set_error_and_handle ~request t (`Exn exn)
+  end;
+  wakeup_writer t
+
+let advance_request_queue_if_necessary t =
+  match t.active_request with
+  | Active rd when Rd.persistent_connection rd ->
+    if Rd.is_complete rd then begin
+      t.active_request <- Waiting;
+      wakeup_reader t
+    end;
+    if not (Queue.is_empty t.request_queue) then advance_request_queue t;
+  | Active rd ->
+    drain_request_queue t;
+    if Rd.is_complete rd
+    then shutdown t
+    else if not (Rd.requires_input rd)
+    then shutdown_reader t
+  | Waiting  ->
+    if not (Queue.is_empty t.request_queue)
+    then advance_request_queue t
+    else if Reader.is_closed t.reader
+    then shutdown t
+  | _ -> ()
+
+let _next_read_operation t =
+  advance_request_queue_if_necessary t;
+  match t.active_request with
+  | Active rd ->
+    if Rd.requires_input rd then Reader.next t.reader
+    else if Rd.persistent_connection rd
+    then `Yield
+    else begin
+      shutdown_reader t;
+      Reader.next t.reader
+    end
+  | _ -> Reader.next t.reader
+
+let next_read_operation t =
+  match _next_read_operation t with
+  | `Error (`Parse _)             -> set_error_and_handle          t `Bad_request; `Close
+  | `Error (`Bad_request request) -> set_error_and_handle ~request t `Bad_request; `Close
+  | (`Read _ | `Yield | `Close) as operation -> operation
+
+let report_read_result t result =
+  Reader.report_result t.reader result;
+  match t.active_request with
+  | Active rd ->
+    begin try Rd.flush_request_body rd
+    with
+    | Bad_response_length err -> set_error_and_handle ~request:rd.Rd.request t (err :> error)
+    | exn                     -> set_error_and_handle ~request:rd.Rd.request t (`Exn exn)
+    end
+  | _ -> ()
+
+let yield_reader t k =
+  on_wakeup_reader t k
+
+let flush_response_body t =
+  match t.active_request with
+  | Active rd      -> Rd.flush_response_body rd t.writer
+  | _              -> ()
+
+let rec next_write_operation t =
+  advance_request_queue_if_necessary t;
+  flush_response_body t;
+  Writer.next t.writer
+
+let report_write_result t result =
+  Writer.report_result t.writer result
+
+let yield_writer t k =
+  match t.active_request with
+  | Active rd ->
+    if Rd.requires_output rd
+    then Rd.on_more_output_available rd k
+    else if Rd.persistent_connection rd
+    then on_wakeup_writer t k
+    else begin shutdown t; k () end
+  | Error(_, response_body) ->
+    if Body.is_closed response_body
+    then begin
+      shutdown t;
+      k ()
+    end else Body.on_more_output_available response_body k
+  | _ -> on_wakeup_writer t k

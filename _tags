@@ -1,5 +1,5 @@
 # OASIS_START
-# DO NOT EDIT (digest: 19d55a9305c16f7cc6c91af5a8b8eff0)
+# DO NOT EDIT (digest: 5419832c6aab4079ae4dc8d2f4e422df)
 # Ignore VCS directories, you can use the same kind of rule outside
 # OASIS_START/STOP if you want to exclude directories that contains
 # useless stuff for the build process
@@ -31,4 +31,5 @@ true: annot, bin_annot
 "lib/serialize.cmx": for-pack(Httpaf)
 <lib/*.ml{,i,y}>: pkg_angstrom
 <lib/*.ml{,i,y}>: pkg_faraday
+<lib/*.ml{,i,y}>: pkg_result
 # OASIS_STOP
