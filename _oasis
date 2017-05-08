@@ -18,7 +18,7 @@ Library httpaf
     Pack:           true
     Findlibname:    httpaf
     BuildDepends:   angstrom, faraday, result
-    NativeOpt:      -S -g
+    NativeOpt:      -g
     Modules:
         Body,
         Connection,
@@ -45,6 +45,15 @@ Library httpaf_async
   NativeOpt:      -g
   Modules:
     Httpaf_async
+
+Executable wrk_async_benchmark
+  Path:             benchmarks
+  MainIs:           wrk_async_benchmark.ml
+  Build$:           flag(async)
+  Install:          false
+  NativeOpt:        -g
+  CompiledObject:   best
+  BuildDepends:     httpaf.async, async, threads
 
 Executable test_angstrom
   Path:             lib_test

@@ -1,5 +1,5 @@
 # OASIS_START
-# DO NOT EDIT (digest: b6f04e7e3728d89d94da9327b054d2eb)
+# DO NOT EDIT (digest: 6a6bc8dcbd388fa3d9a6bd180ae7c8b3)
 # Ignore VCS directories, you can use the same kind of rule outside
 # OASIS_START/STOP if you want to exclude directories that contains
 # useless stuff for the build process
@@ -46,6 +46,27 @@ true: annot, bin_annot
 <async/*.ml{,i,y}>: pkg_result
 <async/*.ml{,i,y}>: pkg_threads
 <async/*.ml{,i,y}>: use_httpaf
+# Executable wrk_async_benchmark
+<benchmarks/wrk_async_benchmark.{native,byte}>: oasis_executable_wrk_async_benchmark_native
+<benchmarks/*.ml{,i,y}>: oasis_executable_wrk_async_benchmark_native
+<benchmarks/wrk_async_benchmark.{native,byte}>: pkg_angstrom
+<benchmarks/wrk_async_benchmark.{native,byte}>: pkg_async
+<benchmarks/wrk_async_benchmark.{native,byte}>: pkg_core
+<benchmarks/wrk_async_benchmark.{native,byte}>: pkg_faraday
+<benchmarks/wrk_async_benchmark.{native,byte}>: pkg_faraday.async
+<benchmarks/wrk_async_benchmark.{native,byte}>: pkg_result
+<benchmarks/wrk_async_benchmark.{native,byte}>: pkg_threads
+<benchmarks/wrk_async_benchmark.{native,byte}>: use_httpaf
+<benchmarks/wrk_async_benchmark.{native,byte}>: use_httpaf_async
+<benchmarks/*.ml{,i,y}>: pkg_angstrom
+<benchmarks/*.ml{,i,y}>: pkg_async
+<benchmarks/*.ml{,i,y}>: pkg_core
+<benchmarks/*.ml{,i,y}>: pkg_faraday
+<benchmarks/*.ml{,i,y}>: pkg_faraday.async
+<benchmarks/*.ml{,i,y}>: pkg_result
+<benchmarks/*.ml{,i,y}>: pkg_threads
+<benchmarks/*.ml{,i,y}>: use_httpaf
+<benchmarks/*.ml{,i,y}>: use_httpaf_async
 # Executable test_angstrom
 <lib_test/test_httpaf.{native,byte}>: pkg_angstrom
 <lib_test/test_httpaf.{native,byte}>: pkg_faraday
