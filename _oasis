@@ -8,11 +8,17 @@ Plugins:     META (0.4), DevFiles (0.4)
 BuildTools:  ocamlbuild
 Synopsis:    A high-performance, memory-efficient, and scalable web server for OCaml.
 
+
+Flag async
+  Description: build the Async libraries
+  Default: false
+
 Library httpaf
     Path:           lib
     Pack:           true
     Findlibname:    httpaf
     BuildDepends:   angstrom, faraday, result
+    NativeOpt:      -S -g
     Modules:
         Body,
         Connection,
@@ -28,6 +34,17 @@ Library httpaf
         Message,
         Parse,
         Serialize
+
+Library httpaf_async
+  Path:           async
+  Findlibname:    async
+  Findlibparent:  httpaf
+  Build$:         flag(async)
+  Install$:       flag(async)
+  BuildDepends:   httpaf, faraday.async, core, async, threads
+  NativeOpt:      -g
+  Modules:
+    Httpaf_async
 
 Executable test_angstrom
   Path:             lib_test

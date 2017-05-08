@@ -1,5 +1,5 @@
 # OASIS_START
-# DO NOT EDIT (digest: 15fddb72d2f2540949e8aa90aa84565f)
+# DO NOT EDIT (digest: c6f94432d04d9969b14039ee7b4eb7b9)
 version = "dev"
 description =
 "A high-performance, memory-efficient, and scalable web server for OCaml."
@@ -9,5 +9,16 @@ archive(byte, plugin) = "httpaf.cma"
 archive(native) = "httpaf.cmxa"
 archive(native, plugin) = "httpaf.cmxs"
 exists_if = "httpaf.cma"
+package "async" (
+ version = "dev"
+ description =
+ "A high-performance, memory-efficient, and scalable web server for OCaml."
+ requires = "httpaf faraday.async core async threads"
+ archive(byte) = "httpaf_async.cma"
+ archive(byte, plugin) = "httpaf_async.cma"
+ archive(native) = "httpaf_async.cmxa"
+ archive(native, plugin) = "httpaf_async.cmxs"
+ exists_if = "httpaf_async.cma"
+)
 # OASIS_STOP
 
