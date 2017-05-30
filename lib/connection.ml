@@ -42,7 +42,7 @@ module Reader = struct
     | `Parse of string list * string ]
 
   type t =
-    { handler             : Request.t -> Body.R.t -> unit
+    { handler             : Request.t -> Request.Body.t -> unit
       (* The application request handler. *)
     ; buffer              : Bigstring.t
       (* The buffer that the parser reads from. Managed by the control module
@@ -65,12 +65,12 @@ module Reader = struct
     match Request.body_length request with
     | `Error `Bad_request -> return (Error (`Bad_request request))
     | `Fixed 0L  ->
-      handler request Body.R.empty;
+      handler request Request.Body.empty;
       ok
     | `Fixed _ | `Chunked | `Close_delimited as encoding ->
-      let request_body as writer = Body.create ~buffer_size:0 () in
+      let request_body = Request.Body.create ~buffer_size:0 () in
       handler request request_body;
-      body ~encoding writer *> ok
+      body ~encoding request_body *> ok
 
   let create ?(buffer_size=0x1000) handler =
     let buffer = Bigstring.create buffer_size in
@@ -244,7 +244,7 @@ module Rd = struct
 
   type t =
     { request                 : Request.t
-    ; request_body            : Body.R.t
+    ; request_body            : Request.Body.t
     ; buffered_response_bytes : int ref
     ; mutable persistent      : bool
     ; mutable response_state  : response_state
@@ -261,7 +261,7 @@ module Rd = struct
     }
 
   let close_request_body t =
-    Body.close t.request_body
+    Request.Body.close t.request_body
 
   let close_response_body t =
     match t.response_state with
@@ -287,7 +287,7 @@ module Rd = struct
     t.persistent
 
   let requires_input { request_body } =
-    not (Body.is_closed request_body)
+    not (Request.Body.is_closed request_body)
 
   let requires_output { response_state } =
     match response_state with
@@ -299,8 +299,8 @@ module Rd = struct
     not (requires_input t || requires_output t)
 
   let flush_request_body t =
-    if Body.has_pending_output t.request_body then
-      Body.execute_read t.request_body
+    if Request.Body.has_pending_output t.request_body then
+      Request.Body.execute_read t.request_body
 
   let flush_response_body t writer =
     match t.response_state with
@@ -351,7 +351,7 @@ module Config = struct
 end
 
 type request_handler =
-  Request.t -> Body.R.t -> (Response.t -> Body.W.t) -> unit
+  Request.t -> Request.Body.t -> (Response.t -> Body.W.t) -> unit
 
 type error =
   [ `Bad_gateway | `Bad_request | `Internal_server_error | `Exn of exn]

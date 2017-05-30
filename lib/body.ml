@@ -35,18 +35,13 @@ type bigstring = Bigstring.t
 type buffer = IOVec.buffer
 type 'a iovec = 'a IOVec.t
 
-type reader =
-  | R : (buffer iovec list -> 'a * int) * ([`Eof | `Ok of 'a] -> unit) -> reader
-  | N : reader
-
 type 'mode t =
-  { faraday           : Faraday.t
-  ; mutable reader    : reader
-  ; mutable on_write  : (unit -> unit) list
+  { faraday            : Faraday.t
+  ; mutable on_write   : (unit -> unit) list
   }
 
 let of_faraday faraday =
-  let t = { faraday; reader = N; on_write = [] } in
+  let t = { faraday; on_write = [] } in
   t
 
 let create ?(buffer_size=0x1000) () =
@@ -69,30 +64,6 @@ let of_strings ss =
 
 let is_closed t =
   Faraday.is_closed t.faraday
-
-let _execute_read t readv result =
-  match Faraday.operation t.faraday with
-  | `Yield         -> ()
-  | `Close         -> t.reader <- N; result `Eof
-  | `Writev iovecs ->
-    t.reader <- N;
-    let a, n = readv iovecs in
-    assert (n >= 0);
-    Faraday.shift t.faraday n;
-    result (`Ok a)
-
-let execute_read t =
-  match t.reader with
-  | N                -> ()
-  | R(readv, result) -> _execute_read t readv result
-
-let schedule_read t ~readv ~result =
-  match t.reader with
-  | R _ -> raise (Failure "Body.schedule_read: reader already scheduled")
-  | N   ->
-    if is_closed t
-    then _execute_read t readv result
-    else t.reader <- R(readv, result)
 
 let fire_on_write t =
   let callbacks = t.on_write in
@@ -136,13 +107,6 @@ let empty_closed =
   let t = create ~buffer_size:0 () in
   close t;
   t
-
-module R = struct
-  type phantom
-  type nonrec t = phantom t
-
-  let empty = empty_closed
-end
 
 module W = struct
   type phantom

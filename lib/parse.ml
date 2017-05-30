@@ -137,13 +137,14 @@ let swallow_trailer =
   skip_many header *> eol *> commit
 
 let finish writer =
-  Body.close writer;
+  Request.Body.close writer;
   commit
 
 let schedule_size writer n =
-  begin if Body.is_closed writer
+  let faraday = Request.Body.unsafe_faraday writer in
+  begin if Faraday.is_closed faraday
   then advance n
-  else take n >>| fun s -> Body.schedule_string writer s
+  else take n >>| fun s -> Faraday.schedule_string faraday s
   end *> commit
 
 let rec body ~encoding writer =

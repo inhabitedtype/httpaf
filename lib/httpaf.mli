@@ -454,6 +454,24 @@ module Request : sig
       more details. *)
 
   val pp_hum : Format.formatter -> t -> unit
+
+  module Body : sig
+    type t
+
+    val schedule_read
+      :  t
+      -> readv:(IOVec.buffer IOVec.t list -> 'a * int)
+      -> result:([`Eof | `Ok of 'a] -> unit)
+      -> unit
+    (** [schedule_read r ~readv ~result] *)
+
+    val close : t -> unit
+    (** [close t] closes [t], causing subsequent read or write calls to raise. *)
+
+    val is_closed : t -> bool
+    (** [is_closed t] is true if {!close} has been called on [t] and [false]
+        otherwise. A closed [t] may still have pending output. *)
+  end
 end
 
 
@@ -574,11 +592,6 @@ end
 module Body : sig
   type 'mode t
 
-  module R : sig
-    type phantom
-    type nonrec t = phantom t
-  end
-
   module W : sig
     type phantom
     type nonrec t = phantom t
@@ -612,13 +625,6 @@ module Body : sig
   val flush : W.t -> (unit -> unit) -> unit
   (** [flush t f] *)
 
-  val schedule_read
-    :  R.t
-    -> readv:(IOVec.buffer IOVec.t list -> 'a * int)
-    -> result:([`Eof | `Ok of 'a] -> unit)
-    -> unit
-  (** [schedule_read r ~readv ~result] *)
-
   val close : _ t -> unit
   (** [close t] closes [t], causing subsequent read or write calls to raise. *)
 
@@ -648,7 +654,7 @@ module Connection : sig
   (* type request_handler = Reqd.t -> unit *)
 
   type request_handler =
-    Request.t -> Body.R.t -> (Response.t -> Body.W.t) -> unit
+    Request.t -> Request.Body.t -> (Response.t -> Body.W.t) -> unit
 
   type error_handler =
     ?request:Request.t -> error -> (Headers.t -> Body.W.t) -> unit
