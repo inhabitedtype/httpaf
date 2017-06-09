@@ -12,24 +12,24 @@ let error_handler _ ?request error start_response =
   let response_body = start_response Headers.empty in
   begin match error with
   | `Exn exn ->
-    Body.write_string response_body (Exn.to_string exn);
-    Body.write_string response_body "\n";
+    Response.Body.write_string response_body (Exn.to_string exn);
+    Response.Body.write_string response_body "\n";
   | #Status.standard as error ->
-    Body.write_string response_body (Status.default_reason_phrase error)
+    Response.Body.write_string response_body (Status.default_reason_phrase error)
   end;
-  Body.close response_body
+  Response.Body.close response_body
 ;;
 
 let request_handler _ request request_body start_response =
   match request.Request.target with
   | "/" ->
     let response_body = start_response (Response.create ~headers `OK) in
-    Body.schedule_bigstring response_body text;
-    Body.close response_body
+    Response.Body.schedule_bigstring response_body text;
+    Response.Body.close response_body
   | _   ->
     let response_body = start_response (Response.create `Not_found) in
-    Body.write_string response_body "Route not found";
-    Body.close response_body
+    Response.Body.write_string response_body "Route not found";
+    Response.Body.close response_body
 
 let main port max_accepts_per_batch () =
   Tcp.(Server.create_sock

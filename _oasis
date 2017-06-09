@@ -20,13 +20,13 @@ Library httpaf
     BuildDepends:   angstrom, faraday, result
     NativeOpt:      -g
     Modules:
-        Body,
         Connection,
         Headers,
         IOVec,
         Method,
         Request,
         Response,
+        Response0,
         Status,
         Version
     InternalModules:

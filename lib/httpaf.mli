@@ -518,6 +518,45 @@ module Response : sig
       more details. *)
 
   val pp_hum : Format.formatter -> t -> unit
+
+  module Body : sig
+    type t
+
+    val write_char : t -> char -> unit
+    (** [write_char w char] copies [hcar] into an internal buffer. If possible,
+        this write will be combined with previous and/or subsequent writes before
+        transmission. *)
+
+    val write_string : t -> ?off:int -> ?len:int -> string -> unit
+    (** [write_string w ?off ?len str] copies [str] into an internal buffer. If
+        possible, this write will be combined with previous and/or subsequent
+        writes before transmission. *)
+
+    val write_bigstring : t -> ?off:int -> ?len:int -> Bigstring.t -> unit
+    (** [write_bigstring w ?off ?len bs] copies [bs] into an internal buffer. If
+        possible, this write will be combined with previous and/or subsequent
+        writes before transmission. *)
+
+    val schedule_string : t -> ?off:int -> ?len:int -> string -> unit
+    (** [schedule_string w ?off ?len str] schedules [str] to be transmitted at
+        the next opportunity, without performing a copy. *)
+
+    val schedule_bigstring : t -> ?off:int -> ?len:int -> Bigstring.t -> unit
+    (** [schedule_bigstring w ?off ?len bs] schedules [bs] to be
+        transmitted at the next opportunity without performing a copy. [bs]
+        should not be modified until a subsequent call to {!flush} has
+        successfully completed. *)
+
+    val flush : t -> (unit -> unit) -> unit
+    (** [flush t f] *)
+
+    val close : t -> unit
+    (** [close t] closes [t], causing subsequent read or write calls to raise. *)
+
+    val is_closed : t -> bool
+    (** [is_closed t] is true if {!close} has been called on [t] and [false]
+        otherwise. A closed [t] may still have pending output. *)
+  end
 end
 
 
@@ -587,58 +626,12 @@ module IOVec : sig
   val shiftv : 'a t list -> int -> 'a t list
 end
 
-
-(** Streaming Message Body *)
-module Body : sig
-  type 'mode t
-
-  module W : sig
-    type phantom
-    type nonrec t = phantom t
-  end
-
-  val write_string : W.t -> ?off:int -> ?len:int -> string -> unit
-  (** [write_string w ?off ?len str] copies [str] into an internal buffer. If
-      possible, this write will be combined with previous and/or subsequent
-      writes before transmission. *)
-
-  val write_char : W.t -> char -> unit
-  (** [write_char w char] copies [hcar] into an internal buffer. If possible,
-      this write will be combined with previous and/or subsequent writes before
-      transmission. *)
-
-  val write_bigstring : W.t -> ?off:int -> ?len:int -> Bigstring.t -> unit
-  (** [write_bigstring w ?off ?len bs] copies [bs] into an internal buffer. If
-      possible, this write will be combined with previous and/or subsequent
-      writes before transmission. *)
-
-  val schedule_string : W.t -> ?off:int -> ?len:int -> string -> unit
-  (** [schedule_string w ?off ?len str] schedules [str] to be transmitted at
-      the next opportunity, without performing a copy. *)
-
-  val schedule_bigstring : W.t -> ?off:int -> ?len:int -> Bigstring.t -> unit
-  (** [schedule_bigstring w ?off ?len bs] schedules [bs] to be
-      transmitted at the next opportunity without performing a copy. [bs]
-      should not be modified until a subsequent call to {!flush} has
-      successfully completed. *)
-
-  val flush : W.t -> (unit -> unit) -> unit
-  (** [flush t f] *)
-
-  val close : _ t -> unit
-  (** [close t] closes [t], causing subsequent read or write calls to raise. *)
-
-  val is_closed : _ t -> bool
-  (** [is_closed t] is true if {close} has been called on [t] and [false]
-      otherwise. A closed [t] may still have pending output. *)
-end
-
-
 module Connection : sig
   module Config : sig
     type t =
-      { read_buffer_size  : int (** Default is [4096] *)
-      ; write_buffer_size : int (** Default is [4096] *)
+      { read_buffer_size          : int (** Default is [4096] *)
+      ; response_buffer_size      : int (** Default is [1024] *)
+      ; response_body_buffer_size : int (** Default is [4096] *)
       }
 
     val default : t
@@ -654,10 +647,10 @@ module Connection : sig
   (* type request_handler = Reqd.t -> unit *)
 
   type request_handler =
-    Request.t -> Request.Body.t -> (Response.t -> Body.W.t) -> unit
+    Request.t -> Request.Body.t -> (Response.t -> Response.Body.t) -> unit
 
   type error_handler =
-    ?request:Request.t -> error -> (Headers.t -> Body.W.t) -> unit
+    ?request:Request.t -> error -> (Headers.t -> Response.Body.t) -> unit
 
   val create
     :  ?config:Config.t

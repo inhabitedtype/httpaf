@@ -240,7 +240,7 @@ end
 module Rd = struct
   type response_state =
     | Waiting of (unit -> unit) list ref
-    | Started of Response.t * Body.W.t
+    | Started of Response.t * Response.Body.t
 
   type t =
     { request                 : Request.t
@@ -265,7 +265,7 @@ module Rd = struct
 
   let close_response_body t =
     match t.response_state with
-    | Started(_, response_body) -> Body.close response_body
+    | Started(_, response_body) -> Response.Body.close response_body
     | Waiting _                 -> ()
 
   let response_started t =
@@ -280,7 +280,7 @@ module Rd = struct
       if t.persistent then
         t.persistent <- Response.persistent_connection response;
       t.response_state <- Started(response, response_body);
-      List.iter (fun f -> Body.on_more_output_available response_body f)
+      List.iter (fun f -> Response.Body.when_ready_to_write response_body f)
         !callbacks
 
   let persistent_connection t =
@@ -293,7 +293,7 @@ module Rd = struct
     match response_state with
     | Waiting _                 -> true
     | Started(_, response_body) ->
-      Body.(has_pending_output response_body || not (is_closed response_body))
+      Response.Body.(has_pending_output response_body || not (is_closed response_body))
 
   let is_complete t =
     not (requires_input t || requires_output t)
@@ -306,7 +306,7 @@ module Rd = struct
     match t.response_state with
     | Waiting _                        -> ()
     | Started(response, response_body) ->
-      let faraday = response_body.Body.faraday in
+      let faraday = Response.Body.unsafe_faraday response_body in
       begin match Faraday.operation faraday with
       | `Yield | `Close -> ()
       | `Writev iovecs ->
@@ -329,7 +329,7 @@ module Rd = struct
     (* Also handles the case where the body is closed *)
     match t.response_state with
     | Waiting callbacks         -> callbacks := k::!callbacks
-    | Started(_, response_body) -> Body.on_more_output_available response_body k
+    | Started(_, response_body) -> Response.Body.when_ready_to_write response_body k
 
   let invariant t =
     let (=>) a b = b || not a in
@@ -341,33 +341,35 @@ end
 
 module Config = struct
   type t =
-    { read_buffer_size        : int
-    ; write_buffer_size       : int
-    }
+    { read_buffer_size          : int
+    ; response_buffer_size      : int
+    ; response_body_buffer_size : int }
 
   let default =
-    { read_buffer_size        = 0x1000
-    ; write_buffer_size       = 0x1000 }
+    { read_buffer_size          = 0x1000
+    ; response_buffer_size      = 0x400
+    ; response_body_buffer_size = 0x1000 }
 end
 
 type request_handler =
-  Request.t -> Request.Body.t -> (Response.t -> Body.W.t) -> unit
+  Request.t -> Request.Body.t -> (Response.t -> Response.Body.t) -> unit
 
 type error =
   [ `Bad_gateway | `Bad_request | `Internal_server_error | `Exn of exn]
 
 type error_handler =
-  ?request:Request.t -> error -> (Headers.t -> Body.W.t) -> unit
+  ?request:Request.t -> error -> (Headers.t -> Response.Body.t) -> unit
 
 type active_request =
   | Waiting
   | Shutdown
   | Active of Rd.t
-  | Error  of error * Body.W.t
+  | Error  of error * Response.Body.t
 
 type t =
   { reader                 : Reader.t
   ; writer                 : Writer.t
+  ; response_body_buffer   : Bigstring.t
   ; request_handler        : request_handler
   ; error_handler          : error_handler
   ; request_queue          : Rd.t Queue.t
@@ -394,21 +396,23 @@ let default_error_handler ?request error handle =
     | (#Status.client_error | #Status.server_error) as error -> Status.to_string error
   in
   let body = handle Headers.empty in
-  Body.write_string body message;
-  Body.close body
+  Response.Body.write_string body message;
+  Response.Body.close body
 
 let create ?(config=Config.default) ?(error_handler=default_error_handler) ~request_handler =
   let
     { Config
     . read_buffer_size
-    ; write_buffer_size
+    ; response_buffer_size
+    ; response_body_buffer_size
     } = config
   in
   let request_queue = Queue.create () in
   let handler request request_body =
     Queue.push (Rd.create request request_body) request_queue in
   { reader          = Reader.create ~buffer_size:read_buffer_size handler
-  ; writer          = Writer.create ~buffer_size:write_buffer_size ()
+  ; writer          = Writer.create ~buffer_size:response_buffer_size ()
+  ; response_body_buffer = Bigstring.create response_body_buffer_size
   ; request_handler = request_handler
   ; error_handler   = error_handler
   ; request_queue
@@ -439,7 +443,7 @@ let shutdown_writer t =
   Writer.close t.writer;
   match t.active_request with
   | Active rd      -> Rd.close_response_body rd
-  | Error(_, body) -> Body.close body
+  | Error(_, body) -> Response.Body.close body
   | _              -> ()
 
 let error_code t =
@@ -481,7 +485,7 @@ let shutdown t =
 
 let handle_error ?request t error =
   let writer        = t.writer in
-  let response_body = Body.of_faraday writer.Writer.encoder in
+  let response_body = Response.Body.of_faraday writer.Writer.encoder in
   let status =
     match (error :> [error | Status.standard]) with
     | `Exn _                     -> `Internal_server_error
@@ -521,7 +525,7 @@ let set_error_and_handle ?request t error =
       ()
     | `Exn exn ->
       (* Two user-errors in a row, shut it down. *)
-      Body.close response_body;
+      Response.Body.close response_body;
       shutdown t
     end
 
@@ -541,7 +545,7 @@ let advance_request_queue t =
       | `Error err -> raise (Bad_response_length err)
       | _          ->
         Writer.write_response writer response;
-        let response_body = Body.create () in (* XXX(seliopou): buffer size *)
+        let response_body = Response.Body.create t.response_body_buffer in
         Rd.start_response rd response response_body;
         response_body);
   with
@@ -626,9 +630,9 @@ let yield_writer t k =
     then on_wakeup_writer t k
     else begin shutdown t; k () end
   | Error(_, response_body) ->
-    if Body.is_closed response_body
+    if Response.Body.is_closed response_body
     then begin
       shutdown t;
       k ()
-    end else Body.on_more_output_available response_body k
+    end else Response.Body.when_ready_to_write response_body k
   | _ -> on_wakeup_writer t k
