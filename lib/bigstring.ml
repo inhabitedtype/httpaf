@@ -90,3 +90,5 @@ let of_string ?(off=0) ?len s =
   let b = create len in
   blit_from_string s off b 0 len;
   b
+
+let empty = create 0
