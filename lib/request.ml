@@ -45,13 +45,13 @@ module Body = struct
     ; mutable read_state : read_state
     }
 
-  let create ?(buffer_size=0x1000) () =
-    { faraday = Faraday.create buffer_size
+  let create buffer =
+    { faraday = Faraday.of_bigstring buffer
     ; read_state = Waiting
     }
 
   let create_empty () =
-    let t = create ~buffer_size:0 () in
+    let t = create Bigstring.empty in
     Faraday.close t.faraday;
     t
 

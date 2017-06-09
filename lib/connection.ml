@@ -68,7 +68,7 @@ module Reader = struct
       handler request Request.Body.empty;
       ok
     | `Fixed _ | `Chunked | `Close_delimited as encoding ->
-      let request_body = Request.Body.create ~buffer_size:0 () in
+      let request_body = Request.Body.create Bigstring.empty in
       handler request request_body;
       body ~encoding request_body *> ok
 
