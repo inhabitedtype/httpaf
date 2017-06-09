@@ -2,3 +2,6 @@ S lib/**
 S lwt/**
 S async/**
 B _build/**
+
+PKG core async
+PKG angstrom faraday result
