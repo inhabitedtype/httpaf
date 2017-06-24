@@ -1,5 +1,5 @@
 # OASIS_START
-# DO NOT EDIT (digest: f803a099c2e20f276280828b114e5654)
+# DO NOT EDIT (digest: e3a3e79d95a6dac8d209ecd3ede5d44b)
 Connection
 Headers
 IOVec
@@ -7,6 +7,7 @@ Method
 Request
 Response
 Response0
+Reqd
 Status
 Version
 Bigstring

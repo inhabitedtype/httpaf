@@ -20,16 +20,13 @@ let error_handler _ ?request error start_response =
   Response.Body.close response_body
 ;;
 
-let request_handler _ request request_body start_response =
-  match request.Request.target with
-  | "/" ->
-    let response_body = start_response (Response.create ~headers `OK) in
-    Response.Body.schedule_bigstring response_body text;
-    Response.Body.close response_body
-  | _   ->
-    let response_body = start_response (Response.create `Not_found) in
-    Response.Body.write_string response_body "Route not found";
-    Response.Body.close response_body
+let request_handler _ reqd =
+  let { Request.target } = Reqd.request reqd in
+  let request_body       = Reqd.request_body reqd in
+  Request.Body.close request_body;
+  match target with
+  | "/" -> Reqd.respond_with_bigstring reqd (Response.create ~headers `OK) text;
+  | _   -> Reqd.respond_with_string    reqd (Response.create `Not_found) "Route not found"
 
 let main port max_accepts_per_batch () =
   Tcp.(Server.create_sock

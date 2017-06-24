@@ -27,6 +27,7 @@ Library httpaf
         Request,
         Response,
         Response0,
+        Reqd,
         Status,
         Version
     InternalModules:

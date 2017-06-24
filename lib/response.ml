@@ -106,6 +106,7 @@ module Body = struct
 
   let when_ready_to_write t callback =
     if is_closed t then callback ();
-    if t.when_ready_to_write == default_ready_to_write then failwith "Response.Body: closed";
+    if t.when_ready_to_write == default_ready_to_write
+    then failwith "Response.Body: only one callback can be registered at a time";
     t.when_ready_to_write <- callback
 end

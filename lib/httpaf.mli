@@ -383,7 +383,6 @@ module Headers : sig
       of the transmission order. *)
 
   val add_multi : t -> (name * value list) list -> t
-  (** [add_multi t headers] *)
 
   val remove : t -> name -> t
   (** [remove t name] is a collection of header fields that contains all the
@@ -392,6 +391,12 @@ module Headers : sig
       [name], they will all be removed. *)
 
   val replace : t -> name -> value -> t
+  (** [replace t name value] is a collection of header fields that is the same
+      as [t] except with all header fields with a name equal to [name] removed
+      and replaced with a single header field whose name is [name] and whose
+      value is [value]. This new header field will appear in the transmission
+      order where the first occurrence of a header field with a name matching
+      [name] was found. *)
 
   (** {3 Destructors} *)
 
@@ -400,6 +405,7 @@ module Headers : sig
       equal to [name]. *)
 
   val get : t -> name -> value option
+  val get_exn : t -> name -> value
   val get_multi : t -> name -> value list
 
   (** {3 Iteration} *)
@@ -460,10 +466,9 @@ module Request : sig
 
     val schedule_read
       :  t
-      -> readv:(IOVec.buffer IOVec.t list -> 'a * int)
+      -> read:(IOVec.buffer -> off:int -> len:int -> 'a * int)
       -> result:([`Eof | `Ok of 'a] -> unit)
       -> unit
-    (** [schedule_read r ~readv ~result] *)
 
     val close : t -> unit
     (** [close t] closes [t], causing subsequent read or write calls to raise. *)
@@ -626,6 +631,33 @@ module IOVec : sig
   val shiftv : 'a t list -> int -> 'a t list
 end
 
+(** Request Descriptor *)
+module Reqd : sig
+  type 'handle t
+
+  val request : _ t -> Request.t
+  val request_body : _ t -> Request.Body.t
+
+  val response : _ t -> Response.t option
+  val response_exn : _ t -> Response.t
+
+  val respond_with_string    : _ t -> Response.t -> string -> unit
+  val respond_with_bigstring : _ t -> Response.t -> Bigstring.t -> unit
+  val respond_with_streaming : _ t -> Response.t -> Response.Body.t
+
+  val report_exn : _ t -> exn -> unit
+  val try_with : _ t -> (unit -> unit) -> (unit, exn) result
+
+  (** / *)
+  (* This doesn't work yet *)
+
+  val switch_protocols
+    :  'handle t
+    -> headers:Headers.t
+    -> ('handle -> Bigstring.t -> unit)
+    -> unit
+end
+
 module Connection : sig
   module Config : sig
     type t =
@@ -639,15 +671,12 @@ module Connection : sig
         default values. *)
   end
 
-  type t
+  type 'handle t
 
   type error =
     [ `Bad_request | `Bad_gateway | `Internal_server_error | `Exn of exn ]
 
-  (* type request_handler = Reqd.t -> unit *)
-
-  type request_handler =
-    Request.t -> Request.Body.t -> (Response.t -> Response.Body.t) -> unit
+  type 'handle request_handler = 'handle Reqd.t -> unit
 
   type error_handler =
     ?request:Request.t -> error -> (Headers.t -> Response.Body.t) -> unit
@@ -655,16 +684,16 @@ module Connection : sig
   val create
     :  ?config:Config.t
     -> ?error_handler:error_handler
-    -> request_handler:request_handler
-    -> t
+    -> request_handler:('handle request_handler)
+    -> 'handle t
   (** [create ?config ?error_handler ~request_handler] creates a connection
       handler that will service individual requests with [request_handler]. *)
 
-  val next_read_operation : t -> [ `Read of Bigstring.t | `Yield | `Close ]
+  val next_read_operation : _ t -> [ `Read of Bigstring.t | `Yield | `Close ]
   (** [next_read_operation t] returns a value describing the next operation
       that the caller should conduct on behalf of the connection. *)
 
-  val report_read_result : t -> [`Ok of int | `Eof] -> unit
+  val report_read_result : _ t -> [`Ok of int | `Eof] -> unit
   (** [report_read_result t result] reports the result of the latest read
       attempt to the connection. {report_read_result} should be called after a
       call to {next_read_operation} that returns a [`Read buffer] value.
@@ -676,19 +705,19 @@ module Connection : sig
         {- [`Eof] indicates that the input source will no longer provide any
         bytes to the read processor. }} *)
 
-  val yield_reader : t -> (unit -> unit) -> unit
+  val yield_reader : _ t -> (unit -> unit) -> unit
   (** [yield_reader t continue] registers with the connection to call
       [continue] when reading should resume. {!yield_reader} should be called
       after {next_read_operation} returns a [`Yield] value. *)
 
-  val next_write_operation : t -> [
+  val next_write_operation : _ t -> [
     | `Write of IOVec.buffer IOVec.t list
     | `Yield
     | `Close of int ]
   (** [next_write_operation t] returns a value describing the next operation
       that the caller should conduct on behalf of the connection. *)
 
-  val report_write_result : t -> [`Ok of int | `Closed] -> unit
+  val report_write_result : _ t -> [`Ok of int | `Closed] -> unit
   (** [report_write_result t result] reports the result of the latest write
       attempt to the connection. {report_write_result} should be called after a
       call to {next_write_operation} that returns a [`Write buffer] value.
@@ -700,19 +729,19 @@ module Connection : sig
         {- [`Closed] indicates that the output destination will no longer
         accept bytes from the write processor. }} *)
 
-  val yield_writer : t -> (unit -> unit) -> unit
+  val yield_writer : _ t -> (unit -> unit) -> unit
   (** [yield_writer t continue] registers with the connection to call
       [continue] when writing should resume. {!yield_writer} should be called
       after {next_write_operation} returns a [`Yield] value. *)
 
-  val state : t -> [ `Running | `Closed_input | `Closed ]
+  val state : _ t -> [ `Running | `Closed_input | `Closed ]
   (** [state t] is the state of the connection's input and output processors. A
       connection's input processor may be closed while it's output processor is
       still running (corresponding to the [`Closed_input] state), but the
       output processor can never be closed while in the input processor is
       open. *)
 
-  val report_exn : t -> exn -> unit
+  val report_exn : _ t -> exn -> unit
   (** [report_exn t exn] reports that an error [exn] has been caught and
       that it has been attributed to [t]. Calling this function will swithc [t]
       into an error state. Depending on the state [t] is transitioning from, it
@@ -720,7 +749,7 @@ module Connection : sig
 
 
   (** / *)
-  val error_code : t -> error option
-  val shutdown_reader : t -> unit
-  val shutdown : t -> unit
+  val error_code : _ t -> error option
+  val shutdown_reader : _ t -> unit
+  val shutdown : _ t -> unit
 end

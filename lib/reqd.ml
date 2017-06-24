@@ -1,0 +1,243 @@
+type error =
+  [ `Bad_request | `Bad_gateway | `Internal_server_error | `Exn of exn ]
+
+type 'handle response_state =
+  | Waiting   of (unit -> unit) ref
+  | Complete  of Response.t
+  | Streaming of Response.t * Response.Body.t
+  | Switch    of Response.t * ('handle -> Bigstring.t -> unit)
+
+type error_handler =
+  ?request:Request.t -> error -> (Headers.t -> Response.Body.t) -> unit
+
+module Writer = Serialize.Writer
+
+(* XXX(seliopou): The current design assumes that a new [Reqd.t] will be
+ * allocated for each new request/response on a connection. This is wasteful,
+ * as it creates garbage on persistent connections. A better approach would be
+ * to allocate a single [Reqd.t] per connection and reuse it across
+ * request/responses. This would allow a single [Faraday.t] to be allocated for
+ * the body and reused. The [response_state] type could then be inlined into
+ * the [Reqd.t] record, with dummy values occuping the fields for [response]
+ * and the switch protocol handler. Something like this:
+ *
+ * {[
+ *   type 'handle t =
+ *     { request                : Request.t
+ *     ; request_body           : Body.R.t
+ *     ; mutable response       : Response.t (* Starts off as a dummy value,
+ *                                            * using [(==)] to identify it when
+ *                                            * necessary *)
+ *     ; response_body          : Body.W.t
+ *     ; mutable persistent     : bool
+ *     ; mutable response_state : [ `Waiting | `Started | `Streaming ]
+ *     }
+ *  ]}
+ *
+ * *)
+type 'handle t =
+  { request                 : Request.t
+  ; request_body            : Request.Body.t
+  ; writer                  : Writer.t
+  ; response_body_buffer    : Bigstring.t
+  ; error_handler           : error_handler
+  ; mutable persistent      : bool
+  ; mutable response_state  : 'handle response_state
+  ; mutable error_code      : [`Ok | error ]
+  ; wait_for_first_flush    : bool
+  }
+
+let default_waiting = Sys.opaque_identity (fun () -> ())
+
+let create error_handler request request_body writer response_body_buffer =
+  { request
+  ; request_body
+  ; writer
+  ; response_body_buffer
+  ; error_handler
+  ; persistent           = Request.persistent_connection request
+  ; response_state       = Waiting (ref default_waiting)
+  ; error_code           = `Ok
+    (* XXX(seliopou): Make it configurable whether this callback is fired upon
+     * receiving the response, or after the first flush of the streaming body.
+     * There's a tradeoff here between time to first byte (latency) and batching
+     * (throughput). For now, just wait for the first flush. *)
+  ; wait_for_first_flush = true
+  }
+
+let done_waiting when_done_waiting =
+  let f = !when_done_waiting in
+  when_done_waiting := default_waiting;
+  f ()
+
+let request { request; _ } = request
+let request_body { request_body; _ } = request_body
+
+let response { response_state; _ } =
+  match response_state with
+  | Waiting _ -> None
+  | Streaming(response, _)
+  | Complete (response)
+  | Switch   (response, _) -> Some response
+
+let response_exn { response_state; _ } =
+  match response_state with
+  | Waiting _            -> failwith "httpaf.Reqd.response_exn: response has not started"
+  | Streaming(response, _)
+  | Complete (response)
+  | Switch   (response, _) -> response
+
+let respond_with_string t response str =
+  if t.error_code <> `Ok then
+    failwith "httpaf.Reqd.respond_with_string: invalid state, currently handling error";
+  match t.response_state with
+  | Waiting when_done_waiting ->
+    (* XXX(seliopou): check response body length *)
+    Writer.write_response  t.writer response;
+    Writer.schedule_string t.writer str;
+    if t.persistent then
+      t.persistent <- Response.persistent_connection response;
+    t.response_state <- Complete response;
+    done_waiting when_done_waiting
+  | Streaming _ | Switch _ ->
+    failwith "httpaf.Reqd.respond_with_string: response already started"
+  | Complete _ ->
+    failwith "httpaf.Reqd.respond_with_string: response already complete"
+
+let respond_with_bigstring t response (bstr:Bigstring.t) =
+  if t.error_code <> `Ok then
+    failwith "httpaf.Reqd.respond_with_bigstring: invalid state, currently handling error";
+  match t.response_state with
+  | Waiting when_done_waiting ->
+    (* XXX(seliopou): check response body length *)
+    Writer.write_response     t.writer response;
+    Writer.schedule_bigstring t.writer bstr;
+    if t.persistent then
+      t.persistent <- Response.persistent_connection response;
+    t.response_state <- Complete response;
+    done_waiting when_done_waiting
+  | Streaming _ | Switch _ ->
+    failwith "httpaf.Reqd.respond_with_bigstring: response already started"
+  | Complete _ ->
+    failwith "httpaf.Reqd.respond_with_string: response already complete"
+
+let unsafe_respond_with_streaming t response =
+  match t.response_state with
+  | Waiting when_done_waiting ->
+    let response_body = Response.Body.create t.response_body_buffer in
+    Writer.write_response t.writer response;
+    if t.persistent then
+      t.persistent <- Response.persistent_connection response;
+    t.response_state <- Streaming(response, response_body);
+    begin if t.wait_for_first_flush
+    then Response.Body.when_ready_to_write response_body !when_done_waiting
+    else done_waiting when_done_waiting
+    end;
+    response_body
+  | Streaming _ | Switch _ ->
+    failwith "httpaf.Reqd.respond_with_streaming: response already started"
+  | Complete _ ->
+    failwith "httpaf.Reqd.respond_with_string: response already complete"
+
+let respond_with_streaming t response =
+  if t.error_code <> `Ok then
+    failwith "httpaf.Reqd.respond_with_streaming: invalid state, currently handling error";
+  unsafe_respond_with_streaming t response
+
+let report_error t error =
+  t.persistent <- false;
+  Request.Body.close t.request_body;
+  match t.response_state, t.error_code with
+  | Waiting _, `Ok ->
+    t.error_code <- (error :> [`Ok | error]);
+    let status =
+      match (error :> [error | Status.standard]) with
+      | `Exn _                     -> `Internal_server_error
+      | #Status.standard as status -> status
+    in
+    t.error_handler ~request:t.request error (fun headers ->
+      unsafe_respond_with_streaming t (Response.create ~headers status))
+  | Waiting _, `Exn _ ->
+    (* XXX(seliopou): Decide what to do in this unlikely case. There is an
+     * outstanding call to the [error_handler], but an intervening exception
+     * has been reported as well. *)
+    failwith "httpaf.Reqd.report_exn: NYI"
+  | Streaming(response, response_body), `Ok ->
+    Response.Body.close response_body
+  | Streaming(response, response_body), `Exn _ ->
+    Response.Body.close response_body;
+    Writer.close t.writer
+  | (Switch _ | Complete _ | Streaming _ | Waiting _) , _ ->
+    (* XXX(seliopou): Once additional logging support is added, log the error
+     * in case it is not spurious. *)
+    ()
+
+let report_exn t exn =
+  report_error t (`Exn exn)
+
+let try_with t f : (unit, exn) Result.result =
+  try f (); Ok () with exn -> report_exn t exn; Error exn
+
+let switch_protocols t ~headers handler =
+  if t.error_code <> `Ok then
+    failwith "httpaf.Reqd.switch_protocols: invalid state, currently handling error";
+  match t.response_state with
+  | Waiting when_done_waiting ->
+    let response = Response.create ~headers `Switching_protocols in
+    t.response_state <- Switch(response, handler);
+    if t.persistent then (* XXX(seliopou): Is this actually necessary? *)
+      t.persistent <- Response.persistent_connection response;
+    done_waiting when_done_waiting
+  | Complete _ ->
+    failwith "httpaf.Reqd.respond_with_string: response already complete"
+  | Streaming _ | Switch _ ->
+    failwith "httpaf.Reqd.switch_protocols: response already started"
+
+(* Private API, not exposed to the user through httpaf.mli *)
+
+let close_request_body { request_body } =
+  Request.Body.close request_body
+
+let error_code t =
+  match t.error_code with
+  | #error as error -> Some error
+  | `Ok             -> None
+
+let on_more_output_available t f =
+  match t.response_state with
+  | Waiting when_done_waiting ->
+    if not (!when_done_waiting == default_waiting) then
+      failwith "httpaf.Reqd.on_more_output_available: only one callback can be registered at a time";
+    when_done_waiting := f
+  | Streaming(_, response_body) ->
+    Response.Body.when_ready_to_write response_body f
+  | Complete _ ->
+    failwith "httpaf.Reqd.respond_with_string: response already complete"
+  | Switch _ ->
+    failwith "httpaf.Reqd.on_more_output_available: called on non-streaming state"
+
+let persistent_connection t =
+  t.persistent
+
+let requires_input { request_body; _ } =
+  not (Request.Body.is_closed request_body)
+
+let requires_output { response_state; _ } =
+  match response_state with
+  | Complete _ -> false
+  | Streaming (_, body) -> Response.Body.has_pending_output body
+  | Waiting _ | Switch _ -> true
+
+let is_complete t =
+  not (requires_input t || requires_output t)
+
+let flush_request_body t =
+  let request_body = request_body t in
+  if Request.Body.has_pending_output request_body
+  then try Request.Body.execute_read request_body
+  with exn -> report_exn t exn
+
+let flush_response_body t =
+  match t.response_state with
+  | Streaming (_, response_body) -> assert false
+  | _ -> ()

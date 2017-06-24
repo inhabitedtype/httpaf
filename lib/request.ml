@@ -38,7 +38,7 @@ module Body = struct
 
   type read_state =
     | Waiting   : read_state
-    | Scheduled : (buffer iovec list -> 'a * int) * ([`Eof | `Ok of 'a] -> unit) -> read_state
+    | Scheduled : (buffer -> off:int -> len:int -> 'a * int) * ([`Eof | `Ok of 'a] -> unit) -> read_state
 
   type t =
     { faraday            : Faraday.t
@@ -69,13 +69,16 @@ module Body = struct
   let unsafe_faraday t =
     t.faraday
 
-  let _execute_read t readv result =
+  let _execute_read t read result =
     match Faraday.operation t.faraday with
-    | `Yield         -> ()
-    | `Close         -> t.read_state <- Waiting; result `Eof
-    | `Writev iovecs ->
+    | `Yield           -> ()
+    | `Close           -> t.read_state <- Waiting; result `Eof
+    | `Writev []       -> assert false
+    | `Writev (iovec::v) ->
+      assert (v = []);
       t.read_state <- Waiting;
-      let a, n = readv iovecs in
+      let { IOVec.buffer; off; len } = iovec in
+      let a, n = read buffer ~off ~len in
       assert (n >= 0);
       Faraday.shift t.faraday n;
       result (`Ok a)
@@ -83,13 +86,13 @@ module Body = struct
   let execute_read t =
     match t.read_state with
     | Waiting                  -> ()
-    | Scheduled(readv, result) -> _execute_read t readv result
+    | Scheduled(read, result) -> _execute_read t read result
 
-  let schedule_read t ~readv ~result =
+  let schedule_read t ~read ~result =
     match t.read_state with
     | Scheduled _ -> raise (Failure "Body.schedule_read: reader already scheduled")
     | Waiting     ->
       if is_closed t
-      then _execute_read t readv result
-      else t.read_state <- Scheduled(readv, result)
+      then _execute_read t read result
+      else t.read_state <- Scheduled(read, result)
 end

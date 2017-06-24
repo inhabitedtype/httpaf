@@ -119,6 +119,14 @@ let get t name =
   in
   loop t name
 
+let get_exn t name =
+  let rec loop t n =
+    match t with
+    | [] -> failwith (Printf.sprintf "Headers.get_exn: %S not found" name)
+    | (n',v)::t' -> if CI.equal n n' then v else loop t' n
+  in
+  loop t name
+
 let get_multi t name =
   let rec loop t n acc =
     match t with

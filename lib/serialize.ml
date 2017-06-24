@@ -31,7 +31,6 @@
     POSSIBILITY OF SUCH DAMAGE.
   ----------------------------------------------------------------------------*)
 
-
 open Faraday
 
 let write_space t   = write_char t ' '
@@ -47,6 +46,7 @@ let write_status t status =
   write_string t (Status.to_string status)
 
 let write_headers t headers =
+  (* XXX(seliopou): escape these thigns *)
   List.iter (fun (name, value) ->
     write_string t name;
     write_string t ": ";
@@ -66,3 +66,129 @@ let write_response t { Response0.version; status; reason; headers } =
   write_status  t status ; write_space t;
   write_string  t reason ; write_crlf  t;
   write_headers t headers
+
+let write_chunk_length t len =
+  write_string t (Printf.sprintf "%x" len);
+  write_crlf   t
+
+let write_string_chunk t chunk =
+  write_chunk_length t (String.length chunk);
+  write_string       t chunk
+
+let schedule_string_chunk t chunk =
+  write_chunk_length t (String.length chunk);
+  schedule_string    t chunk
+
+let write_bigstring_chunk t chunk =
+  write_chunk_length t (Bigstring.length chunk);
+  write_bigstring    t chunk
+
+let schedule_bigstring_chunk t chunk =
+  write_chunk_length t (Bigstring.length chunk);
+  schedule_bigstring t chunk
+
+module Writer = struct
+  type t =
+    { buffer                : Bigstring.t
+      (* The buffer that the encoder uses for buffered writes. Managed by the
+       * control module for the encoder. *)
+    ; encoder               : Faraday.t
+      (* The encoder that handles encoding for writes. Uses the [buffer]
+       * referenced above internally. *)
+    ; mutable closed        : bool
+      (* Whether the output source has left the building, indicating that no
+       * further output should be generated. *)
+    ; mutable drained_bytes : int
+      (* The number of bytes that were not written due to the output stream
+       * being closed before all buffered output could be written. Useful for
+       * detecting error cases. *)
+    }
+
+  let create ?(buffer_size=0x800) () =
+    let buffer = Bigstring.create buffer_size in
+    let encoder = Faraday.of_bigstring buffer in
+    { buffer
+    ; encoder
+    ; closed        = false
+    ; drained_bytes = 0
+    }
+
+  let faraday t = t.encoder
+
+  let invariant t =
+    let (=>) a b = b || (not a) in
+    let (<=>) a b = (a => b) && (b => a) in
+    let writev, close, yield =
+      match Faraday.operation t.encoder with
+      | `Writev _ -> true, false, false
+      | `Close    -> false, true, false
+      | `Yield    -> Faraday.yield t.encoder; false, false, true
+    in
+    assert (t.closed <=> Faraday.is_closed t.encoder);
+    assert (Faraday.is_closed t.encoder <=> close);
+    assert (t.drained_bytes > 0 => t.closed);
+  ;;
+
+  let write_response t response =
+    write_response t.encoder response
+
+  let write_string t ?off ?len string =
+    write_string t.encoder ?off ?len string
+
+  let write_bytes t ?off ?len bytes =
+    write_bytes t.encoder ?off ?len bytes
+
+  let write_bigstring t ?off ?len bigstring =
+    write_bigstring t.encoder ?off ?len bigstring
+
+  let schedule_string t ?off ?len string =
+    schedule_string t.encoder ?off ?len string
+
+  let schedule_bytes t ?off ?len bytes =
+    schedule_bytes t.encoder ?off ?len bytes
+
+  let schedule_bigstring t ?off ?len bigstring =
+    schedule_bigstring t.encoder ?off ?len bigstring
+
+  let schedule_fixed t iovecs =
+    let s2b = Bytes.unsafe_of_string in
+    List.iter (fun { IOVec.buffer; off; len } ->
+      match buffer with
+      | `String str   -> schedule_bytes     t ~off ~len (s2b str)
+      | `Bytes bytes  -> schedule_bytes     t ~off ~len bytes
+      | `Bigstring bs -> schedule_bigstring (t:t) ~off ~len bs)
+    iovecs
+
+  let schedule_chunk t iovecs =
+    let len = Int64.of_int (IOVec.lengthv iovecs) in
+    Faraday.write_string t.encoder (Printf.sprintf "%Lx\r\n" len);
+    schedule_fixed t iovecs
+
+  let flush t f =
+    flush t.encoder f
+
+  let close t =
+    t.closed <- true;
+    close t.encoder;
+    let drained = Faraday.drain t.encoder in
+    t.drained_bytes <- t.drained_bytes + drained
+
+  let is_closed t =
+    t.closed
+
+  let drained_bytes t =
+    t.drained_bytes
+
+  let report_result t result =
+    match result with
+    | `Closed -> close t
+    | `Ok len -> shift t.encoder len
+
+  let next t =
+    match Faraday.operation t.encoder with
+    | `Close -> `Close (drained_bytes t)
+    | `Yield -> `Yield
+    | `Writev iovecs ->
+      assert (not (t.closed));
+      `Write ((iovecs:IOVec.buffer IOVec.t list))
+end
