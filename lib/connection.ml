@@ -1,5 +1,5 @@
 (*----------------------------------------------------------------------------
-    Copyright (c) 2016 Inhabited Type LLC.
+    Copyright (c) 2017 Inhabited Type LLC.
 
     All rights reserved.
 

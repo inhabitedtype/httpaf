@@ -1,0 +1,29 @@
+opam-version: "1.2"
+name: "httpaf"
+maintainer: "Spiros Eliopoulos <spiros@inhabitedtype.com>"
+authors: [ "Spiros Eliopoulos <spiros@inhabitedtype.com>" ]
+license: "BSD-3-clause"
+homepage: "https://github.com/inhabitedtype/httpaf"
+bug-reports: "https://github.com/inhabitedtype/httpaf/issues"
+dev-repo: "https://github.com/inhabitedtype/httpaf.git"
+build: [
+  ["ocaml" "setup.ml" "-configure" "--prefix" prefix]
+  ["ocaml" "setup.ml" "-build"]
+]
+install: ["ocaml" "setup.ml" "-install"]
+remove: [
+  ["ocamlfind" "remove" "httpaf"]
+]
+build-test: [
+  ["ocaml" "setup.ml" "-configure" "--enable-tests"]
+  ["ocaml" "setup.ml" "-build"]
+  ["ocaml" "setup.ml" "-test"]
+]
+depends: [
+  "alcotest" {test & >= "0.4.1" & < "0.8.0"}
+  "angstrom" {>= "0.5.0"}
+  "faraday"  {>= "0.2.0"}
+  "ocamlfind" {build}
+  "result"
+]
+available: [ ocaml-version >= "4.03.0" ]
