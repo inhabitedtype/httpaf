@@ -150,20 +150,6 @@ module Writer = struct
   let schedule_bigstring t ?off ?len bigstring =
     schedule_bigstring t.encoder ?off ?len bigstring
 
-  let schedule_fixed t iovecs =
-    let s2b = Bytes.unsafe_of_string in
-    List.iter (fun { IOVec.buffer; off; len } ->
-      match buffer with
-      | `String str   -> schedule_bytes     t ~off ~len (s2b str)
-      | `Bytes bytes  -> schedule_bytes     t ~off ~len bytes
-      | `Bigstring bs -> schedule_bigstring (t:t) ~off ~len bs)
-    iovecs
-
-  let schedule_chunk t iovecs =
-    let len = Int64.of_int (IOVec.lengthv iovecs) in
-    Faraday.write_string t.encoder (Printf.sprintf "%Lx\r\n" len);
-    schedule_fixed t iovecs
-
   let flush t f =
     flush t.encoder f
 
