@@ -152,7 +152,7 @@ let respond_with_bigstring t response (bstr:Bigstring.t) =
   | Streaming _ | Switch _ ->
     failwith "httpaf.Reqd.respond_with_bigstring: response already started"
   | Complete _ ->
-    failwith "httpaf.Reqd.respond_with_string: response already complete"
+    failwith "httpaf.Reqd.respond_with_bigstring: response already complete"
 
 let unsafe_respond_with_streaming t response =
   match t.response_state with
@@ -170,7 +170,7 @@ let unsafe_respond_with_streaming t response =
   | Streaming _ | Switch _ ->
     failwith "httpaf.Reqd.respond_with_streaming: response already started"
   | Complete _ ->
-    failwith "httpaf.Reqd.respond_with_string: response already complete"
+    failwith "httpaf.Reqd.respond_with_streaming: response already complete"
 
 let respond_with_streaming t response =
   if t.error_code <> `Ok then
@@ -222,7 +222,7 @@ let switch_protocols t ~headers handler =
       t.persistent <- Response.persistent_connection response;
     done_waiting when_done_waiting
   | Complete _ ->
-    failwith "httpaf.Reqd.respond_with_string: response already complete"
+    failwith "httpaf.Reqd.switch_protocols: response already complete"
   | Streaming _ | Switch _ ->
     failwith "httpaf.Reqd.switch_protocols: response already started"
 
@@ -245,7 +245,7 @@ let on_more_output_available t f =
   | Streaming(_, response_body) ->
     Response.Body.when_ready_to_write response_body f
   | Complete _ ->
-    failwith "httpaf.Reqd.respond_with_string: response already complete"
+    failwith "httpaf.Reqd.on_more_output_available: response already complete"
   | Switch _ ->
     failwith "httpaf.Reqd.on_more_output_available: called on non-streaming state"
 
