@@ -69,18 +69,21 @@ module Body = struct
   type buffer = IOVec.buffer
   type 'a iovec = 'a IOVec.t
 
-  type read_state =
-    | Waiting   : read_state
-    | Scheduled : (buffer -> off:int -> len:int -> 'a * int) * ([`Eof | `Ok of 'a] -> unit) -> read_state
-
   type t =
     { faraday            : Faraday.t
-    ; mutable read_state : read_state
+    ; mutable scheduled  : bool
+    ; mutable on_eof     : unit -> unit
+    ; mutable on_read    : IOVec.buffer -> off:int -> len:int -> int
     }
 
+  let default_on_eof  = Sys.opaque_identity (fun () -> ())
+  let default_on_read = Sys.opaque_identity (fun _ ~off:_ ~len:_ -> -1)
+
   let create buffer =
-    { faraday = Faraday.of_bigstring buffer
-    ; read_state = Waiting
+    { faraday   = Faraday.of_bigstring buffer
+    ; scheduled = false
+    ; on_eof    = default_on_eof
+    ; on_read   = default_on_read
     }
 
   let create_empty () =
@@ -102,30 +105,35 @@ module Body = struct
   let unsafe_faraday t =
     t.faraday
 
-  let _execute_read t read result =
+  let do_execute_read t on_eof on_read =
     match Faraday.operation t.faraday with
     | `Yield           -> ()
-    | `Close           -> t.read_state <- Waiting; result `Eof
+    | `Close           ->
+      t.scheduled <- false;
+      t.on_eof    <- default_on_eof;
+      t.on_read   <- default_on_read;
+      on_eof ()
     | `Writev []       -> assert false
-    | `Writev (iovec::v) ->
-      assert (v = []);
-      t.read_state <- Waiting;
+    | `Writev (iovec::_) ->
+      t.scheduled <- false;
+      t.on_eof    <- default_on_eof;
+      t.on_read   <- default_on_read;
       let { IOVec.buffer; off; len } = iovec in
-      let a, n = read buffer ~off ~len in
+      let n = on_read buffer ~off ~len in
       assert (n >= 0);
-      Faraday.shift t.faraday n;
-      result (`Ok a)
+      Faraday.shift t.faraday n
 
   let execute_read t =
-    match t.read_state with
-    | Waiting                  -> ()
-    | Scheduled(read, result) -> _execute_read t read result
+    if t.scheduled then do_execute_read t t.on_eof t.on_read
 
-  let schedule_read t ~read ~result =
-    match t.read_state with
-    | Scheduled _ -> raise (Failure "Body.schedule_read: reader already scheduled")
-    | Waiting     ->
-      if is_closed t
-      then _execute_read t read result
-      else t.read_state <- Scheduled(read, result)
+  let schedule_read t ~on_eof ~on_read =
+    if t.scheduled
+    then failwith "Body.schedule_read: reader already scheduled";
+    if is_closed t
+    then do_execute_read t on_eof on_read
+    else begin
+      t.scheduled <- true;
+      t.on_eof    <- on_eof;
+      t.on_read   <- on_read
+    end
 end

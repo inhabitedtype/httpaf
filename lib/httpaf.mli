@@ -466,8 +466,8 @@ module Request : sig
 
     val schedule_read
       :  t
-      -> read:(IOVec.buffer -> off:int -> len:int -> 'a * int)
-      -> result:([`Eof | `Ok of 'a] -> unit)
+      -> on_eof  : (unit -> unit)
+      -> on_read : (IOVec.buffer -> off:int -> len:int -> int)
       -> unit
 
     val close : t -> unit

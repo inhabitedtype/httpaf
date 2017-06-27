@@ -141,25 +141,20 @@ let () =
   test ~msg:"Single OK w/body" ~handler:(handler "Hello, world!")
     ~input:[ `Request (Request.create ~headers:Headers.(of_list ["connection", "close"]) `GET "/")]
     ~output:[`Response (Response.create `OK); `Fixed "Hello, world!" ];
-  let echo _ request_body start_response =
+  let echo reqd =
     debug " > handler called";
-    let response_body = start_response (Response.create ~headers:Headers.(of_list ["connection", "close"]) `OK) in
-    let readv iovecs =
-      let len = IOVec.lengthv iovecs in
-      List.iter (fun { IOVec.buffer; off; len } ->
-        begin match buffer with
-        | `Bigstring bs -> Response.Body.schedule_string response_body (Bigstring.to_string ~off ~len bs)
-        | `String s     -> Response.Body.schedule_string response_body ~off ~len s
-        | `Bytes bs     -> Response.Body.schedule_string response_body ~off ~len (Bytes.to_string bs)
-        end)
-      iovecs;
-      ((), len)
+    let request_body  = Reqd.request_body reqd in
+    let response_body = Reqd.respond_with_streaming reqd (Response.create ~headers:Headers.(of_list ["connection", "close"]) `OK) in
+    let on_read buffer ~off ~len =
+      begin match buffer with
+      | `Bigstring bs -> Response.Body.schedule_string response_body (Bigstring.to_string ~off ~len bs)
+      | `String s     -> Response.Body.schedule_string response_body ~off ~len s
+      | `Bytes bs     -> Response.Body.schedule_string response_body ~off ~len (Bytes.to_string bs)
+      end;
+      len
     in
-    let rec result = function
-      | `Eof  -> Body.close response_body
-      | `Ok _ -> Body.schedule_read request_body ~readv ~result
-    in
-    Request.Body.schedule_read request_body ~readv ~result
+    let on_eof () = Response.Body.close response_body in
+    Request.Body.schedule_read request_body ~on_eof ~on_read
   in
   test ~msg:"POST" ~handler:echo
     ~input:[`Request (Request.create `GET "/" ~headers:Headers.(of_list ["transfer-encoding", "chunked"])); `Chunk "This is a test"]
