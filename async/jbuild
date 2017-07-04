@@ -4,4 +4,4 @@
  ((name httpaf_async)
   (public_name httpaf-async)
   (wrapped false)
-  (libraries (httpaf))))
+  (libraries (async core httpaf))))
