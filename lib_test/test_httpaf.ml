@@ -1,3 +1,5 @@
+open Httpaf
+open Httpaf.Httpaf_private
 open Result
 
 let debug msg =

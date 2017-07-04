@@ -753,3 +753,10 @@ module Connection : sig
   val shutdown_reader : _ t -> unit
   val shutdown : _ t -> unit
 end
+
+module Httpaf_private : sig
+  module Serialize : sig
+    val write_request  : Faraday.t -> Request.t  -> unit
+    val write_response : Faraday.t -> Response.t -> unit
+  end
+end
