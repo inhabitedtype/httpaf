@@ -2,5 +2,5 @@
 
 (executables
  ((libraries (httpaf httpaf_async async core))
-  (modules (async_benchmark))
-  (names (async_benchmark))))
+  (modules (wrk_async_benchmark))
+  (names (wrk_async_benchmark))))
