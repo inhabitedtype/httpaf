@@ -6,7 +6,7 @@ install: wget https://raw.githubusercontent.com/ocaml/ocaml-travisci-skeleton/ma
 script: bash -ex ./.travis-docker.sh
 env:
   global:
-  - PINS="httpaf-async:. http:."
+  - PINS="httpaf-async:. httpaf:."
   matrix:
   - PACKAGE="httpaf" DISTRO="ubuntu-16.04" OCAML_VERSION="4.04.2"
   - PACKAGE="httpaf-async" DISTRO="ubuntu-16.04" OCAML_VERSION="4.04.2"
