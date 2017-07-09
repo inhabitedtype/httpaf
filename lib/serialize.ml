@@ -150,8 +150,24 @@ module Writer = struct
   let schedule_bigstring t ?off ?len bigstring =
     schedule_bigstring t.encoder ?off ?len bigstring
 
+  let schedule_fixed t iovecs =
+    List.iter (fun { IOVec.buffer; off; len } ->
+      match buffer with
+      | `String    s  -> schedule_string    t ~off ~len s
+      | `Bytes     b  -> schedule_bytes     t ~off ~len b
+      | `Bigstring bs -> schedule_bigstring t ~off ~len bs)
+    iovecs
+
+  let schedule_chunk t iovecs =
+    let length = IOVec.lengthv iovecs in
+    write_chunk_length t.encoder length;
+    schedule_fixed t iovecs
+
   let flush t f =
     flush t.encoder f
+
+  let yield t =
+    Faraday.yield t.encoder
 
   let close t =
     t.closed <- true;
