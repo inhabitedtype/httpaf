@@ -161,13 +161,11 @@ let unsafe_respond_with_streaming t response =
   | Waiting when_done_waiting ->
     let response_body = Response.Body.create t.response_body_buffer in
     Writer.write_response t.writer response;
+    if t.wait_for_first_flush then Writer.yield t.writer;
     if t.persistent then
       t.persistent <- Response.persistent_connection response;
     t.response_state <- Streaming(response, response_body);
-    begin if t.wait_for_first_flush
-    then Response.Body.when_ready_to_write response_body !when_done_waiting
-    else done_waiting when_done_waiting
-    end;
+    done_waiting when_done_waiting;
     response_body
   | Streaming _ | Switch _ ->
     failwith "httpaf.Reqd.respond_with_streaming: response already started"
