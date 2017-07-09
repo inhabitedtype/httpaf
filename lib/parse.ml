@@ -252,23 +252,43 @@ module Reader = struct
     t.closed
 
   let commit t n =
-    let { off; len } = t in
+    let { buffer; off; len } = t in
+    assert (n <= len);
     t.len <- len - n;
     t.off <- if len = n then 0 else off + n
 
-  let buffer_for_reading { buffer; off; len } =
+  let buffer_for_parsing { buffer; off; len } =
     `Bigstring (Bigstring.sub ~off ~len buffer)
 
-  let update_parse_state t more =
+  let buffer_for_read_operation t =
+    let { buffer; off; len } = t in
+    if len = Bigstring.length buffer
+    then `Error (`Parse([], "parser stall: input too large"))
+    else `Read  (Bigstring.sub ~off:(off + len) buffer)
+
+  let rec update_parse_state t more =
+    (* Invariant: the [parse_state] has no bytes to commit after this fuction
+     * has been called. *)
     match t.parse_state with
-    | AU.Done(_, Error _) | AU.Fail _ -> ()
-    | AU.Done(committed, Ok ())       ->
+    | AU.Done(_, Error _) | AU.Fail _  -> ()
+    | AU.Done(committed, (Ok () as result)) ->
       commit t committed;
-      if more = AU.Incomplete
-      then t.parse_state <- AU.parse (parser t.handler);
+      begin match more with
+      | AU.Incomplete ->
+        t.parse_state <- AU.parse (parser t.handler) ~input:(buffer_for_parsing t);
+        update_parse_state t more
+      | AU.Complete ->
+        t.parse_state <- AU.Done(0, result)
+      end
     | AU.Partial { AU.continue; committed } ->
-      commit t committed;
-      t.parse_state <- continue (buffer_for_reading t) more
+      begin match continue (buffer_for_parsing t) more with
+      | AU.Partial { AU.continue; committed } ->
+        commit t committed;
+        t.parse_state <- AU.Partial { AU.continue; committed = 0 };
+      | parse_state ->
+        t.parse_state <- parse_state;
+        update_parse_state t more
+      end
 
   let report_result t result =
     match result with
@@ -285,22 +305,17 @@ module Reader = struct
 
   let rec next t =
     match t.parse_state with
-    | AU.Done(_, Ok ()) ->
-      if t.closed then `Close
-      else begin update_parse_state t AU.Incomplete; next t end
-    | AU.Fail(0, _, _) ->
-      assert t.closed;
-      `Close
-    | AU.Done(_, Error err) ->
-      `Error err
-    | AU.Fail(_, marks , message)  ->
-      `Error (`Parse(marks, message))
+    | AU.Done(committed, Ok ()) ->
+      assert (committed = 0); (* enforce the invariant of [update_parse_state] *)
+      if t.closed
+      then `Close
+      else buffer_for_read_operation t
+    | AU.Done(_, Error err)       -> `Error err
+    | AU.Fail(0, _, _)            -> assert t.closed; `Close
+    | AU.Fail(_, marks , message) -> `Error (`Parse(marks, message))
     | AU.Partial { AU.committed } ->
-      assert (committed = 0);
-      if t.closed then begin update_parse_state t AU.Complete; next t end
-      else
-        let { buffer; off; len } = t in
-        if len = Bigstring.length buffer
-        then `Error (`Parse([], "parser stall: input too large"))
-        else `Read(Bigstring.sub ~off:(off + len) buffer)
+      assert (committed = 0); (* enforce the invariant of [update_parse_state] *)
+      if t.closed
+      then (update_parse_state t AU.Complete; next t)
+      else buffer_for_read_operation t
 end
