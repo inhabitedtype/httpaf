@@ -88,7 +88,8 @@ let test ~msg ~input ~output ~handler =
         []
       | _          , [] ->
         debug " iloop: eof";
-        Connection.shutdown_reader conn; []
+        Connection.report_read_result conn `Eof;
+        []
       | `Close    , _     ->
         debug " iloop: close(ok)";
         Connection.shutdown_reader conn; []
@@ -141,20 +142,21 @@ let () =
   test ~msg:"Single OK w/body" ~handler:(handler "Hello, world!")
     ~input:[ `Request (Request.create ~headers:Headers.(of_list ["connection", "close"]) `GET "/")]
     ~output:[`Response (Response.create `OK); `Fixed "Hello, world!" ];
-  let echo reqd =
+  let rec echo reqd =
     debug " > handler called";
     let request_body  = Reqd.request_body reqd in
     let response_body = Reqd.respond_with_streaming reqd (Response.create ~headers:Headers.(of_list ["connection", "close"]) `OK) in
-    let on_read buffer ~off ~len =
+    let rec on_read buffer ~off ~len =
       begin match buffer with
       | `Bigstring bs -> Response.Body.schedule_string response_body (Bigstring.to_string ~off ~len bs)
       | `String s     -> Response.Body.schedule_string response_body ~off ~len s
       | `Bytes bs     -> Response.Body.schedule_string response_body ~off ~len (Bytes.to_string bs)
       end;
+      Response.Body.flush response_body (fun () ->
+        Request.Body.schedule_read request_body ~on_eof ~on_read);
       len
-    in
-    let on_eof () = Response.Body.close response_body in
-    Request.Body.schedule_read request_body ~on_eof ~on_read
+    and on_eof () = Response.Body.close response_body in
+    Request.Body.schedule_read request_body ~on_eof ~on_read;
   in
   test ~msg:"POST" ~handler:echo
     ~input:[`Request (Request.create `GET "/" ~headers:Headers.(of_list ["transfer-encoding", "chunked"])); `Chunk "This is a test"]
