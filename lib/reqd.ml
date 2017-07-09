@@ -77,6 +77,7 @@ type 'handle t =
   ; mutable persistent      : bool
   ; mutable response_state  : 'handle response_state
   ; mutable error_code      : [`Ok | error ]
+  ; buffered_response_bytes : int ref
   ; wait_for_first_flush    : bool
   }
 
@@ -88,14 +89,15 @@ let create error_handler request request_body writer response_body_buffer =
   ; writer
   ; response_body_buffer
   ; error_handler
-  ; persistent           = Request.persistent_connection request
-  ; response_state       = Waiting (ref default_waiting)
-  ; error_code           = `Ok
+  ; persistent              = Request.persistent_connection request
+  ; response_state          = Waiting (ref default_waiting)
+  ; error_code              = `Ok
+  ; buffered_response_bytes = ref 0
     (* XXX(seliopou): Make it configurable whether this callback is fired upon
      * receiving the response, or after the first flush of the streaming body.
      * There's a tradeoff here between time to first byte (latency) and batching
      * (throughput). For now, just wait for the first flush. *)
-  ; wait_for_first_flush = true
+  ; wait_for_first_flush    = true
   }
 
 let done_waiting when_done_waiting =
@@ -274,5 +276,29 @@ let flush_request_body t =
 
 let flush_response_body t =
   match t.response_state with
-  | Streaming (_, response_body) -> assert false
+  | Streaming (response, response_body) ->
+    (* XXX(seliopou): This is a hold-over from the previous implementation and
+       should be cleaned up in the future. Specifically, {!mod:Request.Body}
+       should expose an API (albeit a private one) that is sufficient to get
+       the right bytes from its internal {!Faraday.t} into the {!Writer.t},
+       which would involve moving [buffered_response_bytes] into that module
+       and doing the difference computation there. *)
+    let faraday = Response.Body.unsafe_faraday response_body in
+    begin match Faraday.operation faraday with
+    | `Yield | `Close -> ()
+    | `Writev iovecs ->
+      let buffered = t.buffered_response_bytes in
+      let iovecs   = IOVec.shiftv  iovecs !buffered in
+      let lengthv  = IOVec.lengthv iovecs in
+      buffered := !buffered + lengthv;
+      let request_method = t.request.Request.meth in
+      begin match Response.body_length ~request_method response with
+      | `Fixed _ | `Close_delimited -> Writer.schedule_fixed t.writer iovecs
+      | `Chunked -> Writer.schedule_chunk t.writer iovecs
+      | `Error _ -> assert false
+      end;
+      Writer.flush t.writer (fun () ->
+        Faraday.shift faraday lengthv;
+        buffered := !buffered - lengthv)
+		end
   | _ -> ()
