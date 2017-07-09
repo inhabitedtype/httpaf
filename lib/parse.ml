@@ -214,7 +214,7 @@ module Reader = struct
 
   let parser handler =
     let ok = return (Ok ()) in
-    request >>= fun request ->
+    request <* commit >>= fun request ->
     match Request.body_length request with
     | `Error `Bad_request -> return (Error (`Bad_request request))
     | `Fixed 0L  ->
