@@ -258,7 +258,9 @@ let requires_input { request_body; _ } =
 let requires_output { response_state; _ } =
   match response_state with
   | Complete _ -> false
-  | Streaming (_, body) -> Response.Body.has_pending_output body
+  | Streaming (_, response_body) ->
+    not (Response.Body.is_closed response_body)
+    || Response.Body.has_pending_output response_body
   | Waiting _ | Switch _ -> true
 
 let is_complete t =
