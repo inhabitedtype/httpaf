@@ -1,0 +1,12 @@
+(jbuild_version 1)
+
+(executables
+ ((libraries (httpaf))
+  (modules (test_httpaf))
+  (names (test_httpaf))))
+
+(alias
+ ((name runtest)
+  (package httpaf)
+  (deps (test_httpaf.exe))
+  (action (run ${<}))))

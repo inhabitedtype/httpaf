@@ -1,3 +1,5 @@
+open Httpaf
+open Httpaf.Httpaf_private
 open Result
 
 let debug msg =
@@ -120,6 +122,8 @@ let test ~msg ~input ~output ~handler =
   in
   debug ("=== " ^ msg);
   let test_output = loop conn input in
+  print_endline (String.concat "|" output);
+  print_endline (String.concat "|" test_output);
   assert (output = test_output)
 
 let () =

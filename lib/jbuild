@@ -1,0 +1,6 @@
+(jbuild_version 1)
+
+(library
+ ((name httpaf)
+  (public_name httpaf)
+  (libraries (angstrom faraday result))))

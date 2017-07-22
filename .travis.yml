@@ -1,9 +1,16 @@
 language: c
-sudo: required
-install: wget https://raw.githubusercontent.com/ocaml/ocaml-ci-scripts/master/.travis-opam.sh
-script: bash -ex .travis-opam.sh
+sudo: false
+services:
+  - docker
+install: wget https://raw.githubusercontent.com/ocaml/ocaml-travisci-skeleton/master/.travis-docker.sh
+script: bash -ex ./.travis-docker.sh
 env:
-  - OCAML_VERSION=4.03
-  - OCAML_VERSION=4.04
-os:
-  - linux
+  global:
+  - PINS="httpaf-async:. httpaf:."
+  matrix:
+  - PACKAGE="httpaf" DISTRO="ubuntu-16.04" OCAML_VERSION="4.04.2"
+  - PACKAGE="httpaf-async" DISTRO="ubuntu-16.04" OCAML_VERSION="4.04.2"
+  - PACKAGE="httpaf" DISTRO="alpine-3.5" OCAML_VERSION="4.03.0"
+  - PACKAGE="httpaf-async" DISTRO="alpine-3.5" OCAML_VERSION="4.03.0"
+  - PACKAGE="httpaf" DISTRO="debian-unstable" OCAML_VERSION="4.03.0"
+  - PACKAGE="httpaf-async" DISTRO="debian-unstable" OCAML_VERSION="4.03.0"

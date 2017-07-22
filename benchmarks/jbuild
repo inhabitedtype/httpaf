@@ -1,0 +1,6 @@
+(jbuild_version 1)
+
+(executables
+ ((libraries (httpaf httpaf-async async core))
+  (modules (wrk_async_benchmark))
+  (names (wrk_async_benchmark))))

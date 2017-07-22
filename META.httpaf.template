@@ -1,0 +1,6 @@
+# JBUILDER_GEN
+
+package "async" (
+  description = "Deprecated. Use httpaf-async directly"
+  requires = "httpaf-async"
+)

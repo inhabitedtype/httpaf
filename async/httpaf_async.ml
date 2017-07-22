@@ -1,6 +1,5 @@
-open Core.Std
-open Async.Std
-
+open Core
+open Async
 
 let read fd buffer =
   let badfd fd = failwithf "read got back fd: %s" (Fd.to_string fd) () in
