@@ -467,7 +467,7 @@ module Request : sig
     val schedule_read
       :  t
       -> on_eof  : (unit -> unit)
-      -> on_read : (IOVec.buffer -> off:int -> len:int -> int)
+      -> on_read : (Bigstring.t -> off:int -> len:int -> int)
       -> unit
 
     val close : t -> unit
@@ -542,10 +542,6 @@ module Response : sig
         possible, this write will be combined with previous and/or subsequent
         writes before transmission. *)
 
-    val schedule_string : t -> ?off:int -> ?len:int -> string -> unit
-    (** [schedule_string w ?off ?len str] schedules [str] to be transmitted at
-        the next opportunity, without performing a copy. *)
-
     val schedule_bigstring : t -> ?off:int -> ?len:int -> Bigstring.t -> unit
     (** [schedule_bigstring w ?off ?len bs] schedules [bs] to be
         transmitted at the next opportunity without performing a copy. [bs]
@@ -613,12 +609,6 @@ end
 
 (** IOVec *)
 module IOVec : sig
-  type buffer =
-    [ `String of string
-    | `Bytes of Bytes.t
-    | `Bigstring of Bigstring.t
-  ] as 'a constraint 'a = Faraday.buffer
-
   type 'a t = 'a Faraday.iovec =
     { buffer : 'a
     ; off : int
@@ -711,7 +701,7 @@ module Connection : sig
       after {next_read_operation} returns a [`Yield] value. *)
 
   val next_write_operation : _ t -> [
-    | `Write of IOVec.buffer IOVec.t list
+    | `Write of Bigstring.t IOVec.t list
     | `Yield
     | `Close of int ]
   (** [next_write_operation t] returns a value describing the next operation

@@ -112,9 +112,6 @@ module Body = struct
    * be necessary. *)
     Faraday.write_bigstring ?off ?len t.faraday b
 
-  let schedule_string t ?off ?len s =
-    Faraday.schedule_string ?off ?len t.faraday s
-
   let schedule_bigstring t ?off ?len (b:Bigstring.t) =
     Faraday.schedule_bigstring ?off ?len t.faraday b
 

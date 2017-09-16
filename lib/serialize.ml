@@ -75,10 +75,6 @@ let write_string_chunk t chunk =
   write_chunk_length t (String.length chunk);
   write_string       t chunk
 
-let schedule_string_chunk t chunk =
-  write_chunk_length t (String.length chunk);
-  schedule_string    t chunk
-
 let write_bigstring_chunk t chunk =
   write_chunk_length t (Bigstring.length chunk);
   write_bigstring    t chunk
@@ -141,21 +137,12 @@ module Writer = struct
   let write_bigstring t ?off ?len bigstring =
     write_bigstring t.encoder ?off ?len bigstring
 
-  let schedule_string t ?off ?len string =
-    schedule_string t.encoder ?off ?len string
-
-  let schedule_bytes t ?off ?len bytes =
-    schedule_bytes t.encoder ?off ?len bytes
-
   let schedule_bigstring t ?off ?len bigstring =
     schedule_bigstring t.encoder ?off ?len bigstring
 
   let schedule_fixed t iovecs =
     List.iter (fun { IOVec.buffer; off; len } ->
-      match buffer with
-      | `String    s  -> schedule_string    t ~off ~len s
-      | `Bytes     b  -> schedule_bytes     t ~off ~len b
-      | `Bigstring bs -> schedule_bigstring t ~off ~len bs)
+      schedule_bigstring t ~off ~len buffer)
     iovecs
 
   let schedule_chunk t iovecs =
@@ -192,5 +179,5 @@ module Writer = struct
     | `Yield -> `Yield
     | `Writev iovecs ->
       assert (not (t.closed));
-      `Write ((iovecs:IOVec.buffer IOVec.t list))
+      `Write iovecs
 end

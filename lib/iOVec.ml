@@ -32,8 +32,6 @@
   ----------------------------------------------------------------------------*)
 
 
-type buffer = Faraday.buffer
-
 type 'a t = 'a Faraday.iovec =
   { buffer : 'a
   ; off : int

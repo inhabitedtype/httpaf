@@ -142,9 +142,12 @@ let finish writer =
 
 let schedule_size writer n =
   let faraday = Request.Body.unsafe_faraday writer in
+  (* XXX(seliopou): performance regression due to switching to a single output
+   * format in Farady. Once a specialized operation is exposed to avoid the
+   * intemediate copy, this should be back to the original performance. *)
   begin if Faraday.is_closed faraday
   then advance n
-  else take n >>| fun s -> Faraday.schedule_string faraday s
+  else take n >>| fun s -> Faraday.write_string faraday s
   end *> commit
 
 let rec body ~encoding writer =
@@ -257,8 +260,7 @@ module Reader = struct
     t.len <- len - n;
     t.off <- if len = n then 0 else off + n
 
-  let buffer_for_parsing { buffer; off; len } =
-    `Bigstring (Bigstring.sub ~off ~len buffer)
+  let buffer_for_parsing { buffer; off; len } = Bigstring.sub ~off ~len buffer
 
   let buffer_for_read_operation t =
     let { buffer; off; len } = t in
