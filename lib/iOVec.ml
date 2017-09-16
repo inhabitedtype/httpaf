@@ -37,8 +37,8 @@ type 'a t = 'a Faraday.iovec =
   ; off : int
   ; len : int }
 
-let length { len } = len
-let lengthv iovs = List.fold_left (fun acc { len } -> acc + len) 0 iovs
+let length { len; _ } = len
+let lengthv iovs = List.fold_left (fun acc { len; _ } -> acc + len) 0 iovs
 
 let shift { buffer; off; len } n =
   assert (n <= len);

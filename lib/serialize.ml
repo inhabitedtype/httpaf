@@ -114,7 +114,7 @@ module Writer = struct
   let invariant t =
     let (=>) a b = b || (not a) in
     let (<=>) a b = (a => b) && (b => a) in
-    let writev, close, yield =
+    let _writev, close, _yield =
       match Faraday.operation t.encoder with
       | `Writev _ -> true, false, false
       | `Close    -> false, true, false
