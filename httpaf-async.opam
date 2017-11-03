@@ -15,6 +15,7 @@ build-test: [
 ]
 depends: [
   "jbuilder" {build & >= "1.0+beta10"}
+  "angstrom-async"
   "async"
   "httpaf"
 ]
