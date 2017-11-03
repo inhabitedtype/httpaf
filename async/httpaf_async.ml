@@ -43,7 +43,7 @@ let create_connection_handler ?config ~request_handler ~error_handler =
     let writev = Faraday_async.writev_of_fd fd in
     let request_handler = request_handler client_addr in
     let error_handler   = error_handler client_addr in
-    let conn = Connection.create ?config ~error_handler ~request_handler in
+    let conn = Connection.create ?config ~error_handler request_handler in
     let read_complete = Ivar.create () in
     let rec reader_thread () =
       match Connection.next_read_operation conn with

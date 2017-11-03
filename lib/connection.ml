@@ -126,7 +126,7 @@ let default_error_handler ?request error handle =
   Response.Body.write_string body message;
   Response.Body.close body
 
-let create ?(config=Config.default) ?(error_handler=default_error_handler) ~request_handler =
+let create ?(config=Config.default) ?(error_handler=default_error_handler) request_handler =
   let
     { Config
     . read_buffer_size

@@ -674,7 +674,7 @@ module Connection : sig
   val create
     :  ?config:Config.t
     -> ?error_handler:error_handler
-    -> request_handler:('handle request_handler)
+    -> 'handle request_handler
     -> 'handle t
   (** [create ?config ?error_handler ~request_handler] creates a connection
       handler that will service individual requests with [request_handler]. *)
