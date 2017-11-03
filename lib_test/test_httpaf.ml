@@ -45,10 +45,7 @@ let output_stream_to_strings is =
   loop is []
 
 let iovec_to_string { IOVec.buffer; off; len } =
-  match buffer with
-  | `String x    -> String.sub x off len
-  | `Bytes  x    -> Bytes.(to_string (sub x off len))
-  | `Bigstring x -> Bigstring.to_string ~off ~len x
+  Bigstring.to_string ~off ~len buffer
 
 let test ~msg ~input ~output ~handler =
   let input  = input_stream_to_strings input in
@@ -122,9 +119,12 @@ let test ~msg ~input ~output ~handler =
   in
   debug ("=== " ^ msg);
   let test_output = loop conn input in
-  print_endline (String.concat "|" output);
-  print_endline (String.concat "|" test_output);
+  let output = String.concat "" output in
+  let test_output = String.concat "" test_output in
+  print_endline output;
+  print_endline test_output;
   assert (output = test_output)
+;;
 
 let () =
   let handler body reqd =
@@ -151,11 +151,7 @@ let () =
     let request_body  = Reqd.request_body reqd in
     let response_body = Reqd.respond_with_streaming reqd (Response.create ~headers:Headers.(of_list ["connection", "close"]) `OK) in
     let rec on_read buffer ~off ~len =
-      begin match buffer with
-      | `Bigstring bs -> Response.Body.schedule_string response_body (Bigstring.to_string ~off ~len bs)
-      | `String s     -> Response.Body.schedule_string response_body ~off ~len s
-      | `Bytes bs     -> Response.Body.schedule_string response_body ~off ~len (Bytes.to_string bs)
-      end;
+      Response.Body.write_string response_body (Bigstring.to_string ~off ~len buffer);
       Response.Body.flush response_body (fun () ->
         Request.Body.schedule_read request_body ~on_eof ~on_read);
       len

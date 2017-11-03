@@ -66,14 +66,13 @@ let pp_hum fmt { meth; target; version; headers } =
 
 module Body = struct
   type bigstring = Bigstring.t
-  type buffer = IOVec.buffer
   type 'a iovec = 'a IOVec.t
 
   type t =
     { faraday            : Faraday.t
     ; mutable scheduled  : bool
     ; mutable on_eof     : unit -> unit
-    ; mutable on_read    : IOVec.buffer -> off:int -> len:int -> int
+    ; mutable on_read    : Bigstring.t -> off:int -> len:int -> int
     }
 
   let default_on_eof  = Sys.opaque_identity (fun () -> ())

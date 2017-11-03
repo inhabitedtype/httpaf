@@ -129,7 +129,7 @@ let respond_with_string t response str =
   | Waiting when_done_waiting ->
     (* XXX(seliopou): check response body length *)
     Writer.write_response  t.writer response;
-    Writer.schedule_string t.writer str;
+    Writer.write_string t.writer str;
     if t.persistent then
       t.persistent <- Response.persistent_connection response;
     t.response_state <- Complete response;
