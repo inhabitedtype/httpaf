@@ -119,9 +119,12 @@ let test ~msg ~input ~output ~handler =
   in
   debug ("=== " ^ msg);
   let test_output = loop conn input in
-  print_endline (String.concat "|" output);
-  print_endline (String.concat "|" test_output);
+  let output = String.concat "" output in
+  let test_output = String.concat "" test_output in
+  print_endline output;
+  print_endline test_output;
   assert (output = test_output)
+;;
 
 let () =
   let handler body reqd =
