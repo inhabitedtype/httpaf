@@ -90,7 +90,7 @@ let replace t name value =
     match t with
     | [] ->
       if not seen then raise Local else []
-    | (n',v as nv')::t ->
+    | (n',_ as nv')::t ->
       if CI.equal n n'
       then if seen
         then loop t n nv true
@@ -105,7 +105,7 @@ let remove t name =
     match s with
     | [] ->
       if not seen then raise Local else []
-    | (n',v as nv')::s' ->
+    | (n',_ as nv')::s' ->
       if CI.equal n n' then loop s' n true else nv'::(loop s' n false)
   in
   try loop t name false

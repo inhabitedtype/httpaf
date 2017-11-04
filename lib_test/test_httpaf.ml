@@ -1,6 +1,5 @@
 open Httpaf
 open Httpaf.Httpaf_private
-open Result
 
 let debug msg =
   if true then Printf.eprintf "%s\n%!" msg
@@ -146,7 +145,7 @@ let () =
   test ~msg:"Single OK w/body" ~handler:(handler "Hello, world!")
     ~input:[ `Request (Request.create ~headers:Headers.(of_list ["connection", "close"]) `GET "/")]
     ~output:[`Response (Response.create `OK); `Fixed "Hello, world!" ];
-  let rec echo reqd =
+  let echo reqd =
     debug " > handler called";
     let request_body  = Reqd.request_body reqd in
     let response_body = Reqd.respond_with_streaming reqd (Response.create ~headers:Headers.(of_list ["connection", "close"]) `OK) in

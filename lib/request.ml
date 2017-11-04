@@ -41,7 +41,7 @@ let create ?(version=Version.v1_1) ?(headers=Headers.empty) meth target =
   { meth; target; version; headers }
 
 let bad_requst = `Error `Bad_request
-let body_length { headers } =
+let body_length { headers; _ } =
   (* XXX(seliopou): perform proper transfer-encoding parsing *)
   match Headers.get_multi headers "transfer-encoding" with
   | "chunked"::_                             -> `Chunked
@@ -51,13 +51,13 @@ let body_length { headers } =
     | []      -> `Fixed 0L
     | [ len ] ->
       let len = Message.content_length_of_string len in
-      if Int64.(len >= 0L)
+      if len >= 0L
       then `Fixed len
       else bad_requst
     | _       -> bad_requst
     end
 
-let persistent_connection ?proxy { version; headers } =
+let persistent_connection ?proxy { version; headers; _ } =
   Message.persistent_connection ?proxy version headers
 
 let pp_hum fmt { meth; target; version; headers } =

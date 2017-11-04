@@ -49,12 +49,12 @@ let create ?reason ?(version=Version.v1_1) ?(headers=Headers.empty) status =
   in
   { version; status; reason; headers }
 
-let persistent_connection ?proxy { version; headers } =
+let persistent_connection ?proxy { version; headers; _ } =
   Message.persistent_connection ?proxy version headers
 
 let proxy_error  = `Error `Bad_gateway
 let server_error = `Error `Internal_server_error
-let body_length ?(proxy=false) ~request_method { status; headers } =
+let body_length ?(proxy=false) ~request_method { status; headers; _ } =
   match status, request_method with
   | (`No_content | `Not_modified), _           -> `Fixed 0L
   | s, _        when Status.is_informational s -> `Fixed 0L
@@ -68,7 +68,7 @@ let body_length ?(proxy=false) ~request_method { status; headers } =
       | []      -> `Close_delimited
       | [ len ] ->
         let len = Message.content_length_of_string len in
-        if Int64.(len >= 0L)
+        if len >= 0L
         then `Fixed len
         else if proxy then proxy_error else server_error
       | _       ->

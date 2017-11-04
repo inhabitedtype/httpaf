@@ -150,7 +150,7 @@ let schedule_size writer n =
   else take n >>| fun s -> Faraday.write_string faraday s
   end *> commit
 
-let rec body ~encoding writer =
+let body ~encoding writer =
   let rec fixed n ~unexpected =
     if n = 0L
     then unit
@@ -234,14 +234,14 @@ module Reader = struct
     ; buffer
     ; off         = 0
     ; len         = 0
-    ; parse_state = AU.parse Angstrom.(parser handler)
+    ; parse_state = AU.parse (parser handler)
     ; closed      = false
     }
 
   let invariant t =
     assert
       (match t.parse_state with
-      | AU.Done(committed, _) | AU.Partial { AU.committed } -> committed = 0
+      | AU.Done(committed, _) | AU.Partial { AU.committed; _ } -> committed = 0
       | AU.Fail _ -> true);
     assert (t.len <= Bigstring.length t.buffer);
     assert (t.off <  Bigstring.length t.buffer);
@@ -255,15 +255,16 @@ module Reader = struct
     t.closed
 
   let commit t n =
-    let { buffer; off; len } = t in
+    let { off; len; _ } = t in
     assert (n <= len);
     t.len <- len - n;
     t.off <- if len = n then 0 else off + n
 
-  let buffer_for_parsing { buffer; off; len } = Bigstring.sub ~off ~len buffer
+  let buffer_for_parsing { buffer; off; len; _ } =
+    Bigstring.sub ~off ~len buffer
 
   let buffer_for_read_operation t =
-    let { buffer; off; len } = t in
+    let { buffer; off; len; _ } = t in
     if len = Bigstring.length buffer
     then `Error (`Parse([], "parser stall: input too large"))
     else `Read  (Bigstring.sub ~off:(off + len) buffer)
@@ -282,7 +283,7 @@ module Reader = struct
       | AU.Complete ->
         t.parse_state <- AU.Done(0, result)
       end
-    | AU.Partial { AU.continue; committed } ->
+    | AU.Partial { AU.continue; _ } ->
       begin match continue (buffer_for_parsing t) more with
       | AU.Partial { AU.continue; committed } ->
         commit t committed;
@@ -315,7 +316,7 @@ module Reader = struct
     | AU.Done(_, Error err)       -> `Error err
     | AU.Fail(0, _, _)            -> assert t.closed; `Close
     | AU.Fail(_, marks , message) -> `Error (`Parse(marks, message))
-    | AU.Partial { AU.committed } ->
+    | AU.Partial { AU.committed; _ } ->
       assert (committed = 0); (* enforce the invariant of [update_parse_state] *)
       if t.closed
       then (update_parse_state t AU.Complete; next t)

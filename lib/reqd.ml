@@ -195,9 +195,9 @@ let report_error t error =
      * outstanding call to the [error_handler], but an intervening exception
      * has been reported as well. *)
     failwith "httpaf.Reqd.report_exn: NYI"
-  | Streaming(response, response_body), `Ok ->
+  | Streaming(_response, response_body), `Ok ->
     Response.Body.close response_body
-  | Streaming(response, response_body), `Exn _ ->
+  | Streaming(_response, response_body), `Exn _ ->
     Response.Body.close response_body;
     Writer.close t.writer
   | (Switch _ | Complete _ | Streaming _ | Waiting _) , _ ->
@@ -228,7 +228,7 @@ let switch_protocols t ~headers handler =
 
 (* Private API, not exposed to the user through httpaf.mli *)
 
-let close_request_body { request_body } =
+let close_request_body { request_body; _ } =
   Request.Body.close request_body
 
 let error_code t =

@@ -32,8 +32,6 @@
   ----------------------------------------------------------------------------*)
 
 
-open Result
-
 module Queue = struct
   include Queue
 
@@ -116,7 +114,7 @@ let wakeup_reader t =
   t.wakeup_reader := [];
   List.iter (fun f -> f ()) fs
 
-let default_error_handler ?request error handle =
+let default_error_handler ?request:_ error handle =
   let message =
     match error with
     | `Exn exn -> Printexc.to_string exn
@@ -262,7 +260,7 @@ let flush_response_body t =
     let reqd = current_reqd_exn t in
     Reqd.flush_response_body reqd
 
-let rec next_write_operation t =
+let next_write_operation t =
   advance_request_queue_if_necessary t;
   flush_response_body t;
   Writer.next t.writer
