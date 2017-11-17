@@ -1,6 +1,8 @@
 (jbuild_version 1)
 
 (library
- ((name httpaf)
+ ((name        httpaf)
   (public_name httpaf)
-  (libraries (angstrom faraday result))))
+  (libraries
+    (angstrom faraday result))
+  (flags (:standard -safe-string))))
