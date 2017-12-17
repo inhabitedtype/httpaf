@@ -467,7 +467,7 @@ module Request : sig
     val schedule_read
       :  t
       -> on_eof  : (unit -> unit)
-      -> on_read : (Bigstring.t -> off:int -> len:int -> int)
+      -> on_read : (Bigstring.t -> off:int -> len:int -> unit)
       -> unit
 
     val close : t -> unit

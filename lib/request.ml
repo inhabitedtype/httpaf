@@ -72,11 +72,11 @@ module Body = struct
     { faraday            : Faraday.t
     ; mutable scheduled  : bool
     ; mutable on_eof     : unit -> unit
-    ; mutable on_read    : Bigstring.t -> off:int -> len:int -> int
+    ; mutable on_read    : Bigstring.t -> off:int -> len:int -> unit
     }
 
   let default_on_eof  = Sys.opaque_identity (fun () -> ())
-  let default_on_read = Sys.opaque_identity (fun _ ~off:_ ~len:_ -> -1)
+  let default_on_read = Sys.opaque_identity (fun _ ~off:_ ~len:_ -> ())
 
   let create buffer =
     { faraday   = Faraday.of_bigstring buffer
@@ -104,7 +104,7 @@ module Body = struct
   let unsafe_faraday t =
     t.faraday
 
-  let do_execute_read t on_eof on_read =
+  let rec do_execute_read t on_eof on_read =
     match Faraday.operation t.faraday with
     | `Yield           -> ()
     | `Close           ->
@@ -118,11 +118,10 @@ module Body = struct
       t.on_eof    <- default_on_eof;
       t.on_read   <- default_on_read;
       let { IOVec.buffer; off; len } = iovec in
-      let n = on_read buffer ~off ~len in
-      assert (n >= 0);
-      Faraday.shift t.faraday n
-
-  let execute_read t =
+      Faraday.shift t.faraday len;
+      on_read buffer ~off ~len;
+      execute_read t
+  and execute_read t =
     if t.scheduled then do_execute_read t t.on_eof t.on_read
 
   let schedule_read t ~on_eof ~on_read =
