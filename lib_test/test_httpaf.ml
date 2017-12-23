@@ -152,8 +152,7 @@ let () =
     let rec on_read buffer ~off ~len =
       Response.Body.write_string response_body (Bigstring.to_string ~off ~len buffer);
       Response.Body.flush response_body (fun () ->
-        Request.Body.schedule_read request_body ~on_eof ~on_read);
-      len
+        Request.Body.schedule_read request_body ~on_eof ~on_read)
     and on_eof () = got_eof := true; Response.Body.close response_body in
     Request.Body.schedule_read request_body ~on_eof ~on_read;
   in
