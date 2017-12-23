@@ -49,12 +49,12 @@ let iovec_to_string { IOVec.buffer; off; len } =
 let test ~input ~output ~handler () =
   let input  = input_stream_to_strings input in
   let output = output_stream_to_strings output in
-  let conn   = Connection.create handler in
+  let conn   = Server_connection.create handler in
   let iwait, owait = ref false, ref false in
   let rec loop conn input =
     if !iwait && !owait then
       assert false (* deadlock, at lest for test handlers. *);
-    if Connection.is_closed conn
+    if Server_connection.is_closed conn
     then begin
       debug "state: closed";
       []
@@ -68,22 +68,22 @@ let test ~input ~output ~handler () =
     if !iwait
     then begin debug " iloop: wait"; input end
     else
-      match Connection.next_read_operation conn, input with
+      match Server_connection.next_read_operation conn, input with
       | `Read buffer, s::input' ->
         debug " iloop: read";
         let len = min (Bigstring.length buffer) (String.length s) in
         Bigstring.blit_from_string s 0 buffer 0 len;
-        Connection.report_read_result conn (`Ok len);
+        Server_connection.report_read_result conn (`Ok len);
         if len = String.length s
         then input'
         else String.(sub s len (length s - len)) :: input'
       | `Read _, [] ->
         debug " iloop: eof";
-        Connection.report_read_result conn `Eof;
+        Server_connection.report_read_result conn `Eof;
         []
       | _          , [] ->
         debug " iloop: eof";
-        Connection.report_read_result conn `Eof;
+        Server_connection.report_read_result conn `Eof;
         []
       | `Close    , _     ->
         debug " iloop: close(ok)";
@@ -91,26 +91,26 @@ let test ~input ~output ~handler () =
       | `Yield , _  ->
         debug " iloop: yield";
         iwait := true;
-        Connection.yield_reader conn (fun () -> debug " iloop: continue"; iwait := false);
+        Server_connection.yield_reader conn (fun () -> debug " iloop: continue"; iwait := false);
         input
   and oloop conn =
     if !owait
     then (begin debug " oloop: wait"; [] end)
     else
-      match Connection.next_write_operation conn with
+      match Server_connection.next_write_operation conn with
       | `Close _ ->
         debug " oloop: closed";
-        Connection.shutdown conn;
+        Server_connection.shutdown conn;
         []
       | `Yield ->
         debug " oloop: yield";
         owait := true;
-        Connection.yield_writer conn (fun () -> debug " oloop: continue"; owait := false);
+        Server_connection.yield_writer conn (fun () -> debug " oloop: continue"; owait := false);
         []
       | `Write iovecs ->
         debug " oloop: write";
         let output = List.map iovec_to_string iovecs in
-        Connection.report_write_result conn (`Ok (IOVec.lengthv iovecs));
+        Server_connection.report_write_result conn (`Ok (IOVec.lengthv iovecs));
         output
   in
   let test_output = loop conn input |> String.concat "" in

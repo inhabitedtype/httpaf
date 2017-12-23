@@ -1,5 +1,4 @@
 module Bigstring = Bigstring
-module Connection = Connection
 module Headers = Headers
 module IOVec = IOVec
 module Method = Method
@@ -8,6 +7,8 @@ module Request = Request
 module Response = Response
 module Status = Status
 module Version = Version
+
+module Server_connection = Server_connection
 
 module Httpaf_private = struct
   module Serialize = Serialize

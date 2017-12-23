@@ -43,18 +43,18 @@ let create_connection_handler ?config ~request_handler ~error_handler =
     let writev = Faraday_async.writev_of_fd fd in
     let request_handler = request_handler client_addr in
     let error_handler   = error_handler client_addr in
-    let conn = Connection.create ?config ~error_handler request_handler in
+    let conn = Server_connection.create ?config ~error_handler request_handler in
     let read_complete = Ivar.create () in
     let rec reader_thread () =
-      match Connection.next_read_operation conn with
+      match Server_connection.next_read_operation conn with
       | `Read buffer ->
         (* Log.Global.printf "read(%d)%!" (Fd.to_int_exn fd); *)
         read fd buffer >>> fun result ->
-          Connection.report_read_result conn result;
+          Server_connection.report_read_result conn result;
           reader_thread ()
       | `Yield  ->
         (* Log.Global.printf "read_yield(%d)%!" (Fd.to_int_exn fd); *)
-        Connection.yield_reader conn reader_thread
+        Server_connection.yield_reader conn reader_thread
       | `Close ->
         (* Log.Global.printf "read_close(%d)%!" (Fd.to_int_exn fd); *)
         Ivar.fill read_complete ();
@@ -63,15 +63,15 @@ let create_connection_handler ?config ~request_handler ~error_handler =
     in
     let write_complete = Ivar.create () in
     let rec writer_thread () =
-      match Connection.next_write_operation conn with
+      match Server_connection.next_write_operation conn with
       | `Write iovecs ->
         (* Log.Global.printf "write(%d)%!" (Fd.to_int_exn fd); *)
         writev iovecs >>> fun result ->
-          Connection.report_write_result conn result;
+          Server_connection.report_write_result conn result;
           writer_thread ()
       | `Yield ->
         (* Log.Global.printf "write_yield(%d)%!" (Fd.to_int_exn fd); *)
-        Connection.yield_writer conn writer_thread;
+        Server_connection.yield_writer conn writer_thread;
       | `Close _ ->
         (* Log.Global.printf "write_close(%d)%!" (Fd.to_int_exn fd); *)
         Ivar.fill write_complete ();
@@ -82,7 +82,7 @@ let create_connection_handler ?config ~request_handler ~error_handler =
     Scheduler.within ~monitor:conn_monitor reader_thread;
     Scheduler.within ~monitor:conn_monitor writer_thread;
     Monitor.detach_and_iter_errors conn_monitor ~f:(fun exn ->
-      Connection.shutdown conn;
+      Server_connection.shutdown conn;
       Log.Global.error "%s" (Exn.to_string exn);
       if not (Fd.is_closed fd)
       then don't_wait_for (Fd.close fd));
