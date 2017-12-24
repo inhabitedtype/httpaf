@@ -91,9 +91,6 @@ module Writer = struct
     ; encoder               : Faraday.t
       (* The encoder that handles encoding for writes. Uses the [buffer]
        * referenced above internally. *)
-    ; mutable closed        : bool
-      (* Whether the output source has left the building, indicating that no
-       * further output should be generated. *)
     ; mutable drained_bytes : int
       (* The number of bytes that were not written due to the output stream
        * being closed before all buffered output could be written. Useful for
@@ -105,25 +102,10 @@ module Writer = struct
     let encoder = Faraday.of_bigstring buffer in
     { buffer
     ; encoder
-    ; closed        = false
     ; drained_bytes = 0
     }
 
   let faraday t = t.encoder
-
-  let invariant t =
-    let (=>) a b = b || (not a) in
-    let (<=>) a b = (a => b) && (b => a) in
-    let _writev, close, _yield =
-      match Faraday.operation t.encoder with
-      | `Writev _ -> true, false, false
-      | `Close    -> false, true, false
-      | `Yield    -> Faraday.yield t.encoder; false, false, true
-    in
-    assert (t.closed <=> Faraday.is_closed t.encoder);
-    assert (Faraday.is_closed t.encoder <=> close);
-    assert (t.drained_bytes > 0 => t.closed);
-  ;;
 
   let write_response t response =
     write_response t.encoder response
@@ -157,13 +139,12 @@ module Writer = struct
     Faraday.yield t.encoder
 
   let close t =
-    t.closed <- true;
     close t.encoder;
     let drained = Faraday.drain t.encoder in
     t.drained_bytes <- t.drained_bytes + drained
 
   let is_closed t =
-    t.closed
+    Faraday.is_closed t.encoder
 
   let drained_bytes t =
     t.drained_bytes
@@ -175,9 +156,7 @@ module Writer = struct
 
   let next t =
     match Faraday.operation t.encoder with
-    | `Close -> `Close (drained_bytes t)
-    | `Yield -> `Yield
-    | `Writev iovecs ->
-      assert (not (t.closed));
-      `Write iovecs
+    | `Close         -> `Close (drained_bytes t)
+    | `Yield         -> `Yield
+    | `Writev iovecs -> `Write iovecs
 end

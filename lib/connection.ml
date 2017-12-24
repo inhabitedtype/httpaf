@@ -80,7 +80,7 @@ type 'fd t =
   }
 
 let is_shutdown t =
-  t.reader.Reader.closed && t.writer.Writer.closed
+  Reader.is_closed t.reader && Writer.is_closed t.writer
 
 let is_waiting t =
   not (is_shutdown t) && Queue.is_empty t.request_queue
@@ -157,7 +157,7 @@ let create ?(config=Config.default) ?(error_handler=default_error_handler) reque
   }
 
 let state t =
-  match t.reader.Reader.closed, t.writer.Writer.closed with
+  match Reader.is_closed t.reader, Writer.is_closed t.writer with
   | false, false -> `Running
   | true , true  -> `Closed
   | true , false -> `Closed_input
