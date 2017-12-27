@@ -210,23 +210,25 @@ let report_exn t exn =
 let advance_request_queue_if_necessary t =
   if is_active t then begin
     let reqd = current_reqd_exn t in
-    if Reqd.persistent_connection reqd
-    then if Reqd.is_complete reqd then begin
-      ignore (Queue.take t.request_queue);
-      wakeup_reader t;
-    end else begin
-      ignore (Queue.take t.request_queue);
-      Queue.iter Reqd.close_request_body t.request_queue;
-      Queue.clear t.request_queue;
-      Queue.push reqd t.request_queue;
-      wakeup_writer t;
-      if Reqd.is_complete reqd
+    if Reqd.persistent_connection reqd then
+      if Reqd.is_complete reqd then begin
+        ignore (Queue.take t.request_queue);
+        wakeup_reader t;
+      end else begin
+        ignore (Queue.take t.request_queue);
+        Queue.iter Reqd.close_request_body t.request_queue;
+        Queue.clear t.request_queue;
+        Queue.push reqd t.request_queue;
+        wakeup_writer t;
+        if Reqd.is_complete reqd
+        then shutdown t
+        else if not (Reqd.requires_input reqd)
+        then shutdown_reader t
+      end
+    end else
+      if Reader.is_closed t.reader
       then shutdown t
-      else if not (Reqd.requires_input reqd)
-      then shutdown_reader t
-    end
-  end else if Reader.is_closed t.reader
-  then shutdown t
+;;
 
 let _next_read_operation t =
   advance_request_queue_if_necessary t;
