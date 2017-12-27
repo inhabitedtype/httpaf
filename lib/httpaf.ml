@@ -7,6 +7,7 @@ module Request = Request
 module Response = Response
 module Status = Status
 module Version = Version
+module Body = Body
 
 module Server_connection = Server_connection
 

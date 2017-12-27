@@ -37,11 +37,11 @@ type error =
 type 'handle response_state =
   | Waiting   of (unit -> unit) ref
   | Complete  of Response.t
-  | Streaming of Response.t * Response.Body.t
+  | Streaming of Response.t * [`write] Body.t
   | Switch    of Response.t * ('handle -> Bigstring.t -> unit)
 
 type error_handler =
-  ?request:Request.t -> error -> (Headers.t -> Response.Body.t) -> unit
+  ?request:Request.t -> error -> (Headers.t -> [`write] Body.t) -> unit
 
 module Writer = Serialize.Writer
 
@@ -70,7 +70,7 @@ module Writer = Serialize.Writer
  * *)
 type 'handle t =
   { request                 : Request.t
-  ; request_body            : Request.Body.t
+  ; request_body            : [`read] Body.t
   ; writer                  : Writer.t
   ; response_body_buffer    : Bigstring.t
   ; error_handler           : error_handler
@@ -159,7 +159,7 @@ let respond_with_bigstring t response (bstr:Bigstring.t) =
 let unsafe_respond_with_streaming t response =
   match t.response_state with
   | Waiting when_done_waiting ->
-    let response_body = Response.Body.create t.response_body_buffer in
+    let response_body = Body.create t.response_body_buffer in
     Writer.write_response t.writer response;
     if t.wait_for_first_flush then Writer.yield t.writer;
     if t.persistent then
@@ -179,7 +179,7 @@ let respond_with_streaming t response =
 
 let report_error t error =
   t.persistent <- false;
-  Request.Body.close t.request_body;
+  Body.close t.request_body;
   match t.response_state, t.error_code with
   | Waiting _, `Ok ->
     t.error_code <- (error :> [`Ok | error]);
@@ -196,9 +196,9 @@ let report_error t error =
      * has been reported as well. *)
     failwith "httpaf.Reqd.report_exn: NYI"
   | Streaming(_response, response_body), `Ok ->
-    Response.Body.close response_body
+    Body.close response_body
   | Streaming(_response, response_body), `Exn _ ->
-    Response.Body.close response_body;
+    Body.close response_body;
     Writer.close t.writer
   | (Switch _ | Complete _ | Streaming _ | Waiting _) , _ ->
     (* XXX(seliopou): Once additional logging support is added, log the error
@@ -229,7 +229,7 @@ let switch_protocols t ~headers handler =
 (* Private API, not exposed to the user through httpaf.mli *)
 
 let close_request_body { request_body; _ } =
-  Request.Body.close request_body
+  Body.close request_body
 
 let error_code t =
   match t.error_code with
@@ -243,7 +243,7 @@ let on_more_output_available t f =
       failwith "httpaf.Reqd.on_more_output_available: only one callback can be registered at a time";
     when_done_waiting := f
   | Streaming(_, response_body) ->
-    Response.Body.when_ready_to_write response_body f
+    Body.when_ready_to_write response_body f
   | Complete _ ->
     failwith "httpaf.Reqd.on_more_output_available: response already complete"
   | Switch _ ->
@@ -253,14 +253,14 @@ let persistent_connection t =
   t.persistent
 
 let requires_input { request_body; _ } =
-  not (Request.Body.is_closed request_body)
+  not (Body.is_closed request_body)
 
 let requires_output { response_state; _ } =
   match response_state with
   | Complete _ -> false
   | Streaming (_, response_body) ->
-    not (Response.Body.is_closed response_body)
-    || Response.Body.has_pending_output response_body
+    not (Body.is_closed response_body)
+    || Body.has_pending_output response_body
   | Waiting _ | Switch _ -> true
 
 let is_complete t =
@@ -268,8 +268,8 @@ let is_complete t =
 
 let flush_request_body t =
   let request_body = request_body t in
-  if Request.Body.has_pending_output request_body
-  then try Request.Body.execute_read request_body
+  if Body.has_pending_output request_body
+  then try Body.execute_read request_body
   with exn -> report_exn t exn
 
 let flush_response_body t =
@@ -281,7 +281,7 @@ let flush_response_body t =
        the right bytes from its internal {!Faraday.t} into the {!Writer.t},
        which would involve moving [buffered_response_bytes] into that module
        and doing the difference computation there. *)
-    let faraday = Response.Body.unsafe_faraday response_body in
+    let faraday = Body.unsafe_faraday response_body in
     begin match Faraday.operation faraday with
     | `Yield | `Close -> ()
     | `Writev iovecs ->

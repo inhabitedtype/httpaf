@@ -137,11 +137,11 @@ let swallow_trailer =
   skip_many header *> eol *> commit
 
 let finish writer =
-  Request.Body.close writer;
+  Body.close writer;
   commit
 
 let schedule_size writer n =
-  let faraday = Request.Body.unsafe_faraday writer in
+  let faraday = Body.unsafe_faraday writer in
   (* XXX(seliopou): performance regression due to switching to a single output
    * format in Farady. Once a specialized operation is exposed to avoid the
    * intemediate copy, this should be back to the original performance. *)
@@ -199,7 +199,7 @@ module Reader = struct
     | `Parse of string list * string ]
 
   type t =
-    { handler             : Request.t -> Request.Body.t -> unit
+    { handler             : Request.t -> [`read] Body.t -> unit
       (* The application request handler. *)
     ; buffer              : Bigstring.t
       (* The buffer that the parser reads from. Managed by the control module
@@ -221,10 +221,10 @@ module Reader = struct
     match Request.body_length request with
     | `Error `Bad_request -> return (Error (`Bad_request request))
     | `Fixed 0L  ->
-      handler request Request.Body.empty;
+      handler request Body.empty;
       ok
     | `Fixed _ | `Chunked | `Close_delimited as encoding ->
-      let request_body = Request.Body.create Bigstring.empty in
+      let request_body = Body.create Bigstring.empty in
       handler request request_body;
       body ~encoding request_body *> ok
 

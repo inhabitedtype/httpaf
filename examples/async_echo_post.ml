@@ -9,12 +9,12 @@ let error_handler _ ?request error start_response =
   let response_body = start_response Headers.empty in
   begin match error with
   | `Exn exn ->
-    Response.Body.write_string response_body (Exn.to_string exn);
-    Response.Body.write_string response_body "\n";
+    Body.write_string response_body (Exn.to_string exn);
+    Body.write_string response_body "\n";
   | #Status.standard as error ->
-    Response.Body.write_string response_body (Status.default_reason_phrase error)
+    Body.write_string response_body (Status.default_reason_phrase error)
   end;
-  Response.Body.close response_body
+  Body.close response_body
 ;;
 
 let request_handler _ reqd =
@@ -27,13 +27,13 @@ let request_handler _ reqd =
     let request_body  = Reqd.request_body reqd in
     let response_body = Reqd.respond_with_streaming reqd response in
     let rec on_read buffer ~off ~len =
-      Response.Body.write_bigstring response_body buffer ~off ~len;
-      Request.Body.schedule_read request_body ~on_eof ~on_read;
+      Body.write_bigstring response_body buffer ~off ~len;
+      Body.schedule_read request_body ~on_eof ~on_read;
     and on_eof () =
       print_endline "eof";
-      Response.Body.close response_body
+      Body.close response_body
     in
-    Request.Body.schedule_read (Reqd.request_body reqd) ~on_eof ~on_read
+    Body.schedule_read (Reqd.request_body reqd) ~on_eof ~on_read
   | _ -> Reqd.respond_with_string reqd (Response.create `Method_not_allowed) ""
 ;;
 

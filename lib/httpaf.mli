@@ -420,6 +420,49 @@ module Headers : sig
   val pp_hum : Format.formatter -> t -> unit
 end
 
+(** {2 Message Body} *)
+
+module Body : sig
+  type 'rw t
+
+  val schedule_read
+    :  [`read] t
+    -> on_eof  : (unit -> unit)
+    -> on_read : (Bigstring.t -> off:int -> len:int -> unit)
+    -> unit
+
+  val write_char : [`write] t -> char -> unit
+  (** [write_char w char] copies [hcar] into an internal buffer. If possible,
+      this write will be combined with previous and/or subsequent writes before
+      transmission. *)
+
+  val write_string : [`write] t -> ?off:int -> ?len:int -> string -> unit
+  (** [write_string w ?off ?len str] copies [str] into an internal buffer. If
+      possible, this write will be combined with previous and/or subsequent
+      writes before transmission. *)
+
+  val write_bigstring : [`write] t -> ?off:int -> ?len:int -> Bigstring.t -> unit
+  (** [write_bigstring w ?off ?len bs] copies [bs] into an internal buffer. If
+      possible, this write will be combined with previous and/or subsequent
+      writes before transmission. *)
+
+  val schedule_bigstring : [`write] t -> ?off:int -> ?len:int -> Bigstring.t -> unit
+  (** [schedule_bigstring w ?off ?len bs] schedules [bs] to be
+      transmitted at the next opportunity without performing a copy. [bs]
+      should not be modified until a subsequent call to {!flush} has
+      successfully completed. *)
+
+  val flush : [`write] t -> (unit -> unit) -> unit
+  (** [flush t f] *)
+
+  val close : _ t -> unit
+  (** [close t] closes [t], causing subsequent read or write calls to raise. *)
+
+  val is_closed : _ t -> bool
+  (** [is_closed t] is true if {!close} has been called on [t] and [false]
+      otherwise. A closed [t] may still have pending output. *)
+end
+
 
 (** {2 Message Types} *)
 
@@ -460,23 +503,6 @@ module Request : sig
       more details. *)
 
   val pp_hum : Format.formatter -> t -> unit
-
-  module Body : sig
-    type t
-
-    val schedule_read
-      :  t
-      -> on_eof  : (unit -> unit)
-      -> on_read : (Bigstring.t -> off:int -> len:int -> unit)
-      -> unit
-
-    val close : t -> unit
-    (** [close t] closes [t], causing subsequent read or write calls to raise. *)
-
-    val is_closed : t -> bool
-    (** [is_closed t] is true if {!close} has been called on [t] and [false]
-        otherwise. A closed [t] may still have pending output. *)
-  end
 end
 
 
@@ -523,41 +549,6 @@ module Response : sig
       more details. *)
 
   val pp_hum : Format.formatter -> t -> unit
-
-  module Body : sig
-    type t
-
-    val write_char : t -> char -> unit
-    (** [write_char w char] copies [hcar] into an internal buffer. If possible,
-        this write will be combined with previous and/or subsequent writes before
-        transmission. *)
-
-    val write_string : t -> ?off:int -> ?len:int -> string -> unit
-    (** [write_string w ?off ?len str] copies [str] into an internal buffer. If
-        possible, this write will be combined with previous and/or subsequent
-        writes before transmission. *)
-
-    val write_bigstring : t -> ?off:int -> ?len:int -> Bigstring.t -> unit
-    (** [write_bigstring w ?off ?len bs] copies [bs] into an internal buffer. If
-        possible, this write will be combined with previous and/or subsequent
-        writes before transmission. *)
-
-    val schedule_bigstring : t -> ?off:int -> ?len:int -> Bigstring.t -> unit
-    (** [schedule_bigstring w ?off ?len bs] schedules [bs] to be
-        transmitted at the next opportunity without performing a copy. [bs]
-        should not be modified until a subsequent call to {!flush} has
-        successfully completed. *)
-
-    val flush : t -> (unit -> unit) -> unit
-    (** [flush t f] *)
-
-    val close : t -> unit
-    (** [close t] closes [t], causing subsequent read or write calls to raise. *)
-
-    val is_closed : t -> bool
-    (** [is_closed t] is true if {!close} has been called on [t] and [false]
-        otherwise. A closed [t] may still have pending output. *)
-  end
 end
 
 
@@ -626,14 +617,14 @@ module Reqd : sig
   type 'handle t
 
   val request : _ t -> Request.t
-  val request_body : _ t -> Request.Body.t
+  val request_body : _ t -> [`read] Body.t
 
   val response : _ t -> Response.t option
   val response_exn : _ t -> Response.t
 
   val respond_with_string    : _ t -> Response.t -> string -> unit
   val respond_with_bigstring : _ t -> Response.t -> Bigstring.t -> unit
-  val respond_with_streaming : _ t -> Response.t -> Response.Body.t
+  val respond_with_streaming : _ t -> Response.t -> [`write] Body.t
 
   val report_exn : _ t -> exn -> unit
   val try_with : _ t -> (unit -> unit) -> (unit, exn) result
@@ -669,7 +660,7 @@ module Server_connection : sig
   type 'handle request_handler = 'handle Reqd.t -> unit
 
   type error_handler =
-    ?request:Request.t -> error -> (Headers.t -> Response.Body.t) -> unit
+    ?request:Request.t -> error -> (Headers.t -> [`write] Body.t) -> unit
 
   val create
     :  ?config:Config.t

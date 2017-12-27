@@ -121,7 +121,7 @@ let test ~input ~output ~handler () =
 let basic_handler body reqd =
   debug " > handler called";
   let request_body = Reqd.request_body reqd in
-  Request.Body.close request_body;
+  Body.close request_body;
   Reqd.respond_with_string reqd (Response.create `OK) body;
 ;;
 
@@ -131,11 +131,11 @@ let echo_handler got_eof reqd =
   let response      = Response.create ~headers:Headers.(of_list ["connection", "close"]) `OK in
   let response_body = Reqd.respond_with_streaming reqd response in
   let rec on_read buffer ~off ~len =
-    Response.Body.write_string response_body (Bigstring.to_string ~off ~len buffer);
-    Response.Body.flush response_body (fun () ->
-      Request.Body.schedule_read request_body ~on_eof ~on_read)
-  and on_eof () = got_eof := true; Response.Body.close response_body in
-  Request.Body.schedule_read request_body ~on_eof ~on_read;
+    Body.write_string response_body (Bigstring.to_string ~off ~len buffer);
+    Body.flush response_body (fun () ->
+      Body.schedule_read request_body ~on_eof ~on_read)
+  and on_eof () = got_eof := true; Body.close response_body in
+  Body.schedule_read request_body ~on_eof ~on_read;
 ;;
 
 let single_get =
