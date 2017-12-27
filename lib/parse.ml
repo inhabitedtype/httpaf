@@ -198,6 +198,10 @@ module Reader = struct
     | `Bad_request of Request.t
     | `Parse of string list * string ]
 
+  type response_error = [
+    | `Invalid_response_body_length of Response.t
+    | `Parse of string list * string ]
+
   type 'error t =
     { parser              : (unit, 'error) result Angstrom.t
     ; buffer              : Bigstring.t
@@ -215,6 +219,7 @@ module Reader = struct
     }
 
   type request  = request_error t
+  type response = response_error t
 
   let create ?(buffer_size=0x1000) parser =
     let buffer = Bigstring.create buffer_size in
@@ -242,6 +247,24 @@ module Reader = struct
         body ~encoding request_body *> ok
     in
     create ?buffer_size parser
+
+  let response ?buffer_size ~request_method handler =
+    let parser =
+      response <* commit >>= fun response ->
+      let proxy = false in
+      match Response.body_length ~request_method response with
+      | `Error `Bad_gateway           -> assert (not proxy); assert false
+      | `Error `Internal_server_error -> return (Error (`Invalid_response_body_length response))
+      | `Fixed 0L ->
+        handler response Body.empty;
+        ok
+      | `Fixed _ | `Chunked | `Close_delimited as encoding ->
+        let response_body = Body.create Bigstring.empty in
+        handler response response_body;
+        body ~encoding response_body *> ok
+    in
+    create ?buffer_size parser
+  ;;
 
   let invariant t =
     assert
