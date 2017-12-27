@@ -67,7 +67,7 @@ type error_handler =
   ?request:Request.t -> error -> (Headers.t -> [`write] Body.t) -> unit
 
 type 'fd t =
-  { reader                 : Reader.t
+  { reader                 : Reader.request
   ; writer                 : Writer.t
   ; response_body_buffer   : Bigstring.t
   ; request_handler        : 'fd request_handler
@@ -146,7 +146,7 @@ let create ?(config=Config.default) ?(error_handler=default_error_handler) reque
       _wakeup_writer wakeup_writer
     end
   in
-  { reader          = Reader.create ~buffer_size:read_buffer_size handler
+  { reader          = Reader.request ~buffer_size:read_buffer_size handler
   ; writer
   ; response_body_buffer
   ; request_handler = request_handler
