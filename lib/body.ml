@@ -4,6 +4,7 @@ type _ t =
   ; mutable on_eof              : unit -> unit
   ; mutable on_read             : Bigstring.t -> off:int -> len:int -> unit
   ; mutable when_ready_to_write : unit -> unit
+  ; buffered_bytes              : int ref
   }
 
 let default_on_eof         = Sys.opaque_identity (fun () -> ())
@@ -16,6 +17,7 @@ let of_faraday faraday =
   ; on_eof    = default_on_eof
   ; on_read   = default_on_read
   ; when_ready_to_write = default_ready_to_write
+  ; buffered_bytes = ref 0
   }
 
 let create buffer =
@@ -98,3 +100,21 @@ let when_ready_to_write t callback =
   if not (t.when_ready_to_write == default_ready_to_write)
   then failwith "Body.when_ready_to_write: only one callback can be registered at a time";
   t.when_ready_to_write <- callback
+
+let transfer_to_writer_with_encoding t ~encoding writer =
+  let faraday = t.faraday in
+  begin match Faraday.operation faraday with
+  | `Yield | `Close -> ()
+  | `Writev iovecs ->
+    let buffered = t.buffered_bytes in
+    let iovecs   = IOVec.shiftv  iovecs !buffered in
+    let lengthv  = IOVec.lengthv iovecs in
+    buffered := !buffered + lengthv;
+    begin match encoding with
+    | `Fixed _ | `Close_delimited -> Serialize.Writer.schedule_fixed writer iovecs
+    | `Chunked                    -> Serialize.Writer.schedule_chunk writer iovecs
+    end;
+    Serialize.Writer.flush writer (fun () ->
+      Faraday.shift faraday lengthv;
+      buffered := !buffered - lengthv)
+  end
