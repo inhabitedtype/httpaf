@@ -40,7 +40,7 @@ type t =
 let create ?(version=Version.v1_1) ?(headers=Headers.empty) meth target =
   { meth; target; version; headers }
 
-let bad_requst = `Error `Bad_request
+let bad_request = `Error `Bad_request
 let body_length { headers; _ } =
   (* XXX(seliopou): perform proper transfer-encoding parsing *)
   match Headers.get_multi headers "transfer-encoding" with
@@ -53,8 +53,8 @@ let body_length { headers; _ } =
       let len = Message.content_length_of_string len in
       if len >= 0L
       then `Fixed len
-      else bad_requst
-    | _       -> bad_requst
+      else bad_request
+    | _       -> bad_request
     end
 
 let persistent_connection ?proxy { version; headers; _ } =
