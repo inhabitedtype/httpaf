@@ -504,7 +504,7 @@ module Response : sig
     | `Fixed of Int64.t
     | `Chunked
     | `Close_delimited
-    | `Error of [`Bad_request | `Bad_gateway | `Internal_server_error ]
+    | `Error of [ `Bad_gateway | `Internal_server_error ]
   ]
   (** [body_length ?proxy ~request_method t] is the length of the message body
       accompanying [t] assuming it is a response to a request whose method was
