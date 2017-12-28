@@ -37,24 +37,76 @@ let read fd buffer =
 
 open Httpaf
 
-let create_connection_handler ?config ~request_handler ~error_handler =
-  fun client_addr socket ->
+module Server = struct
+  let create_connection_handler ?config ~request_handler ~error_handler =
+    fun client_addr socket ->
+      let fd     = Socket.fd socket in
+      let writev = Faraday_async.writev_of_fd fd in
+      let request_handler = request_handler client_addr in
+      let error_handler   = error_handler client_addr in
+      let conn = Server_connection.create ?config ~error_handler request_handler in
+      let read_complete = Ivar.create () in
+      let rec reader_thread () =
+        match Server_connection.next_read_operation conn with
+        | `Read buffer ->
+          (* Log.Global.printf "read(%d)%!" (Fd.to_int_exn fd); *)
+          read fd buffer >>> fun result ->
+            Server_connection.report_read_result conn result;
+            reader_thread ()
+        | `Yield  ->
+          (* Log.Global.printf "read_yield(%d)%!" (Fd.to_int_exn fd); *)
+          Server_connection.yield_reader conn reader_thread
+        | `Close ->
+          (* Log.Global.printf "read_close(%d)%!" (Fd.to_int_exn fd); *)
+          Ivar.fill read_complete ();
+          if not (Fd.is_closed fd)
+          then Socket.shutdown socket `Receive
+      in
+      let write_complete = Ivar.create () in
+      let rec writer_thread () =
+        match Server_connection.next_write_operation conn with
+        | `Write iovecs ->
+          (* Log.Global.printf "write(%d)%!" (Fd.to_int_exn fd); *)
+          writev iovecs >>> fun result ->
+            Server_connection.report_write_result conn result;
+            writer_thread ()
+        | `Yield ->
+          (* Log.Global.printf "write_yield(%d)%!" (Fd.to_int_exn fd); *)
+          Server_connection.yield_writer conn writer_thread;
+        | `Close _ ->
+          (* Log.Global.printf "write_close(%d)%!" (Fd.to_int_exn fd); *)
+          Ivar.fill write_complete ();
+          if not (Fd.is_closed fd)
+          then Socket.shutdown socket `Send
+      in
+      let conn_monitor = Monitor.create () in
+      Scheduler.within ~monitor:conn_monitor reader_thread;
+      Scheduler.within ~monitor:conn_monitor writer_thread;
+      Monitor.detach_and_iter_errors conn_monitor ~f:(fun exn ->
+        Server_connection.shutdown conn;
+        Log.Global.error "%s" (Exn.to_string exn);
+        if not (Fd.is_closed fd)
+        then don't_wait_for (Fd.close fd));
+      (* The Tcp module will close the file descriptor once this becomes determined. *)
+      Deferred.all_ignore
+        [ Ivar.read read_complete
+        ; Ivar.read write_complete ]
+end
+
+module Client = struct
+  let request socket request ~error_handler ~response_handler =
     let fd     = Socket.fd socket in
     let writev = Faraday_async.writev_of_fd fd in
-    let request_handler = request_handler client_addr in
-    let error_handler   = error_handler client_addr in
-    let conn = Server_connection.create ?config ~error_handler request_handler in
+    let request_body, conn   =
+      Client_connection.request request ~error_handler ~response_handler in
     let read_complete = Ivar.create () in
     let rec reader_thread () =
-      match Server_connection.next_read_operation conn with
+      match Client_connection.next_read_operation conn with
       | `Read buffer ->
         (* Log.Global.printf "read(%d)%!" (Fd.to_int_exn fd); *)
         read fd buffer >>> fun result ->
-          Server_connection.report_read_result conn result;
+          Client_connection.report_read_result conn result;
           reader_thread ()
-      | `Yield  ->
-        (* Log.Global.printf "read_yield(%d)%!" (Fd.to_int_exn fd); *)
-        Server_connection.yield_reader conn reader_thread
       | `Close ->
         (* Log.Global.printf "read_close(%d)%!" (Fd.to_int_exn fd); *)
         Ivar.fill read_complete ();
@@ -63,15 +115,15 @@ let create_connection_handler ?config ~request_handler ~error_handler =
     in
     let write_complete = Ivar.create () in
     let rec writer_thread () =
-      match Server_connection.next_write_operation conn with
+      match Client_connection.next_write_operation conn with
       | `Write iovecs ->
         (* Log.Global.printf "write(%d)%!" (Fd.to_int_exn fd); *)
         writev iovecs >>> fun result ->
-          Server_connection.report_write_result conn result;
+          Client_connection.report_write_result conn result;
           writer_thread ()
       | `Yield ->
         (* Log.Global.printf "write_yield(%d)%!" (Fd.to_int_exn fd); *)
-        Server_connection.yield_writer conn writer_thread;
+        Client_connection.yield_writer conn writer_thread;
       | `Close _ ->
         (* Log.Global.printf "write_close(%d)%!" (Fd.to_int_exn fd); *)
         Ivar.fill write_complete ();
@@ -82,10 +134,16 @@ let create_connection_handler ?config ~request_handler ~error_handler =
     Scheduler.within ~monitor:conn_monitor reader_thread;
     Scheduler.within ~monitor:conn_monitor writer_thread;
     Monitor.detach_and_iter_errors conn_monitor ~f:(fun exn ->
-      Server_connection.shutdown conn;
+      Client_connection.shutdown conn;
       Log.Global.error "%s" (Exn.to_string exn);
       if not (Fd.is_closed fd)
       then don't_wait_for (Fd.close fd));
-    Deferred.all_ignore
-      [ Ivar.read read_complete
-      ; Ivar.read write_complete ]
+    don't_wait_for (
+      Deferred.all_ignore
+        [ Ivar.read read_complete
+        ; Ivar.read write_complete ]
+      >>| fun () ->
+        if not (Fd.is_closed fd)
+        then don't_wait_for (Fd.close fd));
+    request_body
+end

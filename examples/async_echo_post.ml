@@ -21,7 +21,11 @@ let request_handler _ reqd =
   match Reqd.request reqd  with
   | { Request.meth = `POST; headers } ->
     let response =
-      let content_type = Headers.get_exn headers "content-type" in
+      let content_type =
+        match Headers.get headers "content-type" with
+        | None   -> "application/octet-stream"
+        | Some x -> x
+      in
       Response.create ~headers:(Headers.of_list ["content-type", content_type; "connection", "close"]) `OK
     in
     let request_body  = Reqd.request_body reqd in
@@ -40,7 +44,7 @@ let request_handler _ reqd =
 let main port max_accepts_per_batch () =
   Tcp.(Server.create_sock
       ~backlog:10_000 ~max_connections:10_000 ~max_accepts_per_batch (on_port port))
-    (create_connection_handler ~request_handler ~error_handler)
+    (Server.create_connection_handler ~request_handler ~error_handler)
   >>= fun server ->
   Deferred.never ()
 
