@@ -153,7 +153,7 @@ let schedule_size writer n =
 let body ~encoding writer =
   let rec fixed n ~unexpected =
     if n = 0L
-    then unit
+    then finish writer
     else
       at_end_of_input
       >>= function

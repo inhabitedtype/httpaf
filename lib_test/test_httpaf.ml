@@ -145,18 +145,19 @@ let () =
   test ~msg:"Single OK w/body" ~handler:(handler "Hello, world!")
     ~input:[ `Request (Request.create ~headers:Headers.(of_list ["connection", "close"]) `GET "/")]
     ~output:[`Response (Response.create `OK); `Fixed "Hello, world!" ];
-  let echo reqd =
+  let echo got_eof reqd =
     debug " > handler called";
     let request_body  = Reqd.request_body reqd in
     let response_body = Reqd.respond_with_streaming reqd (Response.create ~headers:Headers.(of_list ["connection", "close"]) `OK) in
     let rec on_read buffer ~off ~len =
       Response.Body.write_string response_body (Bigstring.to_string ~off ~len buffer);
       Response.Body.flush response_body (fun () ->
-        Request.Body.schedule_read request_body ~on_eof ~on_read);
-      len
-    and on_eof () = Response.Body.close response_body in
+        Request.Body.schedule_read request_body ~on_eof ~on_read)
+    and on_eof () = got_eof := true; Response.Body.close response_body in
     Request.Body.schedule_read request_body ~on_eof ~on_read;
   in
-  test ~msg:"POST" ~handler:echo
+  let got_eof = ref false in
+  test ~msg:"POST" ~handler:(echo got_eof)
     ~input:[`Request (Request.create `GET "/" ~headers:Headers.(of_list ["transfer-encoding", "chunked"])); `Chunk "This is a test"]
-    ~output:[`Response (Response.create `OK ~headers:Headers.(of_list ["connection", "close"])); `Fixed "This is a test"]
+    ~output:[`Response (Response.create `OK ~headers:Headers.(of_list ["connection", "close"])); `Fixed "This is a test"];
+  assert !got_eof
