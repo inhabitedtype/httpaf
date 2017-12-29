@@ -1,7 +1,7 @@
 (jbuild_version 1)
 
 (executables
- ((libraries (httpaf))
+ ((libraries (httpaf alcotest))
   (modules (test_httpaf))
   (names (test_httpaf))))
 
