@@ -2,7 +2,7 @@ open Httpaf
 open Httpaf.Httpaf_private
 
 let debug msg =
-  if true then Printf.eprintf "%s\n%!" msg
+  if false then Printf.eprintf "%s\n%!" msg
 
 type body_part = [ `Fixed of string | `Chunk of string ]
 
@@ -46,7 +46,7 @@ let output_stream_to_strings is =
 let iovec_to_string { IOVec.buffer; off; len } =
   Bigstring.to_string ~off ~len buffer
 
-let test ~msg ~input ~output ~handler =
+let test ~input ~output ~handler () =
   let input  = input_stream_to_strings input in
   let output = output_stream_to_strings output in
   let conn   = Connection.create handler in
@@ -116,48 +116,80 @@ let test ~msg ~input ~output ~handler =
         Connection.report_write_result conn (`Ok (IOVec.lengthv iovecs));
         output
   in
-  debug ("=== " ^ msg);
-  let test_output = loop conn input in
-  let output = String.concat "" output in
-  let test_output = String.concat "" test_output in
-  print_endline output;
-  print_endline test_output;
-  assert (output = test_output)
+  let test_output = loop conn input |> String.concat "" in
+  let output      = String.concat "" output in
+  Alcotest.(check string "response" output test_output)
+;;
+
+let basic_handler body reqd =
+  debug " > handler called";
+  let request_body = Reqd.request_body reqd in
+  Request.Body.close request_body;
+  Reqd.respond_with_string reqd (Response.create `OK) body;
+;;
+
+let echo_handler got_eof reqd =
+  debug " > echo_handler called";
+  let request_body  = Reqd.request_body reqd in
+  let response      = Response.create ~headers:Headers.(of_list ["connection", "close"]) `OK in
+  let response_body = Reqd.respond_with_streaming reqd response in
+  let rec on_read buffer ~off ~len =
+    Response.Body.write_string response_body (Bigstring.to_string ~off ~len buffer);
+    Response.Body.flush response_body (fun () ->
+      Request.Body.schedule_read request_body ~on_eof ~on_read)
+  and on_eof () = got_eof := true; Response.Body.close response_body in
+  Request.Body.schedule_read request_body ~on_eof ~on_read;
+;;
+
+let single_get =
+  [ "single GET"
+    , `Quick
+    , test
+        ~handler: (basic_handler "")
+        ~input:   [ `Request (Request.create `GET "/") ]
+        ~output:  [ `Response (Response.create `OK) ]
+  ; "singel GET, close connection"
+    , `Quick
+    , test
+        ~handler: (basic_handler "")
+        ~input:   [ `Request (Request.create ~headers:Headers.(of_list ["connection", "close"]) `GET "/")
+                  ; `Request (Request.create `GET "/") ]
+        ~output:  [ `Response (Response.create `OK) ]
+
+  ; "single GET with body"
+  , `Quick
+  , test
+      ~handler: (basic_handler "Hello, world!")
+      ~input:   [ `Request (Request.create ~headers:Headers.(of_list ["connection", "close"]) `GET "/") ]
+      ~output:  [ `Response (Response.create `OK); `Fixed "Hello, world!" ]
+  ; "single GET with streaming body"
+  , `Quick
+  , begin fun () ->
+      let got_eof = ref false in
+      test ()
+        ~handler: (echo_handler got_eof)
+        ~input:   [ `Request (Request.create `POST "/" ~headers:Headers.(of_list ["transfer-encoding", "chunked"]))
+                  ; `Chunk "This is a test"]
+        ~output:  [`Response (Response.create `OK ~headers:Headers.(of_list ["connection", "close"]))
+                  ; `Fixed "This is a test"];
+      Alcotest.(check bool "got eof" !got_eof true);
+    end
+  ]
+;;
+
+let multiple_gets =
+  [ "multiple GETs"
+    , `Quick
+    , test
+        ~handler: (basic_handler "")
+        ~input:   [ `Request (Request.create `GET "/")
+                  ; `Request (Request.create `GET "/") ]
+        ~output:  [ `Response (Response.create `OK)
+                  ; `Response (Response.create `OK) ]
+  ]
 ;;
 
 let () =
-  let handler body reqd =
-    debug " > handler called";
-    let request_body = Reqd.request_body reqd in
-    Request.Body.close request_body;
-    Reqd.respond_with_string reqd (Response.create `OK) body;
-  in
-  test ~msg:"Single OK" ~handler:(handler "")
-    ~input:[`Request (Request.create `GET "/")]
-    ~output:[`Response (Response.create `OK)];
-  test ~msg:"Multiple OK" ~handler:(handler "")
-    ~input:[`Request (Request.create `GET "/"); `Request (Request.create `GET "/")]
-    ~output:[`Response (Response.create `OK); `Response (Response.create `OK)];
-  test ~msg:"Conn close" ~handler:(handler "")
-    ~input:[ `Request (Request.create ~headers:Headers.(of_list ["connection", "close"]) `GET "/")
-           ; `Request (Request.create `GET "/")]
-    ~output:[`Response (Response.create `OK)];
-  test ~msg:"Single OK w/body" ~handler:(handler "Hello, world!")
-    ~input:[ `Request (Request.create ~headers:Headers.(of_list ["connection", "close"]) `GET "/")]
-    ~output:[`Response (Response.create `OK); `Fixed "Hello, world!" ];
-  let echo got_eof reqd =
-    debug " > handler called";
-    let request_body  = Reqd.request_body reqd in
-    let response_body = Reqd.respond_with_streaming reqd (Response.create ~headers:Headers.(of_list ["connection", "close"]) `OK) in
-    let rec on_read buffer ~off ~len =
-      Response.Body.write_string response_body (Bigstring.to_string ~off ~len buffer);
-      Response.Body.flush response_body (fun () ->
-        Request.Body.schedule_read request_body ~on_eof ~on_read)
-    and on_eof () = got_eof := true; Response.Body.close response_body in
-    Request.Body.schedule_read request_body ~on_eof ~on_read;
-  in
-  let got_eof = ref false in
-  test ~msg:"POST" ~handler:(echo got_eof)
-    ~input:[`Request (Request.create `GET "/" ~headers:Headers.(of_list ["transfer-encoding", "chunked"])); `Chunk "This is a test"]
-    ~output:[`Response (Response.create `OK ~headers:Headers.(of_list ["connection", "close"])); `Fixed "This is a test"];
-  assert !got_eof
+  Alcotest.run "httpaf server tests"
+    [ "single get"   , single_get
+    ; "multiple gets", multiple_gets ]
