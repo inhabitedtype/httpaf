@@ -2,7 +2,7 @@
 
 (executables
  ((libraries (httpaf alcotest))
-  (modules (test_httpaf_server))
+  (modules (test_httpaf_server simulator))
   (names (test_httpaf_server))))
 
 (alias
