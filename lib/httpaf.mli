@@ -724,24 +724,25 @@ module Connection : sig
       [continue] when writing should resume. {!yield_writer} should be called
       after {next_write_operation} returns a [`Yield] value. *)
 
-  val state : _ t -> [ `Running | `Closed_input | `Closed ]
-  (** [state t] is the state of the connection's input and output processors. A
-      connection's input processor may be closed while it's output processor is
-      still running (corresponding to the [`Closed_input] state), but the
-      output processor can never be closed while in the input processor is
-      open. *)
-
   val report_exn : _ t -> exn -> unit
   (** [report_exn t exn] reports that an error [exn] has been caught and
-      that it has been attributed to [t]. Calling this function will swithc [t]
+      that it has been attributed to [t]. Calling this function will switch [t]
       into an error state. Depending on the state [t] is transitioning from, it
       may call its error handler before terminating the connection. *)
 
+  val is_closed : _ t -> bool
+  (** [is_closed t] is [true] if both the read and write processors have been
+      shutdown. When this is the case {!next_read_operation} will return
+      [`Close _] and {!next_write_operation} will do the same will return a
+      [`Write _] until all buffered output has been flushed. *)
 
-  (** / *)
   val error_code : _ t -> error option
-  val shutdown_reader : _ t -> unit
+  (** [error_code t] returns the [error_code] that caused the connection to
+      close, if one exists. *)
+
+  (**/**)
   val shutdown : _ t -> unit
+  (**/**)
 end
 
 module Httpaf_private : sig

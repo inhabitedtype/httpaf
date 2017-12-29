@@ -156,12 +156,7 @@ let create ?(config=Config.default) ?(error_handler=default_error_handler) reque
   ; wakeup_reader   = ref []
   }
 
-let state t =
-  match Reader.is_closed t.reader, Writer.is_closed t.writer with
-  | false, false -> `Running
-  | true , true  -> `Closed
-  | true , false -> `Closed_input
-  | false, true  -> assert false
+let is_closed t = Reader.is_closed t.reader && Writer.is_closed t.writer
 
 let shutdown_reader t =
   Reader.close t.reader;
