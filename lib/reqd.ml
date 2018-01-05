@@ -268,8 +268,7 @@ let is_complete t =
 
 let flush_request_body t =
   let request_body = request_body t in
-  if Request.Body.has_pending_output request_body
-  then try Request.Body.execute_read request_body
+  try Request.Body.execute_read request_body
   with exn -> report_exn t exn
 
 let flush_response_body t =
