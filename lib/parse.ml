@@ -288,9 +288,6 @@ module Reader = struct
     t.len <- len - n;
     t.off <- if len = n then 0 else off + n
 
-  let buffer_for_parsing { buffer; off; len; _ } =
-    Bigstring.sub ~off ~len buffer
-
   let buffer_for_read_operation t =
     let { buffer; off; len; _ } = t in
     if len = Bigstring.length buffer
@@ -306,13 +303,13 @@ module Reader = struct
       commit t committed;
       begin match more with
       | AU.Incomplete ->
-        t.parse_state <- AU.parse t.parser ~input:(buffer_for_parsing t);
+        t.parse_state <- AU.parse t.parser;
         update_parse_state t more
       | AU.Complete ->
         t.parse_state <- AU.Done(0, result)
       end
     | AU.Partial { AU.continue; _ } ->
-      begin match continue (buffer_for_parsing t) more with
+      begin match continue t.buffer more ~off:t.off ~len:t.len with
       | AU.Partial { AU.continue; committed } ->
         commit t committed;
         t.parse_state <- AU.Partial { AU.continue; committed = 0 };
