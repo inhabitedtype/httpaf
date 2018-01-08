@@ -36,52 +36,54 @@ open Faraday
 let write_space t   = write_char t ' '
 let write_crlf  t   = write_string t "\r\n"
 
-let write_version t version =
-  write_string t (Version.to_string version)
+module Http = struct
+  let write_version t version =
+    write_string t (Version.to_string version)
 
-let write_method t meth =
-  write_string t (Method.to_string meth)
+  let write_method t meth =
+    write_string t (Method.to_string meth)
 
-let write_status t status =
-  write_string t (Status.to_string status)
+  let write_status t status =
+    write_string t (Status.to_string status)
 
-let write_headers t headers =
-  (* XXX(seliopou): escape these thigns *)
-  List.iter (fun (name, value) ->
-    write_string t name;
-    write_string t ": ";
-    write_string t value;
-    write_crlf   t)
-  (Headers.to_list headers);
-  write_crlf t
+  let write_headers t headers =
+    (* XXX(seliopou): escape these thigns *)
+    List.iter (fun (name, value) ->
+      write_string t name;
+      write_string t ": ";
+      write_string t value;
+      write_crlf   t)
+    (Headers.to_list headers);
+    write_crlf t
 
-let write_request t { Request.meth; target; version; headers } =
-  write_method  t meth   ; write_space t;
-  write_string  t target ; write_space t;
-  write_version t version; write_crlf  t;
-  write_headers t headers
+  let write_request t { Request.meth; target; version; headers } =
+    write_method  t meth   ; write_space t;
+    write_string  t target ; write_space t;
+    write_version t version; write_crlf  t;
+    write_headers t headers
 
-let write_response t { Response0.version; status; reason; headers } =
-  write_version t version; write_space t;
-  write_status  t status ; write_space t;
-  write_string  t reason ; write_crlf  t;
-  write_headers t headers
+  let write_response t { Response0.version; status; reason; headers } =
+    write_version t version; write_space t;
+    write_status  t status ; write_space t;
+    write_string  t reason ; write_crlf  t;
+    write_headers t headers
 
-let write_chunk_length t len =
-  write_string t (Printf.sprintf "%x" len);
-  write_crlf   t
+  let write_chunk_length t len =
+    write_string t (Printf.sprintf "%x" len);
+    write_crlf   t
 
-let write_string_chunk t chunk =
-  write_chunk_length t (String.length chunk);
-  write_string       t chunk
+  let write_string_chunk t chunk =
+    write_chunk_length t (String.length chunk);
+    write_string       t chunk
 
-let write_bigstring_chunk t chunk =
-  write_chunk_length t (Bigstring.length chunk);
-  write_bigstring    t chunk
+  let write_bigstring_chunk t chunk =
+    write_chunk_length t (Bigstring.length chunk);
+    write_bigstring    t chunk
 
-let schedule_bigstring_chunk t chunk =
-  write_chunk_length t (Bigstring.length chunk);
-  schedule_bigstring t chunk
+  let schedule_bigstring_chunk t chunk =
+    write_chunk_length t (Bigstring.length chunk);
+    schedule_bigstring t chunk
+end
 
 module Writer = struct
   type t =
@@ -108,10 +110,10 @@ module Writer = struct
   let faraday t = t.encoder
 
   let write_request t request =
-    write_request t.encoder request
+    Http.write_request t.encoder request
 
   let write_response t response =
-    write_response t.encoder response
+    Http.write_response t.encoder response
 
   let write_string t ?off ?len string =
     write_string t.encoder ?off ?len string
@@ -132,7 +134,7 @@ module Writer = struct
 
   let schedule_chunk t iovecs =
     let length = IOVec.lengthv iovecs in
-    write_chunk_length t.encoder length;
+    Http.write_chunk_length t.encoder length;
     schedule_fixed t iovecs
 
   let flush t f =

@@ -11,12 +11,12 @@ type response_stream = [ `Response of Response.t | body_part ] list
 
 let request_to_string r =
   let f = Faraday.create 0x1000 in
-  Serialize.write_request f r;
+  Serialize.Http.write_request f r;
   Faraday.serialize_to_string f
 
 let response_to_string r =
   let f = Faraday.create 0x1000 in
-  Serialize.write_response f r;
+  Serialize.Http.write_response f r;
   Faraday.serialize_to_string f
 
 let body_part_to_rev_strings = function

@@ -815,7 +815,9 @@ end
 
 module Httpaf_private : sig
   module Serialize : sig
-    val write_request  : Faraday.t -> Request.t  -> unit
-    val write_response : Faraday.t -> Response.t -> unit
+    module Http : sig
+      val write_request  : Faraday.t -> Request.t  -> unit
+      val write_response : Faraday.t -> Response.t -> unit
+    end
   end
 end
