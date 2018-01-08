@@ -54,19 +54,16 @@ let test ~input ~output ~handler () =
   let rec loop conn input =
     if !iwait && !owait then
       assert false (* deadlock, at lest for test handlers. *);
-    match Connection.state conn with
-    | `Running ->
+    if Connection.is_closed conn
+    then begin
+      debug "state: closed";
+      []
+    end else begin
       debug "state: running";
       let input'  = iloop conn input in
       let output  = oloop conn in
       output @ loop conn input'
-    | `Closed_input ->
-      debug "state: closed_input";
-      let output = oloop conn in
-      output
-    | `Closed ->
-      debug "state: closed";
-      []
+    end
   and iloop conn input =
     if !iwait
     then begin debug " iloop: wait"; input end
@@ -90,7 +87,7 @@ let test ~input ~output ~handler () =
         []
       | `Close    , _     ->
         debug " iloop: close(ok)";
-        Connection.shutdown_reader conn; []
+        []
       | `Yield , _  ->
         debug " iloop: yield";
         iwait := true;
