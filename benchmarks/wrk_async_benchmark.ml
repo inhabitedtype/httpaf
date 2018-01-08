@@ -31,7 +31,7 @@ let request_handler _ reqd =
 let main port max_accepts_per_batch () =
   Tcp.(Server.create_sock
       ~backlog:11_000 ~max_connections:10_000 ~max_accepts_per_batch (on_port port))
-    (create_connection_handler ~request_handler ~error_handler)
+    (Server.create_connection_handler ~request_handler ~error_handler)
   >>= fun server ->
   Deferred.forever () (fun () ->
     Clock.after Time.Span.(of_sec 0.5) >>| fun () ->
