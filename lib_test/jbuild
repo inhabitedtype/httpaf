@@ -2,11 +2,17 @@
 
 (executables
  ((libraries (httpaf alcotest))
-  (modules (test_httpaf))
-  (names (test_httpaf))))
+  (modules (test_httpaf_server test_httpaf_client simulator))
+  (names (test_httpaf_server test_httpaf_client))))
 
 (alias
  ((name runtest)
   (package httpaf)
-  (deps (test_httpaf.exe))
+  (deps (test_httpaf_server.exe))
+  (action (run ${<}))))
+
+(alias
+ ((name runtest)
+  (package httpaf)
+  (deps (test_httpaf_client.exe))
   (action (run ${<}))))

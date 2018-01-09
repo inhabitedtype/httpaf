@@ -64,10 +64,10 @@ type error =
   [ `Bad_gateway | `Bad_request | `Internal_server_error | `Exn of exn]
 
 type error_handler =
-  ?request:Request.t -> error -> (Headers.t -> Response.Body.t) -> unit
+  ?request:Request.t -> error -> (Headers.t -> [`write] Body.t) -> unit
 
 type 'fd t =
-  { reader                 : Reader.t
+  { reader                 : Reader.request
   ; writer                 : Writer.t
   ; response_body_buffer   : Bigstring.t
   ; request_handler        : 'fd request_handler
@@ -121,8 +121,8 @@ let default_error_handler ?request:_ error handle =
     | (#Status.client_error | #Status.server_error) as error -> Status.to_string error
   in
   let body = handle Headers.empty in
-  Response.Body.write_string body message;
-  Response.Body.close body
+  Body.write_string body message;
+  Body.close body
 
 let create ?(config=Config.default) ?(error_handler=default_error_handler) request_handler =
   let
@@ -146,7 +146,7 @@ let create ?(config=Config.default) ?(error_handler=default_error_handler) reque
       _wakeup_writer wakeup_writer
     end
   in
-  { reader          = Reader.create ~buffer_size:read_buffer_size handler
+  { reader          = Reader.request ~buffer_size:read_buffer_size handler
   ; writer
   ; response_body_buffer
   ; request_handler = request_handler
@@ -196,7 +196,7 @@ let set_error_and_handle ?request t error =
     let writer = t.writer in
     t.error_handler ?request error (fun headers ->
       Writer.write_response writer (Response.create ~headers status);
-      Response.Body.of_faraday (Writer.faraday writer));
+      Body.of_faraday (Writer.faraday writer));
   end
 
 let report_exn t exn =

@@ -107,6 +107,9 @@ module Writer = struct
 
   let faraday t = t.encoder
 
+  let write_request t request =
+    write_request t.encoder request
+
   let write_response t response =
     write_response t.encoder response
 

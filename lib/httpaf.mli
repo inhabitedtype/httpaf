@@ -34,7 +34,7 @@
 (** Http/af is a high-performance, memory-efficient, and scalable web server
     for OCaml. It implements the HTTP 1.1 specification with respect to
     parsing, serialization, and connection pipelining. For compatibility,
-    http/af respects the imperatives of the [Connection] header when handling
+    http/af respects the imperatives of the [Server_connection] header when handling
     HTTP 1.0 connections.
 
     To use this library effectively, the user must be familiar with the HTTP
@@ -420,6 +420,49 @@ module Headers : sig
   val pp_hum : Format.formatter -> t -> unit
 end
 
+(** {2 Message Body} *)
+
+module Body : sig
+  type 'rw t
+
+  val schedule_read
+    :  [`read] t
+    -> on_eof  : (unit -> unit)
+    -> on_read : (Bigstring.t -> off:int -> len:int -> unit)
+    -> unit
+
+  val write_char : [`write] t -> char -> unit
+  (** [write_char w char] copies [hcar] into an internal buffer. If possible,
+      this write will be combined with previous and/or subsequent writes before
+      transmission. *)
+
+  val write_string : [`write] t -> ?off:int -> ?len:int -> string -> unit
+  (** [write_string w ?off ?len str] copies [str] into an internal buffer. If
+      possible, this write will be combined with previous and/or subsequent
+      writes before transmission. *)
+
+  val write_bigstring : [`write] t -> ?off:int -> ?len:int -> Bigstring.t -> unit
+  (** [write_bigstring w ?off ?len bs] copies [bs] into an internal buffer. If
+      possible, this write will be combined with previous and/or subsequent
+      writes before transmission. *)
+
+  val schedule_bigstring : [`write] t -> ?off:int -> ?len:int -> Bigstring.t -> unit
+  (** [schedule_bigstring w ?off ?len bs] schedules [bs] to be
+      transmitted at the next opportunity without performing a copy. [bs]
+      should not be modified until a subsequent call to {!flush} has
+      successfully completed. *)
+
+  val flush : [`write] t -> (unit -> unit) -> unit
+  (** [flush t f] *)
+
+  val close : _ t -> unit
+  (** [close t] closes [t], causing subsequent read or write calls to raise. *)
+
+  val is_closed : _ t -> bool
+  (** [is_closed t] is true if {!close} has been called on [t] and [false]
+      otherwise. A closed [t] may still have pending output. *)
+end
+
 
 (** {2 Message Types} *)
 
@@ -460,23 +503,6 @@ module Request : sig
       more details. *)
 
   val pp_hum : Format.formatter -> t -> unit
-
-  module Body : sig
-    type t
-
-    val schedule_read
-      :  t
-      -> on_eof  : (unit -> unit)
-      -> on_read : (Bigstring.t -> off:int -> len:int -> unit)
-      -> unit
-
-    val close : t -> unit
-    (** [close t] closes [t], causing subsequent read or write calls to raise. *)
-
-    val is_closed : t -> bool
-    (** [is_closed t] is true if {!close} has been called on [t] and [false]
-        otherwise. A closed [t] may still have pending output. *)
-  end
 end
 
 
@@ -523,41 +549,6 @@ module Response : sig
       more details. *)
 
   val pp_hum : Format.formatter -> t -> unit
-
-  module Body : sig
-    type t
-
-    val write_char : t -> char -> unit
-    (** [write_char w char] copies [hcar] into an internal buffer. If possible,
-        this write will be combined with previous and/or subsequent writes before
-        transmission. *)
-
-    val write_string : t -> ?off:int -> ?len:int -> string -> unit
-    (** [write_string w ?off ?len str] copies [str] into an internal buffer. If
-        possible, this write will be combined with previous and/or subsequent
-        writes before transmission. *)
-
-    val write_bigstring : t -> ?off:int -> ?len:int -> Bigstring.t -> unit
-    (** [write_bigstring w ?off ?len bs] copies [bs] into an internal buffer. If
-        possible, this write will be combined with previous and/or subsequent
-        writes before transmission. *)
-
-    val schedule_bigstring : t -> ?off:int -> ?len:int -> Bigstring.t -> unit
-    (** [schedule_bigstring w ?off ?len bs] schedules [bs] to be
-        transmitted at the next opportunity without performing a copy. [bs]
-        should not be modified until a subsequent call to {!flush} has
-        successfully completed. *)
-
-    val flush : t -> (unit -> unit) -> unit
-    (** [flush t f] *)
-
-    val close : t -> unit
-    (** [close t] closes [t], causing subsequent read or write calls to raise. *)
-
-    val is_closed : t -> bool
-    (** [is_closed t] is true if {!close} has been called on [t] and [false]
-        otherwise. A closed [t] may still have pending output. *)
-  end
 end
 
 
@@ -626,29 +617,32 @@ module Reqd : sig
   type 'handle t
 
   val request : _ t -> Request.t
-  val request_body : _ t -> Request.Body.t
+  val request_body : _ t -> [`read] Body.t
 
   val response : _ t -> Response.t option
   val response_exn : _ t -> Response.t
 
   val respond_with_string    : _ t -> Response.t -> string -> unit
   val respond_with_bigstring : _ t -> Response.t -> Bigstring.t -> unit
-  val respond_with_streaming : _ t -> Response.t -> Response.Body.t
+  val respond_with_streaming : _ t -> Response.t -> [`write] Body.t
 
   val report_exn : _ t -> exn -> unit
   val try_with : _ t -> (unit -> unit) -> (unit, exn) result
 
-  (** / *)
+  (**/**)
   (* This doesn't work yet *)
-
   val switch_protocols
     :  'handle t
     -> headers:Headers.t
     -> ('handle -> Bigstring.t -> unit)
     -> unit
+  (**/**)
 end
 
-module Connection : sig
+
+(** {2 Server Connection} *)
+
+module Server_connection : sig
   module Config : sig
     type t =
       { read_buffer_size          : int (** Default is [4096] *)
@@ -669,7 +663,7 @@ module Connection : sig
   type 'handle request_handler = 'handle Reqd.t -> unit
 
   type error_handler =
-    ?request:Request.t -> error -> (Headers.t -> Response.Body.t) -> unit
+    ?request:Request.t -> error -> (Headers.t -> [`write] Body.t) -> unit
 
   val create
     :  ?config:Config.t
@@ -744,6 +738,80 @@ module Connection : sig
   val shutdown : _ t -> unit
   (**/**)
 end
+
+(** {2 Client Connection} *)
+
+module Client_connection : sig
+
+  type t
+
+  type error =
+    [ `Malformed_response of string | `Invalid_response_body_length of Response.t | `Exn of exn ]
+
+  type response_handler = Response.t -> [`read] Body.t  -> unit
+
+  type error_handler = error -> unit
+
+  val request
+    :  Request.t
+    -> error_handler:error_handler
+    -> response_handler:response_handler
+    -> [`write] Body.t * t
+
+  val next_read_operation : t -> [ `Read of Bigstring.t | `Close ]
+  (** [next_read_operation t] returns a value describing the next operation
+      that the caller should conduct on behalf of the connection. *)
+
+  val report_read_result : t -> [`Ok of int | `Eof] -> unit
+  (** [report_read_result t result] reports the result of the latest read
+      attempt to the connection. {report_read_result} should be called after a
+      call to {next_read_operation} that returns a [`Read buffer] value.
+
+        {ul
+        {- [`Ok n] indicates that the caller successfully received [n] bytes of
+        input and wrote them into the the read buffer that the caller was
+        provided by {next_read_operation}. }
+        {- [`Eof] indicates that the input source will no longer provide any
+        bytes to the read processor. }} *)
+
+  val next_write_operation : t -> [
+    | `Write of Bigstring.t IOVec.t list
+    | `Yield
+    | `Close of int ]
+  (** [next_write_operation t] returns a value describing the next operation
+      that the caller should conduct on behalf of the connection. *)
+
+  val report_write_result : t -> [`Ok of int | `Closed] -> unit
+  (** [report_write_result t result] reports the result of the latest write
+      attempt to the connection. {report_write_result} should be called after a
+      call to {next_write_operation} that returns a [`Write buffer] value.
+
+        {ul
+        {- [`Ok n] indicates that the caller successfully wrote [n] bytes of
+        output from the buffer that the caller was provided by
+        {next_write_operation}. }
+        {- [`Closed] indicates that the output destination will no longer
+        accept bytes from the write processor. }} *)
+
+  val yield_writer : t -> (unit -> unit) -> unit
+  (** [yield_writer t continue] registers with the connection to call
+      [continue] when writing should resume. {!yield_writer} should be called
+      after {next_write_operation} returns a [`Yield] value. *)
+
+  val report_exn : t -> exn -> unit
+  (** [report_exn t exn] reports that an error [exn] has been caught and
+      that it has been attributed to [t]. Calling this function will swithc [t]
+      into an error state. Depending on the state [t] is transitioning from, it
+      may call its error handler before terminating the connection. *)
+
+  val is_closed : t -> bool
+
+  (**/**)
+  val shutdown : t -> unit
+  (**/**)
+end
+
+(**/**)
 
 module Httpaf_private : sig
   module Serialize : sig

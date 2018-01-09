@@ -37,11 +37,11 @@ type error =
 type 'handle response_state =
   | Waiting   of (unit -> unit) ref
   | Complete  of Response.t
-  | Streaming of Response.t * Response.Body.t
+  | Streaming of Response.t * [`write] Body.t
   | Switch    of Response.t * ('handle -> Bigstring.t -> unit)
 
 type error_handler =
-  ?request:Request.t -> error -> (Headers.t -> Response.Body.t) -> unit
+  ?request:Request.t -> error -> (Headers.t -> [`write] Body.t) -> unit
 
 module Writer = Serialize.Writer
 
@@ -70,14 +70,13 @@ module Writer = Serialize.Writer
  * *)
 type 'handle t =
   { request                 : Request.t
-  ; request_body            : Request.Body.t
+  ; request_body            : [`read] Body.t
   ; writer                  : Writer.t
   ; response_body_buffer    : Bigstring.t
   ; error_handler           : error_handler
   ; mutable persistent      : bool
   ; mutable response_state  : 'handle response_state
   ; mutable error_code      : [`Ok | error ]
-  ; buffered_response_bytes : int ref
   ; wait_for_first_flush    : bool
   }
 
@@ -92,7 +91,6 @@ let create error_handler request request_body writer response_body_buffer =
   ; persistent              = Request.persistent_connection request
   ; response_state          = Waiting (ref default_waiting)
   ; error_code              = `Ok
-  ; buffered_response_bytes = ref 0
     (* XXX(seliopou): Make it configurable whether this callback is fired upon
      * receiving the response, or after the first flush of the streaming body.
      * There's a tradeoff here between time to first byte (latency) and batching
@@ -159,7 +157,7 @@ let respond_with_bigstring t response (bstr:Bigstring.t) =
 let unsafe_respond_with_streaming t response =
   match t.response_state with
   | Waiting when_done_waiting ->
-    let response_body = Response.Body.create t.response_body_buffer in
+    let response_body = Body.create t.response_body_buffer in
     Writer.write_response t.writer response;
     if t.wait_for_first_flush then Writer.yield t.writer;
     if t.persistent then
@@ -179,7 +177,7 @@ let respond_with_streaming t response =
 
 let report_error t error =
   t.persistent <- false;
-  Request.Body.close t.request_body;
+  Body.close t.request_body;
   match t.response_state, t.error_code with
   | Waiting _, `Ok ->
     t.error_code <- (error :> [`Ok | error]);
@@ -196,9 +194,9 @@ let report_error t error =
      * has been reported as well. *)
     failwith "httpaf.Reqd.report_exn: NYI"
   | Streaming(_response, response_body), `Ok ->
-    Response.Body.close response_body
+    Body.close response_body
   | Streaming(_response, response_body), `Exn _ ->
-    Response.Body.close response_body;
+    Body.close response_body;
     Writer.close t.writer
   | (Switch _ | Complete _ | Streaming _ | Waiting _) , _ ->
     (* XXX(seliopou): Once additional logging support is added, log the error
@@ -229,7 +227,7 @@ let switch_protocols t ~headers handler =
 (* Private API, not exposed to the user through httpaf.mli *)
 
 let close_request_body { request_body; _ } =
-  Request.Body.close request_body
+  Body.close request_body
 
 let error_code t =
   match t.error_code with
@@ -243,7 +241,7 @@ let on_more_output_available t f =
       failwith "httpaf.Reqd.on_more_output_available: only one callback can be registered at a time";
     when_done_waiting := f
   | Streaming(_, response_body) ->
-    Response.Body.when_ready_to_write response_body f
+    Body.when_ready_to_write response_body f
   | Complete _ ->
     failwith "httpaf.Reqd.on_more_output_available: response already complete"
   | Switch _ ->
@@ -253,14 +251,14 @@ let persistent_connection t =
   t.persistent
 
 let requires_input { request_body; _ } =
-  not (Request.Body.is_closed request_body)
+  not (Body.is_closed request_body)
 
 let requires_output { response_state; _ } =
   match response_state with
   | Complete _ -> false
   | Streaming (_, response_body) ->
-    not (Response.Body.is_closed response_body)
-    || Response.Body.has_pending_output response_body
+    not (Body.is_closed response_body)
+    || Body.has_pending_output response_body
   | Waiting _ | Switch _ -> true
 
 let is_complete t =
@@ -268,35 +266,18 @@ let is_complete t =
 
 let flush_request_body t =
   let request_body = request_body t in
-  if Request.Body.has_pending_output request_body
-  then try Request.Body.execute_read request_body
+  if Body.has_pending_output request_body
+  then try Body.execute_read request_body
   with exn -> report_exn t exn
 
 let flush_response_body t =
   match t.response_state with
   | Streaming (response, response_body) ->
-    (* XXX(seliopou): This is a hold-over from the previous implementation and
-       should be cleaned up in the future. Specifically, {!mod:Request.Body}
-       should expose an API (albeit a private one) that is sufficient to get
-       the right bytes from its internal {!Faraday.t} into the {!Writer.t},
-       which would involve moving [buffered_response_bytes] into that module
-       and doing the difference computation there. *)
-    let faraday = Response.Body.unsafe_faraday response_body in
-    begin match Faraday.operation faraday with
-    | `Yield | `Close -> ()
-    | `Writev iovecs ->
-      let buffered = t.buffered_response_bytes in
-      let iovecs   = IOVec.shiftv  iovecs !buffered in
-      let lengthv  = IOVec.lengthv iovecs in
-      buffered := !buffered + lengthv;
-      let request_method = t.request.Request.meth in
-      begin match Response.body_length ~request_method response with
-      | `Fixed _ | `Close_delimited -> Writer.schedule_fixed t.writer iovecs
-      | `Chunked -> Writer.schedule_chunk t.writer iovecs
-      | `Error _ -> assert false
-      end;
-      Writer.flush t.writer (fun () ->
-        Faraday.shift faraday lengthv;
-        buffered := !buffered - lengthv)
-		end
+    let request_method = t.request.Request.meth in
+    let encoding =
+      match Response.body_length ~request_method response with
+      | `Fixed _ | `Close_delimited | `Chunked as encoding -> encoding
+      | `Error _ -> assert false (* XXX(seliopou): This needs to be handled properly *)
+    in
+    Body.transfer_to_writer_with_encoding response_body ~encoding t.writer
   | _ -> ()

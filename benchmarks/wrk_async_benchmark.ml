@@ -12,18 +12,18 @@ let error_handler _ ?request error start_response =
   let response_body = start_response Headers.empty in
   begin match error with
   | `Exn exn ->
-    Response.Body.write_string response_body (Exn.to_string exn);
-    Response.Body.write_string response_body "\n";
+    Body.write_string response_body (Exn.to_string exn);
+    Body.write_string response_body "\n";
   | #Status.standard as error ->
-    Response.Body.write_string response_body (Status.default_reason_phrase error)
+    Body.write_string response_body (Status.default_reason_phrase error)
   end;
-  Response.Body.close response_body
+  Body.close response_body
 ;;
 
 let request_handler _ reqd =
   let { Request.target } = Reqd.request reqd in
   let request_body       = Reqd.request_body reqd in
-  Request.Body.close request_body;
+  Body.close request_body;
   match target with
   | "/" -> Reqd.respond_with_bigstring reqd (Response.create ~headers `OK) text;
   | _   -> Reqd.respond_with_string    reqd (Response.create `Not_found) "Route not found"
@@ -31,7 +31,7 @@ let request_handler _ reqd =
 let main port max_accepts_per_batch () =
   Tcp.(Server.create_sock
       ~backlog:11_000 ~max_connections:10_000 ~max_accepts_per_batch (on_port port))
-    (create_connection_handler ~request_handler ~error_handler)
+    (Server.create_connection_handler ~request_handler ~error_handler)
   >>= fun server ->
   Deferred.forever () (fun () ->
     Clock.after Time.Span.(of_sec 0.5) >>| fun () ->

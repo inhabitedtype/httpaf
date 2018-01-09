@@ -137,11 +137,11 @@ let swallow_trailer =
   skip_many header *> eol *> commit
 
 let finish writer =
-  Request.Body.close writer;
+  Body.close writer;
   commit
 
 let schedule_size writer n =
-  let faraday = Request.Body.unsafe_faraday writer in
+  let faraday = Body.unsafe_faraday writer in
   (* XXX(seliopou): performance regression due to switching to a single output
    * format in Farady. Once a specialized operation is exposed to avoid the
    * intemediate copy, this should be back to the original performance. *)
@@ -194,13 +194,16 @@ let body ~encoding writer =
 module Reader = struct
   module AU = Angstrom.Unbuffered
 
-  type error = [
+  type request_error = [
     | `Bad_request of Request.t
     | `Parse of string list * string ]
 
-  type t =
-    { handler             : Request.t -> Request.Body.t -> unit
-      (* The application request handler. *)
+  type response_error = [
+    | `Invalid_response_body_length of Response.t
+    | `Parse of string list * string ]
+
+  type 'error t =
+    { parser              : (unit, 'error) result Angstrom.t
     ; buffer              : Bigstring.t
       (* The buffer that the parser reads from. Managed by the control module
        * for the reader. *)
@@ -208,35 +211,60 @@ module Reader = struct
       (* The start of the readable region of {buffer}. *)
     ; mutable len         : int
       (* The length of the readable region of {buffer}. *)
-    ; mutable parse_state : (unit, error) result AU.state
+    ; mutable parse_state : (unit, 'error) result AU.state
       (* The state of the parse for the current request *)
     ; mutable closed      : bool
       (* Whether the input source has left the building, indicating that no
        * further input will be received. *)
     }
 
-  let parser handler =
-    let ok = return (Ok ()) in
-    request <* commit >>= fun request ->
-    match Request.body_length request with
-    | `Error `Bad_request -> return (Error (`Bad_request request))
-    | `Fixed 0L  ->
-      handler request Request.Body.empty;
-      ok
-    | `Fixed _ | `Chunked | `Close_delimited as encoding ->
-      let request_body = Request.Body.create Bigstring.empty in
-      handler request request_body;
-      body ~encoding request_body *> ok
+  type request  = request_error t
+  type response = response_error t
 
-  let create ?(buffer_size=0x1000) handler =
+  let create ?(buffer_size=0x1000) parser =
     let buffer = Bigstring.create buffer_size in
-    { handler
+    { parser
     ; buffer
     ; off         = 0
     ; len         = 0
-    ; parse_state = AU.parse (parser handler)
+    ; parse_state = AU.parse parser
     ; closed      = false
     }
+
+  let ok = return (Ok ())
+
+  let request ?buffer_size handler =
+    let parser =
+      request <* commit >>= fun request ->
+      match Request.body_length request with
+      | `Error `Bad_request -> return (Error (`Bad_request request))
+      | `Fixed 0L  ->
+        handler request Body.empty;
+        ok
+      | `Fixed _ | `Chunked | `Close_delimited as encoding ->
+        let request_body = Body.create Bigstring.empty in
+        handler request request_body;
+        body ~encoding request_body *> ok
+    in
+    create ?buffer_size parser
+
+  let response ?buffer_size ~request_method handler =
+    let parser =
+      response <* commit >>= fun response ->
+      let proxy = false in
+      match Response.body_length ~request_method response with
+      | `Error `Bad_gateway           -> assert (not proxy); assert false
+      | `Error `Internal_server_error -> return (Error (`Invalid_response_body_length response))
+      | `Fixed 0L ->
+        handler response Body.empty;
+        ok
+      | `Fixed _ | `Chunked | `Close_delimited as encoding ->
+        let response_body = Body.create Bigstring.empty in
+        handler response response_body;
+        body ~encoding response_body *> ok
+    in
+    create ?buffer_size parser
+  ;;
 
   let invariant t =
     assert
@@ -278,7 +306,7 @@ module Reader = struct
       commit t committed;
       begin match more with
       | AU.Incomplete ->
-        t.parse_state <- AU.parse (parser t.handler) ~input:(buffer_for_parsing t);
+        t.parse_state <- AU.parse t.parser ~input:(buffer_for_parsing t);
         update_parse_state t more
       | AU.Complete ->
         t.parse_state <- AU.Done(0, result)
