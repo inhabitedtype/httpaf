@@ -202,16 +202,14 @@ module Reader = struct
     | `Invalid_response_body_length of Response.t
     | `Parse of string list * string ]
 
+  type 'error parse_state =
+    | Done
+    | Fail    of 'error
+    | Partial of (Bigstring.t -> off:int -> len:int -> AU.more -> (unit, 'error) result AU.state)
+
   type 'error t =
     { parser              : (unit, 'error) result Angstrom.t
-    ; buffer              : Bigstring.t
-      (* The buffer that the parser reads from. Managed by the control module
-       * for the reader. *)
-    ; mutable off         : int
-      (* The start of the readable region of {buffer}. *)
-    ; mutable len         : int
-      (* The length of the readable region of {buffer}. *)
-    ; mutable parse_state : (unit, 'error) result AU.state
+    ; mutable parse_state : 'error parse_state
       (* The state of the parse for the current request *)
     ; mutable closed      : bool
       (* Whether the input source has left the building, indicating that no
@@ -221,19 +219,15 @@ module Reader = struct
   type request  = request_error t
   type response = response_error t
 
-  let create ?(buffer_size=0x1000) parser =
-    let buffer = Bigstring.create buffer_size in
+  let create parser =
     { parser
-    ; buffer
-    ; off         = 0
-    ; len         = 0
-    ; parse_state = AU.parse parser
+    ; parse_state = Done
     ; closed      = false
     }
 
   let ok = return (Ok ())
 
-  let request ?buffer_size handler =
+  let request handler =
     let parser =
       request <* commit >>= fun request ->
       match Request.body_length request with
@@ -246,9 +240,9 @@ module Reader = struct
         handler request request_body;
         body ~encoding request_body *> ok
     in
-    create ?buffer_size parser
+    create parser
 
-  let response ?buffer_size ~request_method handler =
+  let response ~request_method handler =
     let parser =
       response <* commit >>= fun response ->
       let proxy = false in
@@ -263,17 +257,7 @@ module Reader = struct
         handler response response_body;
         body ~encoding response_body *> ok
     in
-    create ?buffer_size parser
-  ;;
-
-  let invariant t =
-    assert
-      (match t.parse_state with
-      | AU.Done(committed, _) | AU.Partial { AU.committed; _ } -> committed = 0
-      | AU.Fail _ -> true);
-    assert (t.len <= Bigstring.length t.buffer);
-    assert (t.off <  Bigstring.length t.buffer);
-    assert (t.off >= 0);
+    create parser
   ;;
 
   let close t =
@@ -282,68 +266,47 @@ module Reader = struct
   let is_closed t =
     t.closed
 
-  let commit t n =
-    let { off; len; _ } = t in
-    assert (n <= len);
-    t.len <- len - n;
-    t.off <- if len = n then 0 else off + n
+  let transition t state =
+    match state with
+    | AU.Done(consumed, Ok ())
+    | AU.Fail(0 as consumed, _, _) ->
+      t.parse_state <- Done;
+      consumed
+    | AU.Done(consumed, Error error) ->
+      t.parse_state <- Fail error;
+      consumed
+    | AU.Fail(consumed, marks, msg) ->
+      t.parse_state <- Fail (`Parse(marks, msg));
+      consumed
+    | AU.Partial { committed; continue } ->
+      t.parse_state <- Partial continue;
+      committed
+  and start t state =
+      match state with
+      | AU.Done _         -> failwith "httpaf.Parse.unable to start parser"
+      | AU.Fail(0, marks, msg) ->
+        t.parse_state <- Fail (`Parse(marks, msg))
+      | AU.Partial { committed = 0; continue } ->
+        t.parse_state <- Partial continue
+      | _ -> assert false
+  ;;
 
-  let buffer_for_read_operation t =
-    let { buffer; off; len; _ } = t in
-    if len = Bigstring.length buffer
-    then `Error (`Parse([], "parser stall: input too large"))
-    else `Read  (Bigstring.sub ~off:(off + len) buffer)
-
-  let rec update_parse_state t more =
-    (* Invariant: the [parse_state] has no bytes to commit after this fuction
-     * has been called. *)
+  let rec read t bs ~off ~len =
     match t.parse_state with
-    | AU.Done(_, Error _) | AU.Fail _  -> ()
-    | AU.Done(committed, (Ok () as result)) ->
-      commit t committed;
-      begin match more with
-      | AU.Incomplete ->
-        t.parse_state <- AU.parse t.parser;
-        update_parse_state t more
-      | AU.Complete ->
-        t.parse_state <- AU.Done(0, result)
-      end
-    | AU.Partial { AU.continue; _ } ->
-      begin match continue t.buffer more ~off:t.off ~len:t.len with
-      | AU.Partial { AU.continue; committed } ->
-        commit t committed;
-        t.parse_state <- AU.Partial { AU.continue; committed = 0 };
-      | parse_state ->
-        t.parse_state <- parse_state;
-        update_parse_state t more
-      end
+    | Fail _ -> 0
+    | Done   ->
+      start t (AU.parse t.parser);
+      read  t bs ~off ~len;
+    | Partial continue ->
+      transition t (continue bs Incomplete ~off ~len)
+  ;;
 
-  let report_result t result =
-    match result with
-    | `Ok 0   -> ()
-    | `Ok len ->
-      let len = t.len + len in
-      if len + t.off > Bigstring.length t.buffer then
-        failwith "Reader.report_result size of read exceeds size of buffer";
-      t.len <- len;
-      update_parse_state t AU.Incomplete
-    | `Eof ->
-      update_parse_state t AU.Complete;
-      close t
-
-  let rec next t =
+  let next t =
     match t.parse_state with
-    | AU.Done(committed, Ok ()) ->
-      assert (committed = 0); (* enforce the invariant of [update_parse_state] *)
+    | Done ->
       if t.closed
       then `Close
-      else buffer_for_read_operation t
-    | AU.Done(_, Error err)       -> `Error err
-    | AU.Fail(0, _, _)            -> assert t.closed; `Close
-    | AU.Fail(_, marks , message) -> `Error (`Parse(marks, message))
-    | AU.Partial { AU.committed; _ } ->
-      assert (committed = 0); (* enforce the invariant of [update_parse_state] *)
-      if t.closed
-      then (update_parse_state t AU.Complete; next t)
-      else buffer_for_read_operation t
+      else `Read
+    | Fail    _ -> `Close
+    | Partial _ -> `Read
 end

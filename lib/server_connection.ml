@@ -48,13 +48,11 @@ module Writer = Serialize.Writer
 
 module Config = struct
   type t =
-    { read_buffer_size          : int
-    ; response_buffer_size      : int
+    { response_buffer_size      : int
     ; response_body_buffer_size : int }
 
   let default =
-    { read_buffer_size          = 0x1000
-    ; response_buffer_size      = 0x400
+    { response_buffer_size      = 0x400
     ; response_body_buffer_size = 0x1000 }
 end
 
@@ -128,8 +126,7 @@ let default_error_handler ?request:_ error handle =
 let create ?(config=Config.default) ?(error_handler=default_error_handler) request_handler =
   let
     { Config
-    . read_buffer_size
-    ; response_buffer_size
+    . response_buffer_size
     ; response_body_buffer_size
     } = config
   in
@@ -147,7 +144,7 @@ let create ?(config=Config.default) ?(error_handler=default_error_handler) reque
       _wakeup_writer wakeup_writer
     end
   in
-  { reader          = Reader.request ~buffer_size:read_buffer_size handler
+  { reader          = Reader.request handler
   ; writer
   ; response_body_buffer
   ; request_handler = request_handler
@@ -241,20 +238,24 @@ let next_read_operation t =
   match _next_read_operation t with
   | `Error (`Parse _)             -> set_error_and_handle          t `Bad_request; `Close
   | `Error (`Bad_request request) -> set_error_and_handle ~request t `Bad_request; `Close
-  | (`Read _ | `Yield | `Close) as operation -> operation
+  | (`Read | `Yield | `Close) as operation -> operation
 
-let report_read_result t result =
-  Reader.report_result t.reader result;
+let read t bs ~off ~len =
+  let consumed = Reader.read t.reader bs ~off ~len in
   if is_active t then
-    Reqd.flush_request_body (current_reqd_exn t)
+    Reqd.flush_request_body (current_reqd_exn t);
+  consumed
+;;
 
 let yield_reader t k =
   on_wakeup_reader t k
+;;
 
 let flush_response_body t =
   if is_active t then
     let reqd = current_reqd_exn t in
     Reqd.flush_response_body reqd
+;;
 
 let next_write_operation t =
   advance_request_queue_if_necessary t;
