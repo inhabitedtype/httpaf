@@ -273,31 +273,31 @@ let of_code c =
 let is_informational t =
   match t with
   | #informational -> true
-  | `Code n        -> n >= 100 && n < 199
+  | `Code n        -> n >= 100 && n <= 199
   | _              -> false
 
 let is_successful t =
   match t with
   | #successful -> true
-  | `Code n     -> n >= 200 && n < 299
+  | `Code n     -> n >= 200 && n <= 299
   | _           -> false
 
 let is_redirection t =
   match t with
   | #redirection -> true
-  | `Code n      -> n >= 300 && n < 399
+  | `Code n      -> n >= 300 && n <= 399
   | _            -> false
 
 let is_client_error t =
   match t with
   | #client_error -> true
-  | `Code n       -> n >= 400 && n < 499
+  | `Code n       -> n >= 400 && n <= 499
   | _             -> false
 
 let is_server_error t =
   match t with
   | #server_error -> true
-  | `Code n       -> n >= 500 && n < 599
+  | `Code n       -> n >= 500 && n <= 599
   | _             -> false
 
 let is_error t =
