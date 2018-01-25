@@ -203,10 +203,10 @@ module Status : sig
     | `Gone
     | `Length_required
     | `Precondition_failed
-    | `Request_entity_too_large
-    | `Request_uri_too_long
+    | `Payload_too_large
+    | `Uri_too_long
     | `Unsupported_media_type
-    | `Requested_range_not_satisfiable
+    | `Range_not_satisfiable
     | `Expectation_failed
     | `Upgrade_required
     | `I_m_a_teapot
