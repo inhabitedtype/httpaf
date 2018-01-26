@@ -51,7 +51,7 @@ let rec shiftv iovecs n =
   | []            -> failwith "shiftv: n >= lengthv iovecs"
   | iovec::iovecs ->
     let len = length iovec in
-    if len >= n
+    if len <= n
     then shiftv iovecs (n - len)
     else (shift iovec len)::iovecs
 
