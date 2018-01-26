@@ -47,7 +47,7 @@ let to_buffer b t =
 
 let compare x y =
   let c = compare x.major y.major in
-  if c = 0 then c else compare x.minor y.minor
+  if c <> 0 then c else compare x.minor y.minor
 
 let to_string t =
   match t with
