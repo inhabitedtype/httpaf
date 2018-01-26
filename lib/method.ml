@@ -58,7 +58,7 @@ let is_cacheable = function
 
 let is_idempotent = function
   | `PUT | `DELETE -> true
-  | _ -> false
+  | t -> is_safe t
 
 let to_string = function
   | `GET -> "GET"
