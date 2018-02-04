@@ -4,3 +4,8 @@
  ((libraries (httpaf httpaf-async async core))
   (modules (wrk_async_benchmark))
   (names (wrk_async_benchmark))))
+
+(executables
+ ((libraries (httpaf httpaf-lwt-unix lwt lwt.unix))
+  (modules (wrk_lwt_benchmark))
+  (names (wrk_lwt_benchmark))))
