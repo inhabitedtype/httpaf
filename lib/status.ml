@@ -71,14 +71,14 @@ type client_error = [
   | `Gone
   | `Length_required
   | `Precondition_failed
-  | `Request_entity_too_large
-  | `Request_uri_too_long
+  | `Payload_too_large
+  | `Uri_too_long
   | `Unsupported_media_type
-  | `Requested_range_not_satisfiable
+  | `Range_not_satisfiable
   | `Expectation_failed
   | `I_m_a_teapot
-  | `Upgrade_required
   | `Enhance_your_calm
+  | `Upgrade_required
   ]
 
 type server_error = [
@@ -136,10 +136,10 @@ let default_reason_phrase = function
   | `Gone -> "Gone"
   | `Length_required -> "Length Required"
   | `Precondition_failed -> "Precondition Failed"
-  | `Request_entity_too_large -> "Request Entity Too Large"
-  | `Request_uri_too_long -> "Request-URI Too Long"
+  | `Payload_too_large -> "Payload Too Large"
+  | `Uri_too_long -> "URI Too Long"
   | `Unsupported_media_type -> "Unsupported Media Type"
-  | `Requested_range_not_satisfiable -> "Requested Range Not Satisfiable"
+  | `Range_not_satisfiable -> "Range Not Satisfiable"
   | `Expectation_failed -> "Expectation Failed"
   | `I_m_a_teapot -> "I'm a teapot" (* RFC 2342 *)
   | `Enhance_your_calm -> "Enhance Your Calm"
@@ -186,10 +186,10 @@ let to_code = function
   | `Gone -> 410
   | `Length_required -> 411
   | `Precondition_failed -> 412
-  | `Request_entity_too_large -> 413
-  | `Request_uri_too_long -> 414
+  | `Payload_too_large -> 413
+  | `Uri_too_long -> 414
   | `Unsupported_media_type -> 415
-  | `Requested_range_not_satisfiable -> 416
+  | `Range_not_satisfiable -> 416
   | `Expectation_failed -> 417
   | `I_m_a_teapot -> 418
   | `Enhance_your_calm -> 420
@@ -237,10 +237,10 @@ let really_unsafe_of_code = function
   | 410 -> `Gone 
   | 411 -> `Length_required 
   | 412 -> `Precondition_failed 
-  | 413 -> `Request_entity_too_large 
-  | 414 -> `Request_uri_too_long 
+  | 413 -> `Payload_too_large 
+  | 414 -> `Uri_too_long 
   | 415 -> `Unsupported_media_type 
-  | 416 -> `Requested_range_not_satisfiable 
+  | 416 -> `Range_not_satisfiable 
   | 417 -> `Expectation_failed 
   | 418 -> `I_m_a_teapot 
   | 420 -> `Enhance_your_calm 
@@ -338,10 +338,10 @@ let to_string = function (* don't allocate *)
   | `Gone -> "410"
   | `Length_required -> "411"
   | `Precondition_failed -> "412"
-  | `Request_entity_too_large -> "413"
-  | `Request_uri_too_long -> "414"
+  | `Payload_too_large -> "413"
+  | `Uri_too_long -> "414"
   | `Unsupported_media_type -> "415"
-  | `Requested_range_not_satisfiable -> "416"
+  | `Range_not_satisfiable -> "416"
   | `Expectation_failed -> "417"
   | `I_m_a_teapot -> "418"
   | `Enhance_your_calm -> "420"
