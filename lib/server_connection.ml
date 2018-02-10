@@ -122,7 +122,8 @@ let default_error_handler ?request:_ error handle =
   in
   let body = handle Headers.empty in
   Body.write_string body message;
-  Body.close body
+  Body.close_writer body
+;;
 
 let create ?(config=Config.default) ?(error_handler=default_error_handler) request_handler =
   let

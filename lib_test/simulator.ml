@@ -137,7 +137,7 @@ let test_client ~request ~request_body_writes ~response_stream () =
   and oloop conn request_body =
     let request_body' =
       match request_body with
-      | []      -> Body.close body; request_body
+      | []      -> Body.close_writer body; request_body
       | x :: xs -> Body.write_string body x; Body.flush body ignore; xs
     in
     match Client_connection.next_write_operation conn with

@@ -3,7 +3,7 @@ open Httpaf
 let basic_handler body reqd =
   Simulator.debug " > handler called";
   let request_body = Reqd.request_body reqd in
-  Body.close request_body;
+  Body.close_reader request_body;
   Reqd.respond_with_string reqd (Response.create `OK) body;
 ;;
 
@@ -16,7 +16,7 @@ let echo_handler got_eof reqd =
     Body.write_string response_body (Bigstring.to_string ~off ~len buffer);
     Body.flush response_body (fun () ->
       Body.schedule_read request_body ~on_eof ~on_read)
-  and on_eof () = got_eof := true; Body.close response_body in
+  and on_eof () = got_eof := true; Body.close_writer response_body in
   Body.schedule_read request_body ~on_eof ~on_read;
 ;;
 

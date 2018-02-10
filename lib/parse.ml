@@ -137,7 +137,7 @@ let swallow_trailer =
   skip_many header *> eol *> commit
 
 let finish writer =
-  Body.close writer;
+  Body.close_reader writer;
   commit
 
 let schedule_size writer n =

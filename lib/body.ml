@@ -54,9 +54,10 @@ let flush t kontinue =
 let is_closed t =
   Faraday.is_closed t.faraday
 
-let close t =
+let close_writer t =
   Faraday.close t.faraday;
-  ready_to_write t
+  ready_to_write t;
+;;
 
 let unsafe_faraday t =
   t.faraday
@@ -94,6 +95,11 @@ let schedule_read t ~on_eof ~on_read =
 
 let has_pending_output t =
   Faraday.has_pending_output t.faraday
+
+let close_reader t =
+  Faraday.close t.faraday;
+  execute_read t
+;;
 
 let when_ready_to_write t callback =
   if is_closed t then callback ();

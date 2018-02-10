@@ -493,8 +493,12 @@ module Body : sig
       whether those packets have been queued for deliver or have actually been
       received by the intended recipient. *)
 
-  val close : _ t -> unit
-  (** [close t] closes [t], causing subsequent read or write calls to raise. If
+  val close_reader : [`read] t -> unit
+  (** [close_reader t] closes [t], indicating that any subsequent input
+      received should be discarded. *)
+
+  val close_writer : [`write] t -> unit
+  (** [close_writer t] closes [t], causing subsequent write calls to raise. If
       [t] is writable, this will cause any pending output to become available
       to the output channel. *)
 
