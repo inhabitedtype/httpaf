@@ -53,6 +53,19 @@ let single_get =
                   ; `Fixed "This is a test"];
       Alcotest.(check bool "got eof" !got_eof true);
     end
+  ; "single GET with streaming body, multiple chunks"
+  , `Quick
+  , begin fun () ->
+      let got_eof = ref false in
+      Simulator.test_server ()
+        ~handler: (echo_handler got_eof)
+        ~input:   [ `Request (Request.create `POST "/" ~headers:Headers.(of_list ["transfer-encoding", "chunked"]))
+                  ; `Chunk "This is a test"
+                  ; `Chunk " ... that involves multiple chunks" ]
+        ~output:  [`Response (Response.create `OK ~headers:Headers.(of_list ["connection", "close"]))
+                  ; `Fixed "This is a test ... that involves multiple chunks"];
+      Alcotest.(check bool "got eof" !got_eof true);
+    end
   ]
 ;;
 
