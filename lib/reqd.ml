@@ -38,7 +38,6 @@ type 'handle response_state =
   | Waiting   of (unit -> unit) ref
   | Complete  of Response.t
   | Streaming of Response.t * [`write] Body.t
-  | Switch    of Response.t * ('handle -> Bigstring.t -> unit)
 
 type error_handler =
   ?request:Request.t -> error -> (Headers.t -> [`write] Body.t) -> unit
@@ -51,8 +50,8 @@ module Writer = Serialize.Writer
  * to allocate a single [Reqd.t] per connection and reuse it across
  * request/responses. This would allow a single [Faraday.t] to be allocated for
  * the body and reused. The [response_state] type could then be inlined into
- * the [Reqd.t] record, with dummy values occuping the fields for [response]
- * and the switch protocol handler. Something like this:
+ * the [Reqd.t] record, with dummy values occuping the fields for [response].
+ * Something like this:
  *
  * {[
  *   type 'handle t =
@@ -110,15 +109,13 @@ let response { response_state; _ } =
   match response_state with
   | Waiting _ -> None
   | Streaming(response, _)
-  | Complete (response)
-  | Switch   (response, _) -> Some response
+  | Complete (response) -> Some response
 
 let response_exn { response_state; _ } =
   match response_state with
   | Waiting _            -> failwith "httpaf.Reqd.response_exn: response has not started"
   | Streaming(response, _)
-  | Complete (response)
-  | Switch   (response, _) -> response
+  | Complete (response) -> response
 
 let respond_with_string t response str =
   if t.error_code <> `Ok then
@@ -132,7 +129,7 @@ let respond_with_string t response str =
       t.persistent <- Response.persistent_connection response;
     t.response_state <- Complete response;
     done_waiting when_done_waiting
-  | Streaming _ | Switch _ ->
+  | Streaming _ ->
     failwith "httpaf.Reqd.respond_with_string: response already started"
   | Complete _ ->
     failwith "httpaf.Reqd.respond_with_string: response already complete"
@@ -149,7 +146,7 @@ let respond_with_bigstring t response (bstr:Bigstring.t) =
       t.persistent <- Response.persistent_connection response;
     t.response_state <- Complete response;
     done_waiting when_done_waiting
-  | Streaming _ | Switch _ ->
+  | Streaming _ ->
     failwith "httpaf.Reqd.respond_with_bigstring: response already started"
   | Complete _ ->
     failwith "httpaf.Reqd.respond_with_bigstring: response already complete"
@@ -165,7 +162,7 @@ let unsafe_respond_with_streaming t response =
     t.response_state <- Streaming(response, response_body);
     done_waiting when_done_waiting;
     response_body
-  | Streaming _ | Switch _ ->
+  | Streaming _ ->
     failwith "httpaf.Reqd.respond_with_streaming: response already started"
   | Complete _ ->
     failwith "httpaf.Reqd.respond_with_streaming: response already complete"
@@ -198,7 +195,7 @@ let report_error t error =
   | Streaming(_response, response_body), `Exn _ ->
     Body.close response_body;
     Writer.close t.writer
-  | (Switch _ | Complete _ | Streaming _ | Waiting _) , _ ->
+  | (Complete _ | Streaming _ | Waiting _) , _ ->
     (* XXX(seliopou): Once additional logging support is added, log the error
      * in case it is not spurious. *)
     ()
@@ -208,21 +205,6 @@ let report_exn t exn =
 
 let try_with t f : (unit, exn) Result.result =
   try f (); Ok () with exn -> report_exn t exn; Error exn
-
-let switch_protocols t ~headers handler =
-  if t.error_code <> `Ok then
-    failwith "httpaf.Reqd.switch_protocols: invalid state, currently handling error";
-  match t.response_state with
-  | Waiting when_done_waiting ->
-    let response = Response.create ~headers `Switching_protocols in
-    t.response_state <- Switch(response, handler);
-    if t.persistent then (* XXX(seliopou): Is this actually necessary? *)
-      t.persistent <- Response.persistent_connection response;
-    done_waiting when_done_waiting
-  | Complete _ ->
-    failwith "httpaf.Reqd.switch_protocols: response already complete"
-  | Streaming _ | Switch _ ->
-    failwith "httpaf.Reqd.switch_protocols: response already started"
 
 (* Private API, not exposed to the user through httpaf.mli *)
 
@@ -244,8 +226,6 @@ let on_more_output_available t f =
     Body.when_ready_to_write response_body f
   | Complete _ ->
     failwith "httpaf.Reqd.on_more_output_available: response already complete"
-  | Switch _ ->
-    failwith "httpaf.Reqd.on_more_output_available: called on non-streaming state"
 
 let persistent_connection t =
   t.persistent
@@ -259,7 +239,7 @@ let requires_output { response_state; _ } =
   | Streaming (_, response_body) ->
     not (Body.is_closed response_body)
     || Body.has_pending_output response_body
-  | Waiting _ | Switch _ -> true
+  | Waiting _ -> true
 
 let is_complete t =
   not (requires_input t || requires_output t)

@@ -681,15 +681,6 @@ module Reqd : sig
 
   val report_exn : _ t -> exn -> unit
   val try_with : _ t -> (unit -> unit) -> (unit, exn) result
-
-  (**/**)
-  (* This doesn't work yet *)
-  val switch_protocols
-    :  'handle t
-    -> headers:Headers.t
-    -> ('handle -> Bigstring.t -> unit)
-    -> unit
-  (**/**)
 end
 
 
