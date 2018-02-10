@@ -258,7 +258,7 @@ let unsafe_of_code c =
   match really_unsafe_of_code c with
   | `Code c ->
     if c < 0
-    then raise (Failure "Status.unsafe_of_code")
+    then failwith (Printf.sprintf "Status.unsafe_of_code: %d is negative" c)
     else `Code c
   | s -> s
 
@@ -266,7 +266,7 @@ let of_code c =
   match really_unsafe_of_code c with
   | `Code c ->
     if c < 100 || c > 999
-    then raise (Failure "Status.of_code")
+    then failwith (Printf.sprintf "Status.of_code: %d is not a three-digit number" c)
     else `Code c
   | s -> s
 
