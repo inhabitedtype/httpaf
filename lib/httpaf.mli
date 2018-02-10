@@ -357,7 +357,7 @@ module Headers : sig
         {- [get (of_list [("k", "v1"); ("k", "v2")]) "k" = Some "v1"]. }} *)
 
   val to_list : t -> (name * value) list
-  (** [to_list t] is the assocition list of header fields contained in [t] in
+  (** [to_list t] is the association list of header fields contained in [t] in
       transmission order. *)
 
   val to_rev_list : t -> (name * value) list
@@ -366,8 +366,8 @@ module Headers : sig
 
   val add : t -> name -> value -> t
   (** [add t name value] is a collection of header fields that is the same as
-      [t] except with [(name, value)] added at the beginning of the trasmission
-      order. The following equations should hold:
+      [t] except with [(name, value)] added at the end of the trasmission order.
+      The following equations should hold:
 
         {ul
         {- [get (add t name value) name = Some value] }} *)
@@ -379,10 +379,23 @@ module Headers : sig
 
   val add_list : t -> (name * value) list -> t
   (** [add_list t assoc] is a collection of header fields that is the same as
-      [t] except with all the header fields in [assoc] added to the beginning
-      of the transmission order. *)
+      [t] except with all the header fields in [assoc] added to the end of the
+      transmission order, in reverse order. *)
 
   val add_multi : t -> (name * value list) list -> t
+  (** [add_multi t assoc] is the same as
+
+      {[
+        add_list t (List.concat_map assoc ~f:(fun (name, values) ->
+          List.map values ~f:(fun value -> (name, value))))
+      ]}
+
+      but is implemented more efficiently. For example,
+
+      {[
+        add_multi t ["name1", ["x", "y"]; "name2", ["p", "q"]]
+          = add_list ["name1", "x"; "name1", "y"; "name2", "p"; "name2", "q"]
+      ]} *)
 
   val remove : t -> name -> t
   (** [remove t name] is a collection of header fields that contains all the
@@ -396,7 +409,10 @@ module Headers : sig
       and replaced with a single header field whose name is [name] and whose
       value is [value]. This new header field will appear in the transmission
       order where the first occurrence of a header field with a name matching
-      [name] was found. *)
+      [name] was found.
+
+      If no header field with a name equal to [name] is present in [t], then
+      the result is simply [t], unchanged. *)
 
   (** {3 Destructors} *)
 
@@ -405,8 +421,16 @@ module Headers : sig
       equal to [name]. *)
 
   val get : t -> name -> value option
+  (** [get t name] returns the last header from [t] with name [name], or [None]
+      if no such header is present. *)
+
   val get_exn : t -> name -> value
+  (** [get t name] returns the last header from [t] with name [name], or raises
+      if no such header is present. *)
+
   val get_multi : t -> name -> value list
+  (** [get_multi t name] is the list of header values in [t] whose names are
+      equal to [name]. The returned list is in transmission order. *)
 
   (** {3 Iteration} *)
 
@@ -430,9 +454,17 @@ module Body : sig
     -> on_eof  : (unit -> unit)
     -> on_read : (Bigstring.t -> off:int -> len:int -> unit)
     -> unit
+  (* [schedule_read t ~on_eof ~on_read] will setup [on_read] and [on_eof] as
+     callbacks for when bytes are available in [t] for the application to
+     consum, or when the input channel has been closed and no further bytes
+     will be received by the application.
+
+     Once either of these callbacks have been called, they become inactive. The
+     application is responsible for scheduling subsequent reads, either within
+     the [on_read] callback or by some other mechanism. *)
 
   val write_char : [`write] t -> char -> unit
-  (** [write_char w char] copies [hcar] into an internal buffer. If possible,
+  (** [write_char w char] copies [char] into an internal buffer. If possible,
       this write will be combined with previous and/or subsequent writes before
       transmission. *)
 
@@ -453,14 +485,23 @@ module Body : sig
       successfully completed. *)
 
   val flush : [`write] t -> (unit -> unit) -> unit
-  (** [flush t f] *)
+  (** [flush t f] makes all bytes in [t] available for writing to the awaiting
+      output channel. Once those bytes have reached that output channel, [f]
+      will be called.
+
+      The type of the output channel is runtime-dependent, as are guarantees about
+      whether those packets have been queued for deliver or have actually been
+      received by the intended recipient. *)
 
   val close : _ t -> unit
-  (** [close t] closes [t], causing subsequent read or write calls to raise. *)
+  (** [close t] closes [t], causing subsequent read or write calls to raise. If
+      [t] is writable, this will cause any pending output to become available
+      to the output channel. *)
 
   val is_closed : _ t -> bool
   (** [is_closed t] is true if {!close} has been called on [t] and [false]
       otherwise. A closed [t] may still have pending output. *)
+
 end
 
 
@@ -612,7 +653,7 @@ module IOVec : sig
   val shiftv : 'a t list -> int -> 'a t list
 end
 
-(** Request Descriptor *)
+(** {2 Request Descriptor} *)
 module Reqd : sig
   type 'handle t
 
@@ -622,9 +663,21 @@ module Reqd : sig
   val response : _ t -> Response.t option
   val response_exn : _ t -> Response.t
 
+  (** Responding
+
+      The following functions will initiate a response for the corresponding
+      request in [t]. Depending on the state of the current connection, and the
+      header values of the response, this may cause the connection to close or
+      to perisist for reuse by the client.
+
+      See {{:https://tools.ietf.org/html/rfc7230#section-6.3} RFC7230§6.3} for
+      more details. *)
+
   val respond_with_string    : _ t -> Response.t -> string -> unit
   val respond_with_bigstring : _ t -> Response.t -> Bigstring.t -> unit
   val respond_with_streaming : _ t -> Response.t -> [`write] Body.t
+
+  (** Exception Handling *)
 
   val report_exn : _ t -> exn -> unit
   val try_with : _ t -> (unit -> unit) -> (unit, exn) result
