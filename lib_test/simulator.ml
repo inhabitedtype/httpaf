@@ -4,11 +4,6 @@ open Httpaf.Httpaf_private
 let debug msg =
   if true then Printf.eprintf "%s\n%!" msg
 
-type body_part = [ `Fixed of string | `Chunk of string ]
-
-type request_stream  = [ `Request  of Request.t  | body_part ] list
-type response_stream = [ `Response of Response.t | body_part ] list
-
 let request_to_string r =
   let f = Faraday.create 0x1000 in
   Serialize.write_request f r;
@@ -19,31 +14,33 @@ let response_to_string r =
   Serialize.write_response f r;
   Faraday.serialize_to_string f
 
-let body_part_to_rev_strings = function
-  | `Fixed x -> [x]
-  | `Chunk x ->
-    let len = String.length x in
-    [x; Printf.sprintf "%x\r\n" len]
+let body_to_strings = function
+  | `Empty       -> []
+  | `Fixed   xs  -> xs
+  | `Chunked xs  ->
+    List.fold_right (fun x acc -> 
+      let len = String.length x in
+      [Printf.sprintf "%x\r\n" len; x; "\r\n"] @ acc)
+    xs [ "0\r\n" ]
+;;
 
-let stream_to_strings ss =
-  let rec loop ss acc =
-    match ss with
-    | []                      -> List.rev acc
-    | `Request  r      :: ss' -> loop ss' (request_to_string r :: acc)
-    | `Response r      :: ss' -> loop ss' (response_to_string r :: acc)
-    | #body_part as bp :: ss' -> loop ss' (body_part_to_rev_strings bp @ acc)
-  in
-  loop ss []
+let case_to_strings = function
+  | `Request  r, body -> [request_to_string  r] @ (body_to_strings body)
+  | `Response r, body -> [response_to_string r] @ (body_to_strings body)
 
-let request_stream_to_strings  : request_stream  -> string list = stream_to_strings
-let response_stream_to_strings : response_stream -> string list = stream_to_strings
+let response_stream_to_body (`Response response, body) =
+  let response = response_to_string response in
+  match body with
+  | `Empty  -> response
+  | `Fixed xs | `Chunked xs -> String.concat "" (response :: xs)
 
 let iovec_to_string { IOVec.buffer; off; len } =
   Bigstring.to_string ~off ~len buffer
 
+
 let test_server ~input ~output ~handler () =
-  let input  = request_stream_to_strings input in
-  let output = response_stream_to_strings output in
+  let input  = List.(concat (map case_to_strings input)) in
+  let output = List.(concat (map case_to_strings output)) in
   let conn   = Server_connection.create handler in
   let iwait, owait = ref false, ref false in
   let rec loop conn input =
@@ -110,29 +107,15 @@ let test_server ~input ~output ~handler () =
 ;;
 
 let test_client ~request ~request_body_writes ~response_stream () =
-  let input  = response_stream_to_strings response_stream in
-  let output =
-    request_stream_to_strings
-      ((`Request request) :: List.(map (fun x -> `Fixed x) request_body_writes))
-  in
+  let input  = case_to_strings response_stream in
+  let output = case_to_strings (`Request request, `Fixed request_body_writes) in
   let test_input  = ref []    in
   let got_eof     = ref false in
   let error_handler _ = assert false in
   let response_handler response response_body =
-    test_input := (`Response response) :: !test_input;
-    let chunk =
-      match request.Request.meth with
-      | #Method.standard as request_method ->
-        begin match Response.body_length ~request_method response with
-        | `Fixed _ | `Close_delimited   -> fun x -> `Fixed x
-        | `Chunked                      -> fun x -> `Chunk x
-        | _ -> assert false
-        end
-      | _ -> assert false
-    in
+    test_input := (response_to_string response) :: !test_input;
     let rec on_read bs ~off ~len =
-      let fixed = Bigstring.to_string bs ~off ~len in
-      test_input := (chunk fixed) :: !test_input;
+      test_input := Bigstring.to_string bs ~off ~len :: !test_input;
       Body.schedule_read response_body ~on_read ~on_eof
     and on_eof () = got_eof := true in
     Body.schedule_read response_body ~on_read ~on_eof
@@ -189,9 +172,9 @@ let test_client ~request ~request_body_writes ~response_stream () =
     | `Close    , _     ->
       debug " iloop: close(ok)"; []
   in
-  let test_output = loop conn request_body_writes input    |> String.concat "" in
-  let test_input  = List.rev !test_input |> response_stream_to_strings |> String.concat "" in
-  let input       = String.concat "" input in
+  let test_output = loop conn request_body_writes input |> String.concat "" in
+  let test_input  = List.rev !test_input |> String.concat "" in
+  let input       = response_stream_to_body response_stream in
   let output      = String.concat "" output in
   Alcotest.(check bool   "got eof"  true   !got_eof);
   Alcotest.(check string "request"  output test_output);

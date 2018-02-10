@@ -25,22 +25,22 @@ let single_get =
     , `Quick
     , Simulator.test_server
         ~handler: (basic_handler "")
-        ~input:   [ `Request (Request.create `GET "/") ]
-        ~output:  [ `Response (Response.create `OK) ]
+        ~input:   [(`Request (Request.create `GET "/")), `Empty]
+        ~output:  [(`Response (Response.create `OK)   ), `Empty]
   ; "singel GET, close connection"
     , `Quick
     , Simulator.test_server
         ~handler: (basic_handler "")
-        ~input:   [ `Request (Request.create ~headers:Headers.(of_list ["connection", "close"]) `GET "/")
-                  ; `Request (Request.create `GET "/") ]
-        ~output:  [ `Response (Response.create `OK) ]
+        ~input:   [ `Request (Request.create ~headers:Headers.(of_list ["connection", "close"]) `GET "/"), `Empty
+                  ; `Request (Request.create `GET "/"), `Empty ]
+        ~output:  [ `Response (Response.create `OK), `Empty ]
 
   ; "single GET with body"
   , `Quick
   , Simulator.test_server
       ~handler: (basic_handler "Hello, world!")
-      ~input:   [ `Request (Request.create ~headers:Headers.(of_list ["connection", "close"]) `GET "/") ]
-      ~output:  [ `Response (Response.create `OK); `Fixed "Hello, world!" ]
+      ~input:   [ `Request (Request.create ~headers:Headers.(of_list ["connection", "close"]) `GET "/"), `Empty ]
+      ~output:  [ `Response (Response.create `OK), `Fixed ["Hello, world!"] ]
   ; "single GET with streaming body"
   , `Quick
   , begin fun () ->
@@ -48,9 +48,9 @@ let single_get =
       Simulator.test_server ()
         ~handler: (echo_handler got_eof)
         ~input:   [ `Request (Request.create `POST "/" ~headers:Headers.(of_list ["transfer-encoding", "chunked"]))
-                  ; `Chunk "This is a test"]
+                  , `Chunked ["This is a test"] ]
         ~output:  [`Response (Response.create `OK ~headers:Headers.(of_list ["connection", "close"]))
-                  ; `Fixed "This is a test"];
+                  , `Fixed ["This is a test"] ];
       Alcotest.(check bool "got eof" !got_eof true);
     end
   ; "single GET with streaming body, multiple chunks"
@@ -60,10 +60,11 @@ let single_get =
       Simulator.test_server ()
         ~handler: (echo_handler got_eof)
         ~input:   [ `Request (Request.create `POST "/" ~headers:Headers.(of_list ["transfer-encoding", "chunked"]))
-                  ; `Chunk "This is a test"
-                  ; `Chunk " ... that involves multiple chunks" ]
+                  , `Chunked
+                      [ "This is a test"
+                      ; " ... that involves multiple chunks"  ] ]
         ~output:  [`Response (Response.create `OK ~headers:Headers.(of_list ["connection", "close"]))
-                  ; `Fixed "This is a test ... that involves multiple chunks"];
+                  , `Fixed ["This is a test ... that involves multiple chunks"] ];
       Alcotest.(check bool "got eof" !got_eof true);
     end
   ]
@@ -74,10 +75,10 @@ let multiple_gets =
     , `Quick
     , Simulator.test_server
         ~handler: (basic_handler "")
-        ~input:   [ `Request (Request.create `GET "/")
-                  ; `Request (Request.create `GET "/") ]
-        ~output:  [ `Response (Response.create `OK)
-                  ; `Response (Response.create `OK) ]
+        ~input:   [ `Request (Request.create `GET "/"), `Empty
+                  ; `Request (Request.create `GET "/"), `Empty ]
+        ~output:  [ `Response (Response.create `OK), `Empty
+                  ; `Response (Response.create `OK), `Empty ]
   ]
 ;;
 
