@@ -1,5 +1,5 @@
-open Core.Std
-open Async.Std
+open Core
+open Async
 open Httpaf
 open Httpaf_async
 
@@ -29,8 +29,9 @@ let request_handler _ reqd =
   | _   -> Reqd.respond_with_string    reqd (Response.create `Not_found) "Route not found"
 
 let main port max_accepts_per_batch () =
-  Tcp.(Server.create_sock
-      ~backlog:11_000 ~max_connections:10_000 ~max_accepts_per_batch (on_port port))
+  let where_to_listen = Tcp.Where_to_listen.of_port port in
+  Tcp.(Server.create_sock ~on_handler_error:`Ignore
+      ~backlog:11_000 ~max_connections:10_000 ~max_accepts_per_batch where_to_listen)
     (Server.create_connection_handler ~request_handler ~error_handler)
   >>= fun server ->
   Deferred.forever () (fun () ->
@@ -39,7 +40,7 @@ let main port max_accepts_per_batch () =
   Deferred.never ()
 
 let () =
-  Command.async
+  Command.async_spec
     ~summary:"Start a hello world Async server"
     Command.Spec.(empty +>
       flag "-p" (optional_with_default 8080 int)
