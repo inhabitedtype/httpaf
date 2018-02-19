@@ -57,3 +57,6 @@ let rec shiftv iovecs n =
 
 let add_len { buffer; off; len } n =
   { buffer; off; len = len + n }
+
+let pp_hum fmt t =
+  Format.fprintf fmt "{ buffer = <opaque>; off = %d; len = %d }" t.off t.len
