@@ -42,14 +42,15 @@ let request_handler _ reqd =
 ;;
 
 let main port max_accepts_per_batch () =
-  Tcp.(Server.create_sock
-      ~backlog:10_000 ~max_connections:10_000 ~max_accepts_per_batch (on_port port))
+  let where_to_listen = Tcp.Where_to_listen.of_port port in
+  Tcp.(Server.create_sock ~on_handler_error:`Raise
+      ~backlog:10_000 ~max_connections:10_000 ~max_accepts_per_batch where_to_listen)
     (Server.create_connection_handler ~request_handler ~error_handler)
   >>= fun server ->
   Deferred.never ()
 
 let () =
-  Command.async
+  Command.async_spec
     ~summary:"Start a hello world Async server"
     Command.Spec.(empty +>
       flag "-p" (optional_with_default 8080 int)
