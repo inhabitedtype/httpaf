@@ -1,10 +1,11 @@
 type _ t =
-  { faraday                     : Faraday.t
-  ; mutable scheduled           : bool
-  ; mutable on_eof              : unit -> unit
-  ; mutable on_read             : Bigstring.t -> off:int -> len:int -> unit
-  ; mutable when_ready_to_write : unit -> unit
-  ; buffered_bytes              : int ref
+  { faraday                        : Faraday.t
+  ; mutable read_scheduled         : bool
+  ; mutable write_final_if_chunked : bool
+  ; mutable on_eof                 : unit -> unit
+  ; mutable on_read                : Bigstring.t -> off:int -> len:int -> unit
+  ; mutable when_ready_to_write    : unit -> unit
+  ; buffered_bytes                 : int ref
   }
 
 let default_on_eof         = Sys.opaque_identity (fun () -> ())
@@ -13,11 +14,12 @@ let default_ready_to_write = Sys.opaque_identity (fun () -> ())
 
 let of_faraday faraday =
   { faraday
-  ; scheduled = false
-  ; on_eof    = default_on_eof
-  ; on_read   = default_on_read
-  ; when_ready_to_write = default_ready_to_write
-  ; buffered_bytes = ref 0
+  ; read_scheduled         = false
+  ; write_final_if_chunked = true
+  ; on_eof                 = default_on_eof
+  ; on_read                = default_on_read
+  ; when_ready_to_write    = default_ready_to_write
+  ; buffered_bytes         = ref 0
   }
 
 let create buffer =
@@ -66,35 +68,42 @@ let rec do_execute_read t on_eof on_read =
   match Faraday.operation t.faraday with
   | `Yield           -> ()
   | `Close           ->
-    t.scheduled <- false;
-    t.on_eof    <- default_on_eof;
-    t.on_read   <- default_on_read;
+    t.read_scheduled <- false;
+    t.on_eof         <- default_on_eof;
+    t.on_read        <- default_on_read;
     on_eof ()
   | `Writev []       -> assert false
   | `Writev (iovec::_) ->
-    t.scheduled <- false;
-    t.on_eof    <- default_on_eof;
-    t.on_read   <- default_on_read;
+    t.read_scheduled <- false;
+    t.on_eof         <- default_on_eof;
+    t.on_read        <- default_on_read;
     let { IOVec.buffer; off; len } = iovec in
     Faraday.shift t.faraday len;
     on_read buffer ~off ~len;
     execute_read t
 and execute_read t =
-  if t.scheduled then do_execute_read t t.on_eof t.on_read
+  if t.read_scheduled then do_execute_read t t.on_eof t.on_read
 
 let schedule_read t ~on_eof ~on_read =
-  if t.scheduled
+  if t.read_scheduled
   then failwith "Body.schedule_read: reader already scheduled";
   if is_closed t
   then do_execute_read t on_eof on_read
   else begin
-    t.scheduled <- true;
-    t.on_eof    <- on_eof;
-    t.on_read   <- on_read
+    t.read_scheduled <- true;
+    t.on_eof         <- on_eof;
+    t.on_read        <- on_read
   end
 
 let has_pending_output t =
-  Faraday.has_pending_output t.faraday
+  (* Force another write poll to make sure that the final chunk is emitted for
+   * chunk-encoded bodies. 
+   *
+   * XXX(seliopou): Note that the body data type does not keep track of
+   * encodings, so this happens even for non-chunk-encoded bodies. This should
+   * only happen for chunk-encoded bodies, but that's a fix for another day. *)
+  Faraday.has_pending_output t.faraday 
+  || (Faraday.is_closed t.faraday && t.write_final_if_chunked)
 
 let close_reader t =
   Faraday.close t.faraday;
@@ -110,7 +119,16 @@ let when_ready_to_write t callback =
 let transfer_to_writer_with_encoding t ~encoding writer =
   let faraday = t.faraday in
   begin match Faraday.operation faraday with
-  | `Yield | `Close -> ()
+  | `Yield -> ()
+  | `Close ->
+    let must_write_the_final_chunk = t.write_final_if_chunked in
+    t.write_final_if_chunked <- false;
+    if must_write_the_final_chunk
+    then
+      begin match encoding with
+      | `Chunked                    -> Serialize.Writer.schedule_chunk writer []
+      | `Fixed _ | `Close_delimited -> ()
+      end
   | `Writev iovecs ->
     let buffered = t.buffered_bytes in
     let iovecs   = IOVec.shiftv  iovecs !buffered in
