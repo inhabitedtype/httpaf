@@ -48,7 +48,7 @@ let rec shiftv iovecs n =
   if n = 0
   then iovecs
   else match iovecs with
-  | []            -> failwith "shiftv: n >= lengthv iovecs"
+  | []            -> failwith "shiftv: n > lengthv iovecs"
   | iovec::iovecs ->
     let len = length iovec in
     if len <= n
