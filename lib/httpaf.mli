@@ -651,6 +651,8 @@ module IOVec : sig
 
   val shift  : 'a t -> int -> 'a t
   val shiftv : 'a t list -> int -> 'a t list
+
+  val pp_hum : Format.formatter -> _ t -> unit
 end
 
 (** {2 Request Descriptor} *)

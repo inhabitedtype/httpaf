@@ -48,12 +48,15 @@ let rec shiftv iovecs n =
   if n = 0
   then iovecs
   else match iovecs with
-  | []            -> failwith "shiftv: n >= lengthv iovecs"
+  | []            -> failwith "shiftv: n > lengthv iovecs"
   | iovec::iovecs ->
-    let len = length iovec in
-    if len <= n
-    then shiftv iovecs (n - len)
-    else (shift iovec len)::iovecs
+    let iovec_len = length iovec in
+    if iovec_len <= n
+    then shiftv iovecs (n - iovec_len)
+    else (shift iovec n)::iovecs
 
 let add_len { buffer; off; len } n =
   { buffer; off; len = len + n }
+
+let pp_hum fmt t =
+  Format.fprintf fmt "{ buffer = <opaque>; off = %d; len = %d }" t.off t.len
