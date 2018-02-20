@@ -53,7 +53,7 @@ let rec shiftv iovecs n =
     let len = length iovec in
     if len <= n
     then shiftv iovecs (n - len)
-    else (shift iovec len)::iovecs
+    else (shift iovec n)::iovecs
 
 let add_len { buffer; off; len } n =
   { buffer; off; len = len + n }
