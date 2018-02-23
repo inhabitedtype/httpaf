@@ -44,16 +44,20 @@ let shift { buffer; off; len } n =
   assert (n <= len);
   { buffer; off = off + n; len = len - n }
 
-let rec shiftv iovecs n =
-  if n = 0
-  then iovecs
-  else match iovecs with
-  | []            -> failwith "shiftv: n > lengthv iovecs"
-  | iovec::iovecs ->
-    let iovec_len = length iovec in
-    if iovec_len <= n
-    then shiftv iovecs (n - iovec_len)
-    else (shift iovec n)::iovecs
+let shiftv iovecs n =
+  if n < 0 then failwith (Printf.sprintf "IOVec.shiftv: %d is a negative number" n);
+  let rec loop iovecs n =
+    if n = 0
+    then iovecs
+    else match iovecs with
+    | []            -> failwith "shiftv: n > lengthv iovecs"
+    | iovec::iovecs ->
+      let iovec_len = length iovec in
+      if iovec_len <= n
+      then loop iovecs (n - iovec_len)
+      else (shift iovec n)::iovecs
+  in
+  loop iovecs n
 
 let add_len { buffer; off; len } n =
   { buffer; off; len = len + n }
