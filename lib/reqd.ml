@@ -174,7 +174,7 @@ let respond_with_streaming t response =
 
 let report_error t error =
   t.persistent <- false;
-  Body.close t.request_body;
+  Body.close_reader t.request_body;
   match t.response_state, t.error_code with
   | Waiting _, `Ok ->
     t.error_code <- (error :> [`Ok | error]);
@@ -191,9 +191,9 @@ let report_error t error =
      * has been reported as well. *)
     failwith "httpaf.Reqd.report_exn: NYI"
   | Streaming(_response, response_body), `Ok ->
-    Body.close response_body
+    Body.close_writer response_body
   | Streaming(_response, response_body), `Exn _ ->
-    Body.close response_body;
+    Body.close_writer response_body;
     Writer.close t.writer
   | (Complete _ | Streaming _ | Waiting _) , _ ->
     (* XXX(seliopou): Once additional logging support is added, log the error
@@ -209,7 +209,7 @@ let try_with t f : (unit, exn) Result.result =
 (* Private API, not exposed to the user through httpaf.mli *)
 
 let close_request_body { request_body; _ } =
-  Body.close request_body
+  Body.close_reader request_body
 
 let error_code t =
   match t.error_code with

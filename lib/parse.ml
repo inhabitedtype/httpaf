@@ -133,11 +133,8 @@ let response =
     (take_till P.is_cr    <* eol <* commit)
     (headers              <* eol)
 
-let swallow_trailer =
-  skip_many header *> eol *> commit
-
 let finish writer =
-  Body.close writer;
+  Body.close_reader writer;
   commit
 
 let schedule_size writer n =
@@ -153,7 +150,7 @@ let schedule_size writer n =
 let body ~encoding writer =
   let rec fixed n ~unexpected =
     if n = 0L
-    then finish writer
+    then unit
     else
       at_end_of_input
       >>= function
@@ -168,21 +165,24 @@ let body ~encoding writer =
   match encoding with
   | `Fixed n ->
     fixed n ~unexpected:"expected more from fixed body"
+    >>= fun () -> finish writer
   | `Chunked ->
+    (* XXX(seliopou): The [eol] in this parser should really parse a collection
+     * of "chunk extensions", as defined in RFC7230§4.1. These do not show up
+     * in the wild very frequently, and the httpaf API has no way of exposing
+     * them to the suer, so for now the parser does not attempt to recognize
+     * them. This means that any chunked messages that contain chunk extensions
+     * will fail to parse. *)
     fix (fun p ->
       let _hex =
         (take_while1 P.is_hex >>= fun size -> hex size)
         (* swallows chunk-ext, if present, and CRLF *)
-        <* (skip_line *> commit)
+        <* (eol *> commit)
       in
-      at_end_of_input
-      >>= function
-        | true  -> finish writer
-        | false ->
-          _hex >>= fun size ->
-          if size = 0L
-          then finish writer *> swallow_trailer
-          else fixed size ~unexpected:"expected more from body chunk" *> p)
+      _hex >>= fun size ->
+      if size = 0L
+      then finish writer
+      else fixed size ~unexpected:"expected more from body chunk" *> eol *> p)
   | `Close_delimited ->
     fix (fun p ->
       let _rec = (available >>= fun n -> schedule_size writer n) *> p in
