@@ -91,17 +91,25 @@ module Oneshot = struct
       Body.transfer_to_writer_with_encoding t.request_body ~encoding t.writer
   ;;
 
-  let shutdown t =
-    flush_request_body t;
+  let shutdown_reader t =
     Reader.close t.reader;
-    Writer.close t.writer;
-    Body.close_writer t.request_body;
     begin match !(t.state) with
     | Awaiting_response | Closed -> ()
     | Received_response(_, response_body) ->
       Body.close_reader response_body;
       Body.execute_read response_body;
     end;
+  ;;
+
+  let shutdown_writer t =
+    flush_request_body t;
+    Writer.close t.writer;
+    Body.close_writer t.request_body;
+  ;;
+
+  let shutdown t =
+    shutdown_reader t;
+    shutdown_writer t;
   ;;
 
   let set_error_and_handle t error =
@@ -144,12 +152,13 @@ module Oneshot = struct
     | `Error (`Invalid_response_body_length _ as error) ->
       set_error_and_handle t error;
       `Close
-    | (`Read _ | `Close) as operation -> operation
+    | (`Read | `Close) as operation -> operation
   ;;
 
-  let report_read_result t result =
-    Reader.report_result t.reader result;
+  let read t bs ~off ~len =
+    let consumed = Reader.read t.reader bs ~off ~len in
     flush_response_body t;
+    consumed
   ;;
 
   let next_write_operation t =

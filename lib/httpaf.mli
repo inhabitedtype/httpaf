@@ -695,8 +695,7 @@ end
 module Server_connection : sig
   module Config : sig
     type t =
-      { read_buffer_size          : int (** Default is [4096] *)
-      ; response_buffer_size      : int (** Default is [1024] *)
+      { response_buffer_size      : int (** Default is [1024] *)
       ; response_body_buffer_size : int (** Default is [4096] *)
       }
 
@@ -723,26 +722,28 @@ module Server_connection : sig
   (** [create ?config ?error_handler ~request_handler] creates a connection
       handler that will service individual requests with [request_handler]. *)
 
-  val next_read_operation : _ t -> [ `Read of Bigstring.t | `Yield | `Close ]
+  val next_read_operation : _ t -> [ `Read | `Yield | `Close ]
   (** [next_read_operation t] returns a value describing the next operation
       that the caller should conduct on behalf of the connection. *)
 
-  val report_read_result : _ t -> [`Ok of int | `Eof] -> unit
-  (** [report_read_result t result] reports the result of the latest read
-      attempt to the connection. {report_read_result} should be called after a
-      call to {next_read_operation} that returns a [`Read buffer] value.
-
-        {ul
-        {- [`Ok n] indicates that the caller successfully received [n] bytes of
-        input and wrote them into the the read buffer that the caller was
-        provided by {next_read_operation}. }
-        {- [`Eof] indicates that the input source will no longer provide any
-        bytes to the read processor. }} *)
+  val read : _ t -> Bigstring.t -> off:int -> len:int -> int
+  (** [read t bigstring ~off ~len] reads bytes of input from the provided range
+      of [bigstring] and returns the number of bytes consumed by the
+      connection.  {!read} should be called after {!next_read_operation}
+      returns a [`Read] value and additional input is available for the
+      connection to consume. *)
 
   val yield_reader : _ t -> (unit -> unit) -> unit
   (** [yield_reader t continue] registers with the connection to call
       [continue] when reading should resume. {!yield_reader} should be called
       after {next_read_operation} returns a [`Yield] value. *)
+
+  val shutdown_reader : _ t -> unit
+  (** [shutdown_reader t] shutds own the read processor for the connection. All
+      subsequent calls to {!next_read_operations} will return [`Close].
+      {!shutdown_reader} should be called after {!next_read_operation} returns
+      a [`Read] value and there is no further input available for the
+      connection to consume. *)
 
   val next_write_operation : _ t -> [
     | `Write of Bigstring.t IOVec.t list
@@ -808,21 +809,23 @@ module Client_connection : sig
     -> response_handler:response_handler
     -> [`write] Body.t * t
 
-  val next_read_operation : t -> [ `Read of Bigstring.t | `Close ]
+  val next_read_operation : t -> [ `Read | `Close ]
   (** [next_read_operation t] returns a value describing the next operation
       that the caller should conduct on behalf of the connection. *)
 
-  val report_read_result : t -> [`Ok of int | `Eof] -> unit
-  (** [report_read_result t result] reports the result of the latest read
-      attempt to the connection. {report_read_result} should be called after a
-      call to {next_read_operation} that returns a [`Read buffer] value.
+  val read : t -> Bigstring.t -> off:int -> len:int -> int
+  (** [read t bigstring ~off ~len] reads bytes of input from the provided range
+      of [bigstring] and returns the number of bytes consumed by the
+      connection.  {!read} should be called after {!next_read_operation}
+      returns a [`Read] value and additional input is available for the
+      connection to consume. *)
 
-        {ul
-        {- [`Ok n] indicates that the caller successfully received [n] bytes of
-        input and wrote them into the the read buffer that the caller was
-        provided by {next_read_operation}. }
-        {- [`Eof] indicates that the input source will no longer provide any
-        bytes to the read processor. }} *)
+  val shutdown_reader : t -> unit
+  (** [shutdown_reader t] shutds own the read processor for the connection. All
+      subsequent calls to {!next_read_operations} will return [`Close].
+      {!shutdown_reader} should be called after {!next_read_operation} returns
+      a [`Read] value and there is no further input available for the
+      connection to consume. *)
 
   val next_write_operation : t -> [
     | `Write of Bigstring.t IOVec.t list
