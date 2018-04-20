@@ -150,7 +150,7 @@ module Server = struct
         if not (Fd.is_closed fd)
         then don't_wait_for (Fd.close fd));
       (* The Tcp module will close the file descriptor once this becomes determined. *)
-      Deferred.all_ignore
+      Deferred.all_unit
         [ Ivar.read read_complete
         ; Ivar.read write_complete ]
 end
@@ -210,7 +210,7 @@ module Client = struct
       if not (Fd.is_closed fd)
       then don't_wait_for (Fd.close fd));
     don't_wait_for (
-      Deferred.all_ignore
+      Deferred.all_unit
         [ Ivar.read read_complete
         ; Ivar.read write_complete ]
       >>| fun () ->
