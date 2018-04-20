@@ -14,7 +14,7 @@ let error_handler _ ?request error start_response =
   | #Status.standard as error ->
     Body.write_string response_body (Status.default_reason_phrase error)
   end;
-  Body.close response_body
+  Body.close_writer response_body
 ;;
 
 let request_handler _ reqd =
@@ -35,7 +35,7 @@ let request_handler _ reqd =
       Body.schedule_read request_body ~on_eof ~on_read;
     and on_eof () =
       print_endline "eof";
-      Body.close response_body
+      Body.close_writer response_body
     in
     Body.schedule_read (Reqd.request_body reqd) ~on_eof ~on_read
   | _ -> Reqd.respond_with_string reqd (Response.create `Method_not_allowed) ""

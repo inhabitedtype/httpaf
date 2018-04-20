@@ -32,7 +32,7 @@ let main port host () =
         socket
         (Request.create ~headers `GET "/")
     in
-    Body.close request_body;
+    Body.close_writer request_body;
     Ivar.read finished
 ;;
 

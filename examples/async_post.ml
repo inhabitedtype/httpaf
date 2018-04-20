@@ -45,15 +45,15 @@ let main port host () =
         Body.flush request_body (fun () -> ());
         return (`Consumed(len, `Need_unknown)))
       >>| function
-        | `Eof_with_unconsumed_data s -> Body.write_string request_body s; Body.close request_body
-        | `Eof                        -> Body.close request_body
+        | `Eof_with_unconsumed_data s -> Body.write_string request_body s; Body.close_writer request_body
+        | `Eof                        -> Body.close_writer request_body
         | `Stopped ()                 -> assert false);
     Ivar.read finished
 ;;
 
 let () =
   Command.async_spec
-    ~summary:"Start a hello world Async server"
+    ~summary:"Start a hello world Async client"
     Command.Spec.(empty +>
       flag "-p" (optional_with_default 80 int)
         ~doc:"int destination port"
