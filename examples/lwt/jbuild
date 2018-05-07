@@ -1,0 +1,5 @@
+(jbuild_version 1)
+
+(executables
+ ((names (lwt_get lwt_post lwt_echo_server))
+  (libraries (httpaf httpaf-lwt lwt lwt.unix))))

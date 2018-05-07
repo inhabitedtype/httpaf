@@ -1,0 +1,23 @@
+opam-version: "1.2"
+name: "httpaf-lwt"
+maintainer: "Spiros Eliopoulos <spiros@inhabitedtype.com>"
+authors: [ "Anton Bachin <antonbachin@yahoo.com>" ]
+license: "BSD-3-clause"
+homepage: "https://github.com/inhabitedtype/httpaf"
+bug-reports: "https://github.com/inhabitedtype/httpaf/issues"
+dev-repo: "https://github.com/inhabitedtype/httpaf.git"
+build: [
+  ["jbuilder" "subst"] {pinned}
+  ["jbuilder" "build" "-p" name "-j" jobs]
+]
+build-test: [
+  ["jbuilder" "runtest" "-p" name]
+]
+depends: [
+  "angstrom-lwt-unix"
+  "faraday-lwt-unix"
+  "httpaf"
+  "jbuilder" {build & >= "1.0+beta10"}
+  "lwt"
+]
+available: [ ocaml-version >= "4.03.0" ]

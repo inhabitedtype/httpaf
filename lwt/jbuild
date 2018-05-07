@@ -1,0 +1,7 @@
+(jbuild_version 1)
+
+(library
+ ((name httpaf_lwt)
+  (public_name httpaf-lwt)
+  (libraries (faraday-lwt-unix httpaf lwt.unix))
+  (flags (:standard -safe-string))))
