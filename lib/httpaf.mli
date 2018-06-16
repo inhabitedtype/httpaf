@@ -739,7 +739,7 @@ module Server_connection : sig
       after {next_read_operation} returns a [`Yield] value. *)
 
   val shutdown_reader : _ t -> unit
-  (** [shutdown_reader t] shutds own the read processor for the connection. All
+  (** [shutdown_reader t] shuts down the read processor for the connection. All
       subsequent calls to {!next_read_operations} will return [`Close].
       {!shutdown_reader} should be called after {!next_read_operation} returns
       a [`Read] value and there is no further input available for the
@@ -821,7 +821,7 @@ module Client_connection : sig
       connection to consume. *)
 
   val shutdown_reader : t -> unit
-  (** [shutdown_reader t] shutds own the read processor for the connection. All
+  (** [shutdown_reader t] shuts down the read processor for the connection. All
       subsequent calls to {!next_read_operations} will return [`Close].
       {!shutdown_reader} should be called after {!next_read_operation} returns
       a [`Read] value and there is no further input available for the
