@@ -168,7 +168,9 @@ let transfer_to_writer_with_encoding t ~encoding writer =
     let lengthv  = IOVec.lengthv iovecs in
     buffered := !buffered + lengthv;
     begin match encoding with
-    | `Fixed _ | `Close_delimited -> Serialize.Writer.schedule_fixed writer iovecs
+    | `Fixed _ | `Close_delimited -> 
+      t.write_final_if_chunked <- false;
+      Serialize.Writer.schedule_fixed writer iovecs
     | `Chunked                    -> Serialize.Writer.schedule_chunk writer iovecs
     end;
     Serialize.Writer.flush writer (fun () ->
