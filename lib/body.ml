@@ -161,16 +161,15 @@ let transfer_to_writer_with_encoding t ~encoding writer =
       begin match encoding with
       | `Chunked                    -> Serialize.Writer.schedule_chunk writer []
       | `Fixed _ | `Close_delimited -> ()
-      end
+      end;
+    Serialize.Writer.flush writer (fun () -> Serialize.Writer.close writer)
   | `Writev iovecs ->
     let buffered = t.buffered_bytes in
     let iovecs   = IOVec.shiftv  iovecs !buffered in
     let lengthv  = IOVec.lengthv iovecs in
     buffered := !buffered + lengthv;
     begin match encoding with
-    | `Fixed _ | `Close_delimited -> 
-      t.write_final_if_chunked <- false;
-      Serialize.Writer.schedule_fixed writer iovecs
+    | `Fixed _ | `Close_delimited -> Serialize.Writer.schedule_fixed writer iovecs
     | `Chunked                    -> Serialize.Writer.schedule_chunk writer iovecs
     end;
     Serialize.Writer.flush writer (fun () ->
