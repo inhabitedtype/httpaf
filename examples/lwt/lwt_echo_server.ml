@@ -37,7 +37,7 @@ let connection_handler : Unix.sockaddr -> Lwt_unix.file_descr -> unit Lwt.t =
          The code I would expect to work, without the possible bug, is commented
          out below. *)
 
-      Body.schedule_read
+      (* Body.schedule_read
         request_body
         ~on_eof:ignore
         ~on_read:(fun request_data ~off ~len ->
@@ -55,9 +55,20 @@ let connection_handler : Unix.sockaddr -> Lwt_unix.file_descr -> unit Lwt.t =
             Reqd.respond_with_streaming request_descriptor response in
 
           Body.write_bigstring response_body request_data ~off ~len;
-          Body.close_writer response_body)
+          Body.close_writer response_body) *)
 
-      (*
+      let response =
+        Response.create
+          ~headers:(Headers.of_list [
+            "Content-Type", response_content_type;
+            "Connection", "close";
+          ])
+          `OK
+      in
+
+      let response_body =
+        Reqd.respond_with_streaming request_descriptor response in
+
       let rec respond () =
         Body.schedule_read
           request_body
@@ -67,7 +78,6 @@ let connection_handler : Unix.sockaddr -> Lwt_unix.file_descr -> unit Lwt.t =
             respond ())
       in
       respond ()
-      *)
 
     | _ ->
       Reqd.respond_with_string
