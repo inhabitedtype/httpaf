@@ -76,6 +76,11 @@ let read fd buffer =
 
 
 
+let shutdown socket command =
+  try Lwt_unix.shutdown socket command
+  with Unix.Unix_error (Unix.ENOTCONN, _, _) -> ()
+
+
 
 (* TODO But is this really awkward? We just need a finalize call on the joined
    promise. *)
@@ -126,7 +131,7 @@ module Server = struct
           | `Close ->
             Lwt.wakeup_later notify_read_loop_exited ();
             if not (Lwt_unix.state socket = Lwt_unix.Closed) then begin
-              Lwt_unix.shutdown socket Unix.SHUTDOWN_RECEIVE
+              shutdown socket Unix.SHUTDOWN_RECEIVE
             end;
             Lwt.return_unit
         in
@@ -158,7 +163,7 @@ module Server = struct
           | `Close _ ->
             Lwt.wakeup_later notify_write_loop_exited ();
             if not (Lwt_unix.state socket = Lwt_unix.Closed) then begin
-              Lwt_unix.shutdown socket Unix.SHUTDOWN_SEND
+              shutdown socket Unix.SHUTDOWN_SEND
             end;
             Lwt.return_unit
         in
@@ -217,7 +222,7 @@ module Client = struct
         | `Close ->
           Lwt.wakeup_later notify_read_loop_exited ();
           if not (Lwt_unix.state socket = Lwt_unix.Closed) then begin
-            Lwt_unix.shutdown socket Unix.SHUTDOWN_RECEIVE
+            shutdown socket Unix.SHUTDOWN_RECEIVE
           end;
           Lwt.return_unit
       in
@@ -249,7 +254,7 @@ module Client = struct
         | `Close _ ->
           Lwt.wakeup_later notify_write_loop_exited ();
           if not (Lwt_unix.state socket = Lwt_unix.Closed) then begin
-            Lwt_unix.shutdown socket Unix.SHUTDOWN_SEND
+            shutdown socket Unix.SHUTDOWN_SEND
           end;
           Lwt.return_unit
       in
