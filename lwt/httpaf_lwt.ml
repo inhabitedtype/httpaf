@@ -135,7 +135,7 @@ module Server = struct
           Lwt.catch
             read_loop_step
             (fun exn ->
-              Lwt.wakeup_later_exn notify_read_loop_exited exn;
+              Server_connection.report_exn connection exn;
               Lwt.return_unit))
       in
 
@@ -167,7 +167,7 @@ module Server = struct
           Lwt.catch
             write_loop_step
             (fun exn ->
-              Lwt.wakeup_later_exn notify_write_loop_exited exn;
+              Server_connection.report_exn connection exn;
               Lwt.return_unit))
       in
 
@@ -226,7 +226,7 @@ module Client = struct
         Lwt.catch
           read_loop_step
           (fun exn ->
-            Lwt.wakeup_later_exn notify_read_loop_exited exn;
+            Client_connection.report_exn connection exn;
             Lwt.return_unit))
     in
 
@@ -258,7 +258,7 @@ module Client = struct
         Lwt.catch
           write_loop_step
           (fun exn ->
-            Lwt.wakeup_later_exn notify_write_loop_exited exn;
+            Client_connection.report_exn connection exn;
             Lwt.return_unit))
     in
 
