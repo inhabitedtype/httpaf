@@ -39,30 +39,21 @@ let request_handler _ reqd =
   | _ ->
     Reqd.respond_with_string reqd (Response.create `Method_not_allowed) ""
 
-let main port max_accepts_per_batch =
-  let sock = Lwt_unix.socket Lwt_unix.PF_INET Lwt_unix.SOCK_STREAM 0 in
+let main port =
   let sockaddr = Lwt_unix.ADDR_INET (Unix.inet_addr_loopback, port) in
-  Lwt_unix.bind sock sockaddr >>= fun () ->
-  Lwt_unix.listen sock 10_000;
-  let h = Server.create_connection_handler ~error_handler ~request_handler in
-  let rec serve () =
-    Lwt_unix.accept_n sock max_accepts_per_batch >>= fun (accepts, exn) ->
-    begin match exn with
-    | None -> ()
-    | Some exn -> prerr_endline ("Accept failed: " ^ Printexc.to_string exn)
-    end;
-    List.iter (fun (sa, fd) -> Lwt.async (fun () -> h fd sa)) accepts;
-    serve () in
-  serve ()
+  let handler = Server.create_connection_handler ~error_handler ~request_handler in
+  Lwt.async begin fun () ->
+    Lwt_io.establish_server_with_client_socket ~backlog:10_000 sockaddr handler
+      >|= ignore
+  end;
+  fst (Lwt.wait ())
 
 let () =
   let port = ref 8080 in
-  let batch_capacity = ref 100 in
   Arg.parse
-    ["-p", Arg.Set_int port, " Port number to listen on.";
-     "-a", Arg.Set_int batch_capacity, " Maximum number of accepts per batch."]
+    ["-p", Arg.Set_int port, " Port number to listen on."]
     (fun _ ->
       prerr_endline "No posititonal arguments accepted.";
       exit 64)
     "lwt_unix_echo_post [-p PORT] [-a N-ACCEPT-PER-BATCH]";
-  Lwt_main.run (main !port !batch_capacity)
+  Lwt_main.run (main !port)

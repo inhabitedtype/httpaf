@@ -6,6 +6,7 @@ let text = "CHAPTER I. Down the Rabbit-Hole  Alice was beginning to get very tir
 let text = Bigstring.of_string text
 
 let headers = Headers.of_list ["content-length", string_of_int (Bigstring.length text)]
+
 let error_handler _ ?request:_ error start_response =
   let response_body = start_response Headers.empty in
   begin match error with
@@ -16,7 +17,6 @@ let error_handler _ ?request:_ error start_response =
     Body.write_string response_body (Status.default_reason_phrase error)
   end;
   Body.close_writer response_body
-;;
 
 let request_handler _ reqd =
   let {Request.target; _} = Reqd.request reqd in
@@ -26,13 +26,13 @@ let request_handler _ reqd =
   | "/" -> Reqd.respond_with_bigstring reqd (Response.create ~headers `OK) text;
   | _   -> Reqd.respond_with_string    reqd (Response.create `Not_found) "Route not found"
 
-let main port max_accepts_per_batch =
-  let conn_count = ref 0 in
-  let sock = Lwt_unix.socket Lwt_unix.PF_INET Lwt_unix.SOCK_STREAM 0 in
+let connection_handler =
+  Httpaf_lwt_unix.Server.create_connection_handler
+    ~error_handler ~request_handler
+
+let main port =
   let sockaddr = Lwt_unix.ADDR_INET (Unix.inet_addr_loopback, port) in
-  Lwt_unix.bind sock sockaddr >>= fun () ->
-  Lwt_unix.listen sock 11_000;
-  let h = Httpaf_lwt_unix.Server.create_connection_handler ~error_handler ~request_handler in
+  let conn_count = ref 0 in
 
   let rec monitor () =
     Lwt_unix.sleep 0.5 >>= fun () ->
@@ -40,32 +40,21 @@ let main port max_accepts_per_batch =
     monitor () in
   Lwt.async monitor;
 
-  let rec serve () =
-    Lwt_unix.accept_n sock max_accepts_per_batch >>= fun (accepts, exn) ->
-    begin match exn with
-    | None -> Lwt.return_unit
-    | Some exn -> Lwt_io.eprintlf "Accept failed: %s." (Printexc.to_string exn)
-    end >>= fun () ->
-    conn_count := !conn_count + List.length accepts;
-    accepts |> List.iter begin fun (sa, fd) ->
-      Lwt.async begin fun () ->
-        Lwt.catch
-          (fun () -> h fd sa)
-          (fun exn ->
-            Lwt_io.eprintlf "Failure while serving client: %s."
-                            (Printexc.to_string exn))
-        >|= fun () -> decr conn_count
-      end
-    end;
-    serve () in
-  serve ()
+  let handler sockaddr fd =
+    incr conn_count;
+    connection_handler sockaddr fd >|= fun () ->
+    decr conn_count in
+  Lwt.async begin fun () ->
+    Lwt_io.establish_server_with_client_socket ~backlog:10_000 sockaddr handler
+      >|= ignore
+  end;
+
+  fst (Lwt.wait ())
 
 let () =
   let port = ref 8080 in
-  let max_accepts_per_batch = ref 1 in
   Arg.parse
-    [ "-p", Arg.Set_int port, "int Source port to listen on";
-      "-a", Arg.Set_int max_accepts_per_batch, "int Maximum accepts per batch" ]
+    ["-p", Arg.Set_int port, "int Source port to listen on"]
     (fun _ -> raise (Arg.Bad "positional arg"))
     "Start a hello world Lwt server";
-  Lwt_main.run (main !port !max_accepts_per_batch)
+  Lwt_main.run (main !port)

@@ -7,5 +7,5 @@
 
 (executables
  ((libraries (httpaf httpaf-lwt-unix lwt lwt.unix))
-  (modules (wrk_lwt_benchmark))
-  (names (wrk_lwt_benchmark))))
+  (modules (wrk_lwt_unix_benchmark))
+  (names (wrk_lwt_unix_benchmark))))
