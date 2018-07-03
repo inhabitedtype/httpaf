@@ -144,10 +144,11 @@ let close_reader t =
 ;;
 
 let when_ready_to_write t callback =
-  if is_closed t then callback ();
   if not (t.when_ready_to_write == default_ready_to_write)
-  then failwith "Body.when_ready_to_write: only one callback can be registered at a time";
-  t.when_ready_to_write <- callback
+  then failwith "Body.when_ready_to_write: only one callback can be registered at a time"
+  else if is_closed t
+  then callback ()
+  else t.when_ready_to_write <- callback
 
 let transfer_to_writer_with_encoding t ~encoding writer =
   let faraday = t.faraday in
