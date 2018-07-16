@@ -82,7 +82,28 @@ let multiple_gets =
   ]
 ;;
 
+let streaming_response =
+  [ "streaming body with flush"
+  , `Quick
+  , Simulator.test_server
+      ~handler: (fun reqd ->
+        Simulator.debug " > handler called";
+        let request_body = Reqd.request_body reqd in
+        Body.close_reader request_body;
+        let body = Reqd.respond_with_streaming reqd (Response.create `OK) in
+        Body.write_string body "Hello,";
+        Body.flush body (fun () ->
+          Body.write_string body " world!";
+          Body.close_writer body))
+      ~input:   [ `Request (Request.create `GET "/"), `Empty ]
+      ~output:  [ `Response (Response.create `OK), `Fixed ["Hello,"; " world!"] ]
+  ]
+
+;;
+
 let () =
   Alcotest.run "httpaf server tests"
-    [ "single get"   , single_get
-    ; "multiple gets", multiple_gets ]
+    [ "single get"        , single_get
+    ; "multiple gets"     , multiple_gets
+    ; "streaming response", streaming_response
+    ]
