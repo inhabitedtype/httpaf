@@ -194,7 +194,7 @@ let report_error t error =
     Body.close_writer response_body
   | Streaming(_response, response_body), `Exn _ ->
     Body.close_writer response_body;
-    Writer.close t.writer
+    Writer.close_and_drain t.writer
   | (Complete _ | Streaming _ | Waiting _) , _ ->
     (* XXX(seliopou): Once additional logging support is added, log the error
      * in case it is not spurious. *)
