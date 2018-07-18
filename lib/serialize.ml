@@ -157,6 +157,9 @@ module Writer = struct
     | `Closed -> close t
     | `Ok len -> shift t.encoder len
 
+  let has_pending_output t =
+    Faraday.has_pending_output t.encoder
+
   let next t =
     match Faraday.operation t.encoder with
     | `Close         -> `Close (drained_bytes t)

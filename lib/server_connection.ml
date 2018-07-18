@@ -207,6 +207,9 @@ let advance_request_queue_if_necessary t =
     then if Reqd.is_complete reqd then begin
       ignore (Queue.take t.request_queue);
       wakeup_reader t;
+    end else if (Reqd.requires_output reqd)
+    then begin
+      wakeup_reader t;
     end else begin
       ignore (Queue.take t.request_queue);
       Queue.iter Reqd.close_request_body t.request_queue;

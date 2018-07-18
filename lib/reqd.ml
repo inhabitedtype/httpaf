@@ -233,9 +233,9 @@ let persistent_connection t =
 let requires_input { request_body; _ } =
   not (Body.is_closed request_body)
 
-let requires_output { response_state; _ } =
+let requires_output { response_state; writer; _ } =
   match response_state with
-  | Complete _ -> false
+  | Complete _ -> Writer.has_pending_output writer;
   | Streaming (_, response_body) ->
     not (Body.is_closed response_body)
     || Body.has_pending_output response_body

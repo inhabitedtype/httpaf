@@ -27,7 +27,7 @@ let single_get =
         ~handler: (basic_handler "")
         ~input:   [(`Request (Request.create `GET "/")), `Empty]
         ~output:  [(`Response (Response.create `OK)   ), `Empty]
-  ; "singel GET, close connection"
+  ; "single GET, close connection"
     , `Quick
     , Simulator.test_server
         ~handler: (basic_handler "")
