@@ -142,7 +142,10 @@ module Writer = struct
     Faraday.yield t.encoder
 
   let close t =
-    close t.encoder;
+    Faraday.close t.encoder
+
+  let close_and_drain t =
+    Faraday.close t.encoder;
     let drained = Faraday.drain t.encoder in
     t.drained_bytes <- t.drained_bytes + drained
 
