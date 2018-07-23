@@ -1,0 +1,12 @@
+(jbuild_version 1)
+
+(library
+ ((name        httpaf_lwt_unix)
+  (public_name httpaf-lwt-unix)
+  (wrapped false)
+  (libraries
+    (angstrom angstrom-lwt-unix
+     faraday faraday-lwt faraday-lwt-unix
+     httpaf
+     lwt lwt.unix))
+  (flags (:standard -safe-string))))

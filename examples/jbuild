@@ -2,3 +2,8 @@
  ((libraries (httpaf httpaf-async async core))
   (modules (async_echo_post async_get async_post))
   (names (async_echo_post async_get async_post))))
+
+(executables
+ ((libraries (httpaf httpaf-lwt-unix lwt lwt.unix))
+  (modules (lwt_unix_echo_post lwt_unix_get))
+  (names (lwt_unix_echo_post lwt_unix_get))))
