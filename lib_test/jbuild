@@ -1,7 +1,7 @@
 (jbuild_version 1)
 
 (executables
- ((libraries (httpaf alcotest))
+ ((libraries (bigstringaf httpaf alcotest))
   (modules (test_httpaf test_httpaf_server test_httpaf_client simulator))
   (names   (test_httpaf test_httpaf_server test_httpaf_client))))
 

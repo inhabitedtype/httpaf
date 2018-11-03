@@ -111,9 +111,58 @@ module IOVec = struct
     ; "shiftv raises ", `Quick, test_shiftv_raises ]
 end
 
+module Server_connection = struct
+  include Server_connection
+
+  module Read_operation = struct
+    type t = [ `Read | `Yield | `Close ]
+
+    let pp_hum fmt t =
+      let str =
+        match t with
+        | `Read -> "Read"
+        | `Yield -> "Yield"
+        | `Close -> "Close"
+      in
+      Format.pp_print_string fmt str
+    ;;
+  end
+
+  let default_request_handler reqd =
+    Reqd.respond_with_string reqd (Response.create `OK) ""
+  ;;
+
+  let test_initial_reader_state () =
+    let t = create default_request_handler in
+    Alcotest.(check (of_pp Read_operation.pp_hum)) "A new reader wants input"
+      `Read (next_read_operation t);
+  ;;
+
+  let test_shutdown_reader_is_closed () =
+    let t = create default_request_handler in
+    shutdown_reader t;
+    Alcotest.(check (of_pp Read_operation.pp_hum)) "Shutting down a reader closes it"
+      `Close (next_read_operation t);
+
+    let t = create default_request_handler in
+    let consumed = read t Bigstringaf.empty ~off:0 ~len:0 in
+    assert (consumed = 0);
+    shutdown_reader t;
+    Alcotest.(check (of_pp Read_operation.pp_hum)) "Shutting down a reader closes it"
+      `Close (next_read_operation t);
+  ;;
+
+  let tests =
+    [ "initial reader state"  , `Quick, test_initial_reader_state 
+    ; "shutdown reader closed", `Quick, test_shutdown_reader_is_closed 
+    ]
+
+end
+
 let () =
   Alcotest.run "httpaf unit tests"
-    [ "version" , Version.tests
-    ; "method"  , Method.tests
-    ; "iovec"   , IOVec.tests
+    [ "version"          , Version.tests
+    ; "method"           , Method.tests
+    ; "iovec"            , IOVec.tests
+    ; "server_connection", Server_connection.tests
     ]
