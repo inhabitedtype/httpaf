@@ -138,23 +138,25 @@ module Server_connection = struct
       `Read (next_read_operation t);
   ;;
 
-  let test_shutdown_reader_is_closed () =
+  let test_reader_is_closed_after_eof () =
     let t = create default_request_handler in
-    shutdown_reader t;
+    let c = read_eof t Bigstringaf.empty ~off:0 ~len:0 in
+    Alcotest.(check int) "read_eof with no input returns 0" 0 c;
     Alcotest.(check (of_pp Read_operation.pp_hum)) "Shutting down a reader closes it"
       `Close (next_read_operation t);
 
     let t = create default_request_handler in
-    let consumed = read t Bigstringaf.empty ~off:0 ~len:0 in
-    assert (consumed = 0);
-    shutdown_reader t;
+    let c = read t Bigstringaf.empty ~off:0 ~len:0 in
+    Alcotest.(check int) "read with no input returns 0" 0 c;
+    let c = read_eof t Bigstringaf.empty ~off:0 ~len:0; in
+    Alcotest.(check int) "read_eof with no input returns 0" 0 c;
     Alcotest.(check (of_pp Read_operation.pp_hum)) "Shutting down a reader closes it"
       `Close (next_read_operation t);
   ;;
 
   let tests =
-    [ "initial reader state"  , `Quick, test_initial_reader_state 
-    ; "shutdown reader closed", `Quick, test_shutdown_reader_is_closed 
+    [ "initial reader state"  , `Quick, test_initial_reader_state
+    ; "shutdown reader closed", `Quick, test_reader_is_closed_after_eof
     ]
 
 end

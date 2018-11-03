@@ -92,7 +92,7 @@ module Oneshot = struct
   ;;
 
   let shutdown_reader t =
-    Reader.close t.reader;
+    Reader.force_close t.reader;
     begin match !(t.state) with
     | Awaiting_response | Closed -> ()
     | Received_response(_, response_body) ->
@@ -138,8 +138,8 @@ module Oneshot = struct
       if not (Body.is_closed response_body)
       then Reader.next t.reader
       else begin
-        Reader.close t.reader;
-        Reader.next  t.reader
+        Reader.force_close t.reader;
+        Reader.next        t.reader
       end
   ;;
 
@@ -155,11 +155,17 @@ module Oneshot = struct
     | (`Read | `Close) as operation -> operation
   ;;
 
-  let read t bs ~off ~len =
-    let consumed = Reader.read t.reader bs ~off ~len in
+  let read_with_more t bs ~off ~len more =
+    let consumed = Reader.read_with_more t.reader bs ~off ~len more in
     flush_response_body t;
     consumed
   ;;
+
+  let read t bs ~off ~len =
+    read_with_more t bs ~off ~len Incomplete
+
+  let read_eof t bs ~off ~len =
+    read_with_more t bs ~off ~len Complete
 
   let next_write_operation t =
     flush_request_body t;

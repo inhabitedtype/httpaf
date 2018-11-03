@@ -107,7 +107,9 @@ module Server = struct
           read fd buffer
           >>> begin function
             | `Eof  ->
-              Server_connection.shutdown_reader conn;
+              Buffer.get buffer ~f:(fun bigstring ~off ~len ->
+                Server_connection.read_eof conn bigstring ~off ~len)
+              |> ignore;
               reader_thread ()
             | `Ok _ ->
               Buffer.get buffer ~f:(fun bigstring ~off ~len ->
@@ -170,7 +172,9 @@ module Client = struct
         read fd buffer
           >>> begin function
             | `Eof  ->
-              Client_connection.shutdown_reader conn;
+              Buffer.get buffer ~f:(fun bigstring ~off ~len ->
+                Client_connection.read_eof conn bigstring ~off ~len)
+              |> ignore;
               reader_thread ()
             | `Ok _ ->
               Buffer.get buffer ~f:(fun bigstring ~off ~len ->
