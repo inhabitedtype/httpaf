@@ -303,10 +303,10 @@ module Reader = struct
 
   let next t =
     match t.parse_state with
+    | Partial _
     | Done ->
       if t.closed
       then `Close
       else `Read
     | Fail    _ -> `Close
-    | Partial _ -> `Read
 end
