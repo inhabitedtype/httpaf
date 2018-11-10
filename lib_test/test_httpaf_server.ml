@@ -13,7 +13,7 @@ let echo_handler got_eof reqd =
   let response      = Response.create ~headers:Headers.(of_list ["connection", "close"]) `OK in
   let response_body = Reqd.respond_with_streaming reqd response in
   let rec on_read buffer ~off ~len =
-    Body.write_string response_body (Bigstring.to_string ~off ~len buffer);
+    Body.write_string response_body (Bigstringaf.substring ~off ~len buffer);
     Body.flush response_body (fun () ->
       Body.schedule_read request_body ~on_eof ~on_read)
   and on_eof () = got_eof := true; Body.close_writer response_body in

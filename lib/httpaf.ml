@@ -1,4 +1,3 @@
-module Bigstring = Bigstring
 module Headers = Headers
 module IOVec = IOVec
 module Method = Method

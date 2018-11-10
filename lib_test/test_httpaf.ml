@@ -71,7 +71,7 @@ module IOVec = struct
   include IOVec
 
   (* The length of the buffer is ignored by iovec operations *)
-  let buffer = Bigstring.create 0
+  let buffer = Bigstringaf.empty
 
   let test_lengthv () =
     Alcotest.(check int) "lengthv [] = 0"                 (lengthv []) 0;
