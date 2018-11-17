@@ -147,8 +147,8 @@ let respond_with_bigstring t response (bstr:Bigstring.t) =
   | Complete _ ->
     failwith "httpaf.Reqd.respond_with_bigstring: response already complete"
 
-let unsafe_respond_with_streaming ~wait_for_first_flush t response =
-  t.wait_for_first_flush <- wait_for_first_flush;
+let unsafe_respond_with_streaming ~flush_headers_immediately t response =
+  t.wait_for_first_flush <- flush_headers_immediately;
   match t.response_state with
   | Waiting when_done_waiting ->
     let response_body = Body.create t.response_body_buffer in
@@ -164,10 +164,10 @@ let unsafe_respond_with_streaming ~wait_for_first_flush t response =
   | Complete _ ->
     failwith "httpaf.Reqd.respond_with_streaming: response already complete"
 
-let respond_with_streaming ?(wait_for_first_flush=true) t response =
+let respond_with_streaming ?(flush_headers_immediately=true) t response =
   if t.error_code <> `Ok then
     failwith "httpaf.Reqd.respond_with_streaming: invalid state, currently handling error";
-  unsafe_respond_with_streaming ~wait_for_first_flush t response
+  unsafe_respond_with_streaming ~flush_headers_immediately t response
 
 let report_error t error =
   t.persistent <- false;
@@ -181,7 +181,7 @@ let report_error t error =
       | #Status.standard as status -> status
     in
     t.error_handler ~request:t.request error (fun headers ->
-      unsafe_respond_with_streaming ~wait_for_first_flush:false t (Response.create ~headers status))
+      unsafe_respond_with_streaming ~flush_headers_immediately:false t (Response.create ~headers status))
   | Waiting _, `Exn _ ->
     (* XXX(seliopou): Decide what to do in this unlikely case. There is an
      * outstanding call to the [error_handler], but an intervening exception
