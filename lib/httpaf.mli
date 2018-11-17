@@ -733,17 +733,18 @@ module Server_connection : sig
       returns a [`Read] value and additional input is available for the
       connection to consume. *)
 
+  val read_eof : _ t -> Bigstring.t -> off:int -> len:int -> int
+  (** [read t bigstring ~off ~len] reads bytes of input from the provided range
+      of [bigstring] and returns the number of bytes consumed by the
+      connection.  {!read} should be called after {!next_read_operation}
+      returns a [`Read] and an EOF has been received from the communication
+      channel. The connection will attempt to consume any buffered input and
+      then shutdown the HTTP parser for the connection. *)
+
   val yield_reader : _ t -> (unit -> unit) -> unit
   (** [yield_reader t continue] registers with the connection to call
       [continue] when reading should resume. {!yield_reader} should be called
       after {next_read_operation} returns a [`Yield] value. *)
-
-  val shutdown_reader : _ t -> unit
-  (** [shutdown_reader t] shuts down the read processor for the connection. All
-      subsequent calls to {!next_read_operations} will return [`Close].
-      {!shutdown_reader} should be called after {!next_read_operation} returns
-      a [`Read] value and there is no further input available for the
-      connection to consume. *)
 
   val next_write_operation : _ t -> [
     | `Write of Bigstring.t IOVec.t list
@@ -820,12 +821,13 @@ module Client_connection : sig
       returns a [`Read] value and additional input is available for the
       connection to consume. *)
 
-  val shutdown_reader : t -> unit
-  (** [shutdown_reader t] shuts down the read processor for the connection. All
-      subsequent calls to {!next_read_operations} will return [`Close].
-      {!shutdown_reader} should be called after {!next_read_operation} returns
-      a [`Read] value and there is no further input available for the
-      connection to consume. *)
+  val read_eof : t -> Bigstring.t -> off:int -> len:int -> int
+  (** [read t bigstring ~off ~len] reads bytes of input from the provided range
+      of [bigstring] and returns the number of bytes consumed by the
+      connection.  {!read} should be called after {!next_read_operation}
+      returns a [`Read] and an EOF has been received from the communication
+      channel. The connection will attempt to consume any buffered input and
+      then shutdown the HTTP parser for the connection. *)
 
   val next_write_operation : t -> [
     | `Write of Bigstring.t IOVec.t list

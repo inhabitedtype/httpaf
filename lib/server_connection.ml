@@ -157,7 +157,7 @@ let create ?(config=Config.default) ?(error_handler=default_error_handler) reque
 let is_closed t = Reader.is_closed t.reader && Writer.is_closed t.writer
 
 let shutdown_reader t =
-  Reader.close t.reader;
+  Reader.force_close t.reader;
   if is_active t
   then Reqd.close_request_body (current_reqd_exn t)
   else wakeup_reader t
@@ -241,12 +241,18 @@ let next_read_operation t =
   | `Error (`Bad_request request) -> set_error_and_handle ~request t `Bad_request; `Close
   | (`Read | `Yield | `Close) as operation -> operation
 
-let read t bs ~off ~len =
-  let consumed = Reader.read t.reader bs ~off ~len in
+let read_with_more t bs ~off ~len more =
+  let consumed = Reader.read_with_more t.reader bs ~off ~len more in
   if is_active t then
     Reqd.flush_request_body (current_reqd_exn t);
   consumed
 ;;
+
+let read t bs ~off ~len =
+  read_with_more t bs ~off ~len Incomplete
+
+let read_eof t bs ~off ~len =
+  read_with_more t bs ~off ~len Complete
 
 let yield_reader t k =
   on_wakeup_reader t k

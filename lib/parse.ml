@@ -260,8 +260,6 @@ module Reader = struct
     create parser
   ;;
 
-  let close t =
-    t.closed <- true
 
   let is_closed t =
     t.closed
@@ -291,14 +289,25 @@ module Reader = struct
       | _ -> assert false
   ;;
 
-  let rec read t bs ~off ~len =
-    match t.parse_state with
-    | Fail _ -> 0
-    | Done   ->
-      start t (AU.parse t.parser);
-      read  t bs ~off ~len;
-    | Partial continue ->
-      transition t (continue bs Incomplete ~off ~len)
+  let rec read_with_more t bs ~off ~len more =
+    let consumed =
+      match t.parse_state with
+      | Fail _ -> 0
+      | Done   ->
+        start t (AU.parse t.parser);
+        read_with_more  t bs ~off ~len more;
+      | Partial continue ->
+        transition t (continue bs more ~off ~len)
+    in
+    begin match more with
+    | Complete -> t.closed <- true;
+    | Incomplete -> ()
+    end;
+    consumed;
+  ;;
+
+  let force_close t =
+    ignore (read_with_more t Bigstringaf.empty ~off:0 ~len:0 Complete : int);
   ;;
 
   let next t =

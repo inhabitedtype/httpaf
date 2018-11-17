@@ -74,11 +74,13 @@ let test_server ~input ~output ~handler () =
         else Bigstring.sub ~off:result input, reads'
       | `Read, [] ->
         debug " server iloop: eof";
-        Server_connection.shutdown_reader conn;
+        let input_len = Bigstring.length input in
+        ignore (Server_connection.read_eof conn input ~off:0 ~len:input_len : int);
         bigstring_empty, []
       | _          , [] ->
         debug " server iloop: eof";
-        Server_connection.shutdown_reader conn;
+        let input_len = Bigstring.length input in
+        ignore (Server_connection.read_eof conn input ~off:0 ~len:input_len : int);
         bigstring_empty, []
       | `Close    , _     ->
         debug " server iloop: close(ok)"; input, []
@@ -167,11 +169,13 @@ let test_client ~request ~request_body_writes ~response_stream () =
       else Bigstring.sub ~off:result input, reads'
     | `Read, [] ->
       debug " client iloop: eof";
-      Client_connection.shutdown_reader conn;
+      let input_len = Bigstring.length input in
+      ignore (Client_connection.read_eof conn input ~off:0 ~len:input_len : int);
       input, []
     | _          , [] ->
       debug " client iloop: eof";
-      Client_connection.shutdown_reader conn;
+      let input_len = Bigstring.length input in
+      ignore (Client_connection.read_eof conn input ~off:0 ~len:input_len : int);
       input, []
     | `Close    , _     ->
       debug " client iloop: close(ok)";
