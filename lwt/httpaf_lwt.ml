@@ -115,7 +115,9 @@ module Server = struct
           | `Read ->
             read socket read_buffer >>= begin function
             | `Eof ->
-              Server_connection.shutdown_reader connection;
+              Buffer.get read_buffer ~f:(fun bigstring ~off ~len ->
+                Server_connection.read_eof connection bigstring ~off ~len)
+              |> ignore;
               read_loop_step ()
             | `Ok _ ->
               Buffer.get read_buffer ~f:(fun bigstring ~off ~len ->
@@ -210,7 +212,9 @@ module Client = struct
         | `Read ->
           read socket read_buffer >>= begin function
           | `Eof ->
-            Client_connection.shutdown_reader connection;
+            Buffer.get read_buffer ~f:(fun bigstring ~off ~len ->
+              Client_connection.read_eof connection bigstring ~off ~len)
+            |> ignore;
             read_loop_step ()
           | `Ok _ ->
             Buffer.get read_buffer ~f:(fun bigstring ~off ~len ->
