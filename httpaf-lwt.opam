@@ -12,7 +12,6 @@ build: [
 ]
 depends: [
   "ocaml" {>= "4.03.0"}
-  "angstrom-lwt-unix"
   "faraday-lwt-unix"
   "httpaf"
   "jbuilder" {build & >= "1.0+beta10"}
