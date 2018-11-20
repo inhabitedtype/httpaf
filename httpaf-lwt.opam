@@ -17,3 +17,4 @@ depends: [
   "jbuilder" {build & >= "1.0+beta10"}
   "lwt"
 ]
+synopsis: "Lwt support for http/af"
