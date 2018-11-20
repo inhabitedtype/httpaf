@@ -2,7 +2,6 @@ open Lwt.Infix
 
 
 
-(* TODO What to do about cleanup exceptions in both server and client? *)
 (* Based on the Buffer module in httpaf_async.ml. *)
 module Buffer : sig
   type t
@@ -48,7 +47,6 @@ end = struct
     Lwt.return n
 end
 
-(* TODO Should probably send exceptions into notify_read_complete. *)
 let read fd buffer =
   Lwt.catch
     (fun () ->
@@ -56,11 +54,11 @@ let read fd buffer =
         Lwt_bytes.read fd bigstring off len))
     (function
     | Unix.Unix_error (Unix.EBADF, _, _) as exn ->
-      raise exn
+      Lwt.fail exn
     | exn ->
       Lwt.async (fun () ->
         Lwt_unix.close fd);
-      raise exn)
+      Lwt.fail exn)
 
   >>= fun bytes_read ->
   if bytes_read = 0 then
@@ -75,12 +73,6 @@ let shutdown socket command =
   with Unix.Unix_error (Unix.ENOTCONN, _, _) -> ()
 
 
-
-(* TODO But is this really awkward? We just need a finalize call on the joined
-   promise. *)
-(* TODO Close the server's client connection, even though Lwt_io will also close
-   it. This is for better error handling. *)
-(* TODO Get exceptions passed to the error handler? *)
 
 module Server = struct
   type request_handler =
@@ -102,7 +94,6 @@ module Server = struct
       let read_buffer = Buffer.create 0x1000 in
       let read_loop_exited, notify_read_loop_exited = Lwt.wait () in
 
-      (* TODO Explain loops and steps. *)
       let rec read_loop () =
         let rec read_loop_step () =
           match Server_connection.next_read_operation connection with
@@ -175,17 +166,14 @@ module Server = struct
 
       read_loop ();
       write_loop ();
+      Lwt.join [read_loop_exited; write_loop_exited] >>= fun () ->
 
-      let handler_finished = Lwt.join [read_loop_exited; write_loop_exited] in
-
-      Lwt.on_failure handler_finished begin fun _exn ->
-        Server_connection.shutdown connection;
-        if not (Lwt_unix.state socket = Lwt_unix.Closed) then
-          Lwt.async (fun () ->
-            Lwt_unix.close socket)
-      end;
-
-      handler_finished
+      if Lwt_unix.state socket <> Lwt_unix.Closed then
+        Lwt.catch
+          (fun () -> Lwt_unix.close socket)
+          (fun _exn -> Lwt.return_unit)
+      else
+        Lwt.return_unit
 end
 
 
@@ -269,20 +257,15 @@ module Client = struct
     read_loop ();
     write_loop ();
 
-    let handler_finished = Lwt.join [read_loop_exited; write_loop_exited] in
+    Lwt.async (fun () ->
+      Lwt.join [read_loop_exited; write_loop_exited] >>= fun () ->
 
-    Lwt.on_failure handler_finished begin fun _exn ->
-      Client_connection.shutdown connection;
-      if not (Lwt_unix.state socket = Lwt_unix.Closed) then
-        Lwt.async (fun () ->
-          Lwt_unix.close socket)
-    end;
-
-    Lwt.on_success handler_finished begin fun () ->
-      if not (Lwt_unix.state socket = Lwt_unix.Closed) then
-        Lwt.async (fun () ->
-          Lwt_unix.close socket)
-    end;
+      if Lwt_unix.state socket <> Lwt_unix.Closed then
+        Lwt.catch
+          (fun () -> Lwt_unix.close socket)
+          (fun _exn -> Lwt.return_unit)
+      else
+        Lwt.return_unit);
 
     request_body
 end

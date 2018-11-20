@@ -1,8 +1,6 @@
-(* TODO Document the server is meant to be used with establish_server', and
-whatever client is meant to be used with. *)
-(* TODO Explain where exceptions go and how to wrap the server callback. *)
-(* TODO Local usage examples, or refer people to the example. *)
-
+(* The function that results from [create_connection_handler] should be passed
+   to [Lwt_io.establish_server_with_client_socket]. For an example, see
+   [examples/lwt_echo_server.ml]. *)
 module Server : sig
   type request_handler =
     Lwt_unix.file_descr Httpaf.Server_connection.request_handler
@@ -14,6 +12,7 @@ module Server : sig
       -> (Unix.sockaddr -> Lwt_unix.file_descr -> unit Lwt.t)
 end
 
+(* For an example, see [examples/lwt_get.ml]. *)
 module Client : sig
   val request
     :  Lwt_unix.file_descr
