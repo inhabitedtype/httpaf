@@ -1,6 +1,3 @@
-(* TODO This needs to be paired with the requester example. *)
-(* TODO Usage to comment. *)
-
 let connection_handler : Unix.sockaddr -> Lwt_unix.file_descr -> unit Lwt.t =
   let module Body = Httpaf.Body in
   let module Headers = Httpaf.Headers in
@@ -21,41 +18,6 @@ let connection_handler : Unix.sockaddr -> Lwt_unix.file_descr -> unit Lwt.t =
         | Some request_content_type -> request_content_type
         | None -> "application/octet-stream"
       in
-
-      (* Due to a possible bug in http/af, read from the body only once, and
-         create the response based on the data in that first read.
-
-         The bug is (possibly) in the client. Client_connection seems to go into
-         a read loop despite Client_connection.shutdown being called, due to the
-         reader being in the Partial state, and the next operation function
-         unconditionally returning `Read in that case.
-
-         One workaround for this is to have the server send a Content-Length
-         header. To do that, this code has the server simply reply after the
-         first chunk is read, and use that chunk's length.
-
-         The code I would expect to work, without the possible bug, is commented
-         out below. *)
-
-      (* Body.schedule_read
-        request_body
-        ~on_eof:ignore
-        ~on_read:(fun request_data ~off ~len ->
-          let response =
-            Response.create
-              ~headers:(Headers.of_list [
-                "Content-Type", response_content_type;
-                "Content-Length", string_of_int len;
-                "Connection", "close";
-              ])
-              `OK
-          in
-
-          let response_body =
-            Reqd.respond_with_streaming request_descriptor response in
-
-          Body.write_bigstring response_body request_data ~off ~len;
-          Body.close_writer response_body) *)
 
       let response =
         Response.create
@@ -128,7 +90,11 @@ let () =
     Lwt_io.establish_server_with_client_socket
       listen_address connection_handler
     >>= fun _server ->
-    Lwt.return_unit
+      Printf.printf "Listening on port %i and echoing POST requests.\n" !port;
+      print_string "To send a POST request, try\n\n";
+      print_string "  echo foo | dune exec examples/lwt/lwt_post.exe\n\n";
+      flush stdout;
+      Lwt.return_unit
   end;
 
   let forever, _ = Lwt.wait () in

@@ -1,17 +1,13 @@
-(* TODO Cleanup *)
-
 module Body = Httpaf.Body
-module Response = Httpaf.Response
 
-let response_handler : unit Lwt.u -> Response.t -> [ `read ] Body.t -> unit =
-    fun notify_request_finished response response_body ->
-
-  match response.status with
+let response_handler notify_response_received response response_body =
+  let module Response = Httpaf.Response in
+  match Response.(response.status) with
   | `OK ->
     let rec read_response () =
       Body.schedule_read
         response_body
-        ~on_eof:(fun () -> Lwt.wakeup_later notify_request_finished ())
+        ~on_eof:(fun () -> Lwt.wakeup_later notify_response_received ())
         ~on_read:(fun response_fragment ~off ~len ->
           let response_fragment_string = Bytes.create len in
           Lwt_bytes.blit_to_bytes
@@ -28,7 +24,6 @@ let response_handler : unit Lwt.u -> Response.t -> [ `read ] Body.t -> unit =
     Format.fprintf Format.err_formatter "%a\n%!" Response.pp_hum response;
     exit 1
 
-(* TODO A real error handler *)
 let error_handler _ =
   assert false
 
@@ -39,7 +34,7 @@ let () =
   let port = ref 80 in
 
   Arg.parse
-    ["-p", Set_int port, " port number"]
+    ["-p", Set_int port, " Port number (80 by default)"]
     (fun host_argument -> host := Some host_argument)
     "lwt_get.exe [-p N] HOST";
 
@@ -57,17 +52,22 @@ let () =
     Lwt_unix.connect socket (List.hd addresses).Unix.ai_addr
     >>= fun () ->
 
-    let headers = Httpaf.Headers.of_list ["Host", host] in
-    let request = Httpaf.Request.create ~headers `GET "/" in
-    let request_finished, notify_request_finished = Lwt.wait () in
+    let request_headers =
+      Httpaf.Request.create
+        `GET "/" ~headers:(Httpaf.Headers.of_list ["Host", host])
+    in
+
+    let response_received, notify_response_received = Lwt.wait () in
+    let response_handler = response_handler notify_response_received in
+
     let request_body =
       Httpaf_lwt.Client.request
         socket
-        request
+        request_headers
         ~error_handler
-        ~response_handler:(response_handler notify_request_finished)
+        ~response_handler
     in
     Body.close_writer request_body;
 
-    request_finished
+    response_received
   end

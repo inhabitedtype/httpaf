@@ -1,19 +1,13 @@
-(* TODO Need a buffer module? *)
-(* TODO Look into a possible one in Angstrom. *)
-(* TODO Yes, need to provide own buffer. Copy the one from Httpaf_async. *)
-(* TODO Fix all the whitespace and evetything *)
-(* TODO There are too many copies here, because Lwt_io is already buffered. *)
-
 open Lwt.Infix
 
 
 
-(* TODO Note where this came from. *)
 (* TODO What to do about cleanup exceptions in both server and client? *)
+(* Based on the Buffer module in httpaf_async.ml. *)
 module Buffer : sig
   type t
 
-  val create   : int -> t
+  val create : int -> t
 
   val get : t -> f:(Lwt_bytes.t -> off:int -> len:int -> int) -> int
   val put : t -> f:(Lwt_bytes.t -> off:int -> len:int -> int Lwt.t) -> int Lwt.t
