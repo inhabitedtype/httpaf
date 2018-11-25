@@ -19,7 +19,7 @@ depends: [
   "result"
 ]
 synopsis:
-  "A high-performance, memory-efficient, and scalable web server for OCaml."
+  "A high-performance, memory-efficient, and scalable web server for OCaml"
 description: """
 http/af implements the HTTP 1.1 specification with respect to parsing,
 serialization, and connection pipelining as a state machine that is agnostic to
