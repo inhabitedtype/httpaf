@@ -27,7 +27,7 @@ let single_get =
         ~handler: (basic_handler "")
         ~input:   [(`Request (Request.create `GET "/")), `Empty]
         ~output:  [(`Response (Response.create `OK)   ), `Empty]
-  ; "singel GET, close connection"
+  ; "single GET, close connection"
     , `Quick
     , Simulator.test_server
         ~handler: (basic_handler "")
@@ -97,6 +97,18 @@ let streaming_response =
           Body.close_writer body))
       ~input:   [ `Request (Request.create `GET "/"), `Empty ]
       ~output:  [ `Response (Response.create `OK), `Fixed ["Hello,"; " world!"] ]
+  ; "streaming headers, flush immediately"
+  , `Quick
+  , Simulator.test_server
+      ~handler: (fun reqd ->
+        Simulator.debug " > handler called";
+        let request_body = Reqd.request_body reqd in
+        Body.close_reader request_body;
+        let body = Reqd.respond_with_streaming ~flush_headers_immediately:true reqd (Response.create `OK) in
+        Body.flush body (fun () ->
+          Body.close_writer body))
+      ~input:   [ `Request (Request.create ~headers:Headers.(of_list ["connection", "close"]) `GET "/"), `Empty ]
+      ~output:  [ `Response (Response.create `OK), `Fixed [] ]
   ]
 
 ;;
