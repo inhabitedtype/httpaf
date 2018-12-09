@@ -184,6 +184,7 @@ let set_error_and_handle ?request t error =
     t.error_handler ?request error (fun headers ->
       Writer.write_response writer (Response.create ~headers status);
       Body.of_faraday (Writer.faraday writer));
+    shutdown_writer t;
   end
 
 let report_exn t exn =
@@ -210,7 +211,7 @@ let advance_request_queue_if_necessary t =
       else if not (Reqd.requires_input reqd)
       then shutdown_reader t
     end
-  end else if Reader.is_closed t.reader
+  end else if Reader.is_closed t.reader && (not (Reader.is_parse_failure t.reader))
   then shutdown t
 
 let _next_read_operation t =

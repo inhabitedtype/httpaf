@@ -310,12 +310,17 @@ module Reader = struct
     ignore (read_with_more t Bigstringaf.empty ~off:0 ~len:0 Complete : int);
   ;;
 
+  let is_parse_failure t =
+    match t.parse_state with
+    | Fail _ -> true
+    | _ -> false
+
   let next t =
     match t.parse_state with
     | Done ->
       if t.closed
       then `Close
       else `Read
-    | Fail    _ -> `Close
+    | Fail failure -> `Error failure
     | Partial _ -> `Read
 end
