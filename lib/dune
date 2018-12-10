@@ -1,0 +1,6 @@
+(library
+ (name        httpaf)
+ (public_name httpaf)
+ (libraries
+   angstrom faraday bigstringaf result)
+ (flags (:standard -safe-string)))

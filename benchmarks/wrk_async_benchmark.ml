@@ -8,7 +8,7 @@ let text = "CHAPTER I. Down the Rabbit-Hole  Alice was beginning to get very tir
 let text = Bigstring.of_string text
 
 let headers = Headers.of_list ["content-length", string_of_int (Bigstring.length text)]
-let error_handler _ ?request error start_response =
+let error_handler _ ?request:_ error start_response =
   let response_body = start_response Headers.empty in
   begin match error with
   | `Exn exn ->

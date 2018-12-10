@@ -1,9 +1,0 @@
-(jbuild_version 1)
-
-(library
- ((name        httpaf_async)
-  (public_name httpaf-async)
-  (wrapped false)
-  (libraries
-    (async core angstrom-async faraday-async httpaf))
-  (flags (:standard -safe-string))))

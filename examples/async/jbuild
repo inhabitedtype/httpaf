@@ -1,4 +1,0 @@
-(executables
- ((libraries (httpaf httpaf-async async core))
-  (modules (async_echo_post async_get async_post))
-  (names (async_echo_post async_get async_post))))

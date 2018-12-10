@@ -7,14 +7,14 @@ homepage: "https://github.com/inhabitedtype/httpaf"
 bug-reports: "https://github.com/inhabitedtype/httpaf/issues"
 dev-repo: "git+https://github.com/inhabitedtype/httpaf.git"
 build: [
-  ["jbuilder" "subst" "-p" name] {pinned}
-  ["jbuilder" "build" "-p" name "-j" jobs]
+  ["dune" "subst" "-p" name] {pinned}
+  ["dune" "build" "-p" name "-j" jobs]
 ]
 depends: [
   "ocaml" {>= "4.03.0"}
   "faraday-lwt-unix"
   "httpaf"
-  "jbuilder" {build & >= "1.0+beta10"}
+  "dune" {build}
   "lwt"
 ]
 synopsis: "Lwt support for http/af"
