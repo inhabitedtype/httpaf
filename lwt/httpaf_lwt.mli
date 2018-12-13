@@ -1,3 +1,12 @@
+module Buffer : sig
+  type t
+
+  val create : int -> t
+
+  val get : t -> f:(Lwt_bytes.t -> off:int -> len:int -> int) -> int
+  val put : t -> f:(Lwt_bytes.t -> off:int -> len:int -> int Lwt.t) -> int Lwt.t
+end
+
 (* The function that results from [create_connection_handler] should be passed
    to [Lwt_io.establish_server_with_client_socket]. For an example, see
    [examples/lwt_echo_server.ml]. *)
@@ -15,7 +24,11 @@ end
 (* For an example, see [examples/lwt_get.ml]. *)
 module Client : sig
   val request
-    :  Lwt_unix.file_descr
+    : ?writev:(Lwt_unix.file_descr
+               -> Faraday.bigstring Faraday.iovec list
+               -> [`Ok of int | `Closed] Lwt.t)
+    -> ?read:(Lwt_unix.file_descr -> Buffer.t -> [ `Eof | `Ok of int ] Lwt.t)
+    -> Lwt_unix.file_descr
     -> Httpaf.Request.t
     -> error_handler : Httpaf.Client_connection.error_handler
     -> response_handler : Httpaf.Client_connection.response_handler

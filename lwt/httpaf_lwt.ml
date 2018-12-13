@@ -1,16 +1,7 @@
 open Lwt.Infix
 
-
-
 (* Based on the Buffer module in httpaf_async.ml. *)
-module Buffer : sig
-  type t
-
-  val create : int -> t
-
-  val get : t -> f:(Lwt_bytes.t -> off:int -> len:int -> int) -> int
-  val put : t -> f:(Lwt_bytes.t -> off:int -> len:int -> int Lwt.t) -> int Lwt.t
-end = struct
+module Buffer  = struct
   type t =
     { buffer      : Lwt_bytes.t
     ; mutable off : int
@@ -66,19 +57,13 @@ let read fd buffer =
   else
     Lwt.return (`Ok bytes_read)
 
-
-
 let shutdown socket command =
   try Lwt_unix.shutdown socket command
   with Unix.Unix_error (Unix.ENOTCONN, _, _) -> ()
 
-
-
 module Server = struct
   type request_handler =
     Lwt_unix.file_descr Httpaf.Server_connection.request_handler
-
-
 
   let create_connection_handler ?config ~request_handler ~error_handler =
     fun client_addr socket ->
@@ -179,7 +164,10 @@ end
 
 
 module Client = struct
-  let request socket request ~error_handler ~response_handler =
+  let request
+   ?(writev=Faraday_lwt_unix.writev_of_fd)
+   ?(read=read)
+   socket request ~error_handler ~response_handler =
     let module Client_connection = Httpaf.Client_connection in
     let request_body, connection =
       Client_connection.request request ~error_handler ~response_handler in
@@ -222,7 +210,7 @@ module Client = struct
     in
 
 
-    let writev = Faraday_lwt_unix.writev_of_fd socket in
+    let writev = writev socket in
     let write_loop_exited, notify_write_loop_exited = Lwt.wait () in
 
     let rec write_loop () =

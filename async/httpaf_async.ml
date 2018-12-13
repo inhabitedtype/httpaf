@@ -4,14 +4,7 @@ open Async
 (** XXX(seliopou): Replace Angstrom.Buffered with a module like this, while
     also supporting growing the buffer. Clients can use this to buffer and the
     use the unbuffered interface for actually running the parser. *)
-module Buffer : sig
-  type t
-
-  val create   : int -> t
-
-  val get : t -> f:(Bigstring.t -> off:int -> len:int -> int) -> int
-  val put : t -> f:(Bigstring.t -> off:int -> len:int -> int) -> int
-end= struct
+module Buffer = struct
   type t =
     { buffer      : Bigstring.t
     ; mutable off : int
@@ -158,9 +151,12 @@ module Server = struct
 end
 
 module Client = struct
-  let request socket request ~error_handler ~response_handler =
+  let request
+   ?(writev=Faraday_async.writev_of_fd)
+   ?(read=read)
+   socket request ~error_handler ~response_handler =
     let fd     = Socket.fd socket in
-    let writev = Faraday_async.writev_of_fd fd in
+    let writev = writev fd in
     let request_body, conn   =
       Client_connection.request request ~error_handler ~response_handler in
     let read_complete = Ivar.create () in
