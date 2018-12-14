@@ -20,7 +20,19 @@ let get  =
 
 let post = []
 
+let malformed_responses_tests = [
+  "single GET, immediate EOF"
+  , `Quick
+  , Simulator.test_client_errors
+      ~request:(Request.create `GET "/")
+      ~request_body_writes:[]
+      ~response_stream:(`Raw [""], `Empty)
+]
+
 let () =
   Alcotest.run "httpaf client tests"
-    [ "GET" , get
-    ; "POST", post ]
+    [
+      "GET" , get
+    ; "POST", post
+    ; "Malformed responses", malformed_responses_tests
+    ]

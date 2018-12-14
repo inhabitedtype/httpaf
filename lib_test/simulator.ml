@@ -25,11 +25,15 @@ let body_to_strings = function
 ;;
 
 let case_to_strings = function
+  | `Raw      r, body -> r @ (body_to_strings body)
   | `Request  r, body -> [request_to_string  r] @ (body_to_strings body)
   | `Response r, body -> [response_to_string r] @ (body_to_strings body)
 
-let response_stream_to_body (`Response response, body) =
-  let response = response_to_string response in
+let response_stream_to_body (response, body) =
+  let response = match response with
+  | `Raw xs -> String.concat "" xs
+  | `Response r -> response_to_string r
+  in
   match body with
   | `Empty  -> response
   | `Fixed xs | `Chunked xs -> String.concat "" (response :: xs)
@@ -118,12 +122,16 @@ let test_server ~input ~output ~handler () =
   Alcotest.(check string "response" output test_output)
 ;;
 
-let test_client ~request ~request_body_writes ~response_stream () =
+let test_client_or_error ~is_error_test ~request ~request_body_writes ~response_stream () =
   let reads  = case_to_strings response_stream in
   let writes = case_to_strings (`Request request, `Fixed request_body_writes) in
   let test_input  = ref []    in
+  let got_close   = ref false in
+  let got_error   = ref false in
   let got_eof     = ref false in
-  let error_handler _ = assert false in
+  let error_handler _ =
+    got_error := true
+  in
   let response_handler response response_body =
     test_input := (response_to_string response) :: !test_input;
     let rec on_read bs ~off ~len =
@@ -139,9 +147,10 @@ let test_client ~request ~request_body_writes ~response_stream () =
       ~response_handler
   in
   let rec loop conn request_body_writes input reads =
-    if Client_connection.is_closed conn
+    if !got_close
     then []
-    else begin
+    else
+     begin
       let input', reads'               = iloop conn input reads in
       let output, request_body_writes' = oloop conn request_body_writes in
       output @ loop conn request_body_writes' input' reads'
@@ -178,20 +187,24 @@ let test_client ~request ~request_body_writes ~response_stream () =
       let input_len = Bigstringaf.length input in
       ignore (Client_connection.read_eof conn input ~off:0 ~len:input_len : int);
       input, []
-    | _          , [] ->
-      debug " client iloop: eof";
-      let input_len = Bigstringaf.length input in
-      ignore (Client_connection.read_eof conn input ~off:0 ~len:input_len : int);
-      input, []
     | `Close    , _     ->
       debug " client iloop: close(ok)";
+      got_close := true;
       input, []
   in
   let test_output = loop conn request_body_writes bigstring_empty reads |> String.concat "" in
   let test_input  = List.rev !test_input |> String.concat "" in
   let input       = response_stream_to_body response_stream in
   let output      = String.concat "" writes in
-  Alcotest.(check bool   "got eof"  true   !got_eof);
+  if is_error_test
+  then Alcotest.(check bool   "got error"  true   !got_error)
+  else Alcotest.(check bool   "got eof"  true   !got_eof);
   Alcotest.(check string "request"  output test_output);
   Alcotest.(check string "response" input  test_input);
 ;;
+
+let test_client ~request ~request_body_writes ~response_stream () =
+  test_client_or_error ~is_error_test:false ~request ~request_body_writes ~response_stream ()
+
+let test_client_errors ~request ~request_body_writes ~response_stream () =
+  test_client_or_error ~is_error_test:true ~request ~request_body_writes ~response_stream ()
