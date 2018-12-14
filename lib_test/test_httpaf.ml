@@ -82,7 +82,7 @@ module IOVec = struct
   ;;
 
   let test_shiftv_raises () =
-    Alcotest.check_raises 
+    Alcotest.check_raises
       "IOVec.shiftv: -1 is a negative number"
       (Failure "IOVec.shiftv: -1 is a negative number")
       (fun () -> ignore (shiftv [] (-1)));
@@ -133,19 +133,19 @@ module Server_connection = struct
   ;;
 
   let test_initial_reader_state () =
-    let t = create default_request_handler in
+    let t = create ~fd:() default_request_handler in
     Alcotest.(check (of_pp Read_operation.pp_hum)) "A new reader wants input"
       `Read (next_read_operation t);
   ;;
 
   let test_reader_is_closed_after_eof () =
-    let t = create default_request_handler in
+    let t = create ~fd:() default_request_handler in
     let c = read_eof t Bigstringaf.empty ~off:0 ~len:0 in
     Alcotest.(check int) "read_eof with no input returns 0" 0 c;
     Alcotest.(check (of_pp Read_operation.pp_hum)) "Shutting down a reader closes it"
       `Close (next_read_operation t);
 
-    let t = create default_request_handler in
+    let t = create ~fd:() default_request_handler in
     let c = read t Bigstringaf.empty ~off:0 ~len:0 in
     Alcotest.(check int) "read with no input returns 0" 0 c;
     let c = read_eof t Bigstringaf.empty ~off:0 ~len:0; in

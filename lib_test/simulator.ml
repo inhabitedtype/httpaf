@@ -45,7 +45,7 @@ let bigstring_empty = Bigstring.of_string ""
 let test_server ~input ~output ~handler () =
   let reads  = List.(concat (map case_to_strings input)) in
   let writes = List.(concat (map case_to_strings output)) in
-  let conn   = Server_connection.create handler in
+  let conn   = Server_connection.create ~fd:() handler in
   let iwait, owait = ref false, ref false in
   let rec loop conn input reads =
     if !iwait && !owait then

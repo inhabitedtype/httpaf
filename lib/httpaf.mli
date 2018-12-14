@@ -669,6 +669,8 @@ module Reqd : sig
   val response : _ t -> Response.t option
   val response_exn : _ t -> Response.t
 
+  val descriptor : 'handle t -> 'handle
+
   (** Responding
 
       The following functions will initiate a response for the corresponding
@@ -716,6 +718,7 @@ module Server_connection : sig
 
   val create
     :  ?config:Config.t
+    -> fd: 'handle
     -> ?error_handler:error_handler
     -> 'handle request_handler
     -> 'handle t

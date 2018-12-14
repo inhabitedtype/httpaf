@@ -86,6 +86,7 @@ module Server = struct
       let connection =
         Server_connection.create
           ?config
+          ~fd:socket
           ~error_handler:(error_handler client_addr)
           (request_handler client_addr)
       in

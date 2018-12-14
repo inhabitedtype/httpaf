@@ -123,7 +123,7 @@ let default_error_handler ?request:_ error handle =
   Body.close_writer body
 ;;
 
-let create ?(config=Config.default) ?(error_handler=default_error_handler) request_handler =
+let create ?(config=Config.default) ~fd ?(error_handler=default_error_handler) request_handler =
   let
     { Config
     . response_buffer_size
@@ -137,7 +137,7 @@ let create ?(config=Config.default) ?(error_handler=default_error_handler) reque
   let handler request request_body =
     let handle_now = Queue.is_empty request_queue in
     let reqd       =
-      Reqd.create error_handler request request_body writer response_body_buffer in
+      Reqd.create fd error_handler request request_body writer response_body_buffer in
     Queue.push reqd request_queue;
     if handle_now then begin
       request_handler reqd;

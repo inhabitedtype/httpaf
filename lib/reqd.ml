@@ -73,6 +73,7 @@ type 'handle t =
   ; writer                  : Writer.t
   ; response_body_buffer    : Bigstring.t
   ; error_handler           : error_handler
+  ; handle                  : 'handle
   ; mutable persistent      : bool
   ; mutable response_state  : 'handle response_state
   ; mutable error_code      : [`Ok | error ]
@@ -81,12 +82,13 @@ type 'handle t =
 
 let default_waiting = Sys.opaque_identity (fun () -> ())
 
-let create error_handler request request_body writer response_body_buffer =
+let create fd error_handler request request_body writer response_body_buffer =
   { request
   ; request_body
   ; writer
   ; response_body_buffer
   ; error_handler
+  ; handle                  = fd
   ; persistent              = Request.persistent_connection request
   ; response_state          = Waiting (ref default_waiting)
   ; error_code              = `Ok
@@ -112,6 +114,8 @@ let response_exn { response_state; _ } =
   | Waiting _            -> failwith "httpaf.Reqd.response_exn: response has not started"
   | Streaming(response, _)
   | Complete (response) -> response
+
+let descriptor { handle; _ } = handle
 
 let respond_with_string t response str =
   if t.error_code <> `Ok then
