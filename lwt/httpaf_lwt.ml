@@ -78,20 +78,19 @@ module Server = struct
   type request_handler =
     Lwt_unix.file_descr Httpaf.Server_connection.request_handler
 
+  module Config = Httpaf.Server_connection.Config
 
-
-  let create_connection_handler ?config ~request_handler ~error_handler =
+  let create_connection_handler ?(config=Config.default) ~request_handler ~error_handler =
     fun client_addr socket ->
       let module Server_connection = Httpaf.Server_connection in
       let connection =
         Server_connection.create
-          ?config
+          ~config
           ~error_handler:(error_handler client_addr)
           (request_handler client_addr)
       in
 
-
-      let read_buffer = Buffer.create 0x1000 in
+      let read_buffer = Buffer.create config.read_buffer_size in
       let read_loop_exited, notify_read_loop_exited = Lwt.wait () in
 
       let rec read_loop () =

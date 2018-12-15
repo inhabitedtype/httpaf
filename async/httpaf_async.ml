@@ -90,16 +90,17 @@ let read fd buffer =
 open Httpaf
 
 module Server = struct
-  let create_connection_handler ?config ~request_handler ~error_handler =
+  module Config = Server_connection.Config
+
+  let create_connection_handler ?(config=Config.default) ~request_handler ~error_handler =
     fun client_addr socket ->
       let fd     = Socket.fd socket in
       let writev = Faraday_async.writev_of_fd fd in
       let request_handler = request_handler client_addr in
       let error_handler   = error_handler client_addr in
-      let conn = Server_connection.create ?config ~error_handler request_handler in
+      let conn = Server_connection.create ~config ~error_handler request_handler in
       let read_complete = Ivar.create () in
-      (* XXX(seliopou): Make this configurable *)
-      let buffer = Buffer.create 0x1000 in
+      let buffer = Buffer.create config.read_buffer_size in
       let rec reader_thread () =
         match Server_connection.next_read_operation conn with
         | `Read ->
