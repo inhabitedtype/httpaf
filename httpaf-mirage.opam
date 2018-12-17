@@ -1,7 +1,8 @@
 opam-version: "2.0"
-name: "httpaf-lwt"
+name: "httpaf-mirage"
 maintainer: "Spiros Eliopoulos <spiros@inhabitedtype.com>"
-authors: [ "Anton Bachin <antonbachin@yahoo.com>" ]
+authors: [ "Antonio Nuno Monteiro <anmonteiro@gmail.com>"
+           "Spiros Eliopoulos <spiros@inhabitedtype.com>" ]
 license: "BSD-3-clause"
 homepage: "https://github.com/inhabitedtype/httpaf"
 bug-reports: "https://github.com/inhabitedtype/httpaf/issues"
@@ -19,4 +20,4 @@ depends: [
   "jbuilder" {build & >= "1.0+beta10"}
   "lwt"
 ]
-synopsis: "Lwt support for http/af"
+synopsis: "Mirage support for http/af"
