@@ -54,7 +54,7 @@ let read flow buffer =
   let open Conduit_mirage in
   Lwt.catch
     (fun () ->
-      Buffer.put buffer ~f:(fun bigstring ~off ~len ->
+      Buffer.put buffer ~f:(fun bigstring ~off ~len:_ ->
         Flow.read flow >|= function
         | Ok (`Data buf) ->
           Bigstringaf.blit buf.buffer ~src_off:buf.off bigstring ~dst_off:off ~len:buf.len;
@@ -84,7 +84,7 @@ let writev_of_flow flow =
         Flow.writev flow cstruct_iovecs >|= fun x ->
         match x with
         | Ok () ->
-          let written = List.fold_left (fun acc ({Cstruct.len; off; _} as x) ->
+          let written = List.fold_left (fun acc {Cstruct.len; off; _} ->
             acc + (len - off))
             0 cstruct_iovecs
           in
@@ -103,13 +103,13 @@ module Server = struct
 
 
   let create_connection_handler ?config ~request_handler ~error_handler =
-    fun client_addr flow ->
+    fun flow ->
       let module Server_connection = Httpaf.Server_connection in
       let connection =
         Server_connection.create
           ?config
-          ~error_handler:(error_handler client_addr)
-          (request_handler client_addr)
+          ~error_handler
+          request_handler
       in
 
 
@@ -204,15 +204,11 @@ val create_connection_handler
   -> (Unix.sockaddr -> Conduit_mirage.Flow.flow -> unit Lwt.t) *)
 open Conduit_mirage
 
-type t = (Unix.sockaddr -> Conduit_mirage.Flow.flow -> unit Lwt.t)
+type t = (Conduit_mirage.Flow.flow -> unit Lwt.t)
 
 let listen handler flow =
     Lwt.finalize
-      (fun () ->
-        handler
-         (* TODO: this is obviously bogus *)
-         (Unix.(ADDR_INET (inet_addr_loopback, 8080)))
-         flow)
+      (fun () -> handler flow)
       (fun () -> Flow.close flow)
 
 let connect t =

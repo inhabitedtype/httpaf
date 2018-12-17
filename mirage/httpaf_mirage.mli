@@ -7,13 +7,13 @@ module Server : sig
 
   val create_connection_handler
     :  ?config : Httpaf.Server_connection.Config.t
-    -> request_handler : (Unix.sockaddr -> request_handler)
-    -> error_handler : (Unix.sockaddr -> Httpaf.Server_connection.error_handler)
-    -> (Unix.sockaddr -> Conduit_mirage.Flow.flow -> unit Lwt.t)
+    -> request_handler : request_handler
+    -> error_handler : Httpaf.Server_connection.error_handler
+    -> (Conduit_mirage.Flow.flow -> unit Lwt.t)
 end
 
 module Server_with_conduit : sig
-  type t = (Unix.sockaddr -> Conduit_mirage.Flow.flow -> unit Lwt.t)
+  type t = (Conduit_mirage.Flow.flow -> unit Lwt.t)
 
   val connect:
     Conduit_mirage.t ->
