@@ -8,7 +8,7 @@ let stack = generic_stackv4 default_network
 
 let server =
   foreign "Unikernel.Make"
-    (console @-> pclock @-> httpaf @-> job)
+    (console @-> pclock @-> http @-> job)
 
 let app =
   httpaf_server @@ conduit_direct stack

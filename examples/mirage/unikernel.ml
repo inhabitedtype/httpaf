@@ -1,7 +1,9 @@
 open Lwt.Infix
 open Httpaf
 
-module Dispatch (C: Mirage_types_lwt.CONSOLE) = struct
+module type HTTP = Httpaf_mirage.Server_intf
+
+module Dispatch (C: Mirage_types_lwt.CONSOLE) (Http: HTTP) = struct
 
   let log c fmt = Printf.ksprintf (C.log c) fmt
 
@@ -32,24 +34,16 @@ module Dispatch (C: Mirage_types_lwt.CONSOLE) = struct
       Body.write_string response_body "Error handled";
       Body.flush response_body (fun () -> Body.close_writer response_body)
     in
-    Httpaf_mirage.Server.create_connection_handler
-      ~config:(Server_connection.Config.default)
+    Http.create_connection_handler
       ~request_handler:(dispatch c)
       ~error_handler
-end
-
-module type HTTP = sig
-  type t = (Conduit_mirage.Flow.flow -> unit Lwt.t)
-
-  val connect:
-    Conduit_mirage.t ->
-    (Conduit_mirage.server -> t -> unit Lwt.t) Lwt.t
+      ()
 end
 
 (** Server boilerplate *)
 module Make (C : Mirage_types_lwt.CONSOLE) (Clock : Mirage_types_lwt.PCLOCK) (Http: HTTP) = struct
 
-  module D  = Dispatch (C)
+  module D  = Dispatch (C) (Http)
 
   let log c fmt = Printf.ksprintf (C.log c) fmt
   let start c _clock http =

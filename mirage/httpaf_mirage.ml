@@ -1,7 +1,5 @@
 open Lwt.Infix
 
-(* TODO: Cstruct_lwt, and Lwt_bytes *)
-
 (* Based on the Buffer module in httpaf_async.ml. *)
 module Buffer : sig
   type t
@@ -102,7 +100,7 @@ module Server = struct
     Conduit_mirage.Flow.flow Httpaf.Server_connection.request_handler
 
 
-  let create_connection_handler ?config ~request_handler ~error_handler =
+  let create_connection_handler ?config ~request_handler ~error_handler () =
     fun flow ->
       let module Server_connection = Httpaf.Server_connection in
       let connection =
@@ -191,29 +189,33 @@ module Server = struct
         (fun _exn -> Lwt.return_unit)
 end
 
+module type Server_intf = sig
+  type request_handler =
+    Conduit_mirage.Flow.flow Httpaf.Server_connection.request_handler
+
+  val create_connection_handler
+    :  ?config : Httpaf.Server_connection.Config.t
+    -> request_handler : request_handler
+    -> error_handler : Httpaf.Server_connection.error_handler
+    -> unit
+    -> (Conduit_mirage.Flow.flow -> unit Lwt.t)
+end
 
 module Server_with_conduit = struct
-(* val connect:
-  Conduit_mirage.t ->
-  (Conduit_mirage.server -> t -> unit Lwt.t) Lwt.t
+  open Conduit_mirage
 
-val create_connection_handler
-  :  ?config : Httpaf.Server_connection.Config.t
-  -> request_handler : (Unix.sockaddr -> request_handler)
-  -> error_handler : (Unix.sockaddr -> Httpaf.Server_connection.error_handler)
-  -> (Unix.sockaddr -> Conduit_mirage.Flow.flow -> unit Lwt.t) *)
-open Conduit_mirage
+  include Server
 
-type t = (Conduit_mirage.Flow.flow -> unit Lwt.t)
+  type t = Conduit_mirage.Flow.flow -> unit Lwt.t
 
-let listen handler flow =
-    Lwt.finalize
-      (fun () -> handler flow)
-      (fun () -> Flow.close flow)
+  let listen handler flow =
+      Lwt.finalize
+        (fun () -> handler flow)
+        (fun () -> Flow.close flow)
 
-let connect t =
-  let listen s f = Conduit_mirage.listen t s (listen f) in
-  Lwt.return listen
+  let connect t =
+    let listen s f = Conduit_mirage.listen t s (listen f) in
+    Lwt.return listen
 end
 
 

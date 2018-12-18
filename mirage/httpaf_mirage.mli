@@ -1,7 +1,4 @@
-(* The function that results from [create_connection_handler] should be passed
-   to [Lwt_io.establish_server_with_client_socket]. For an example, see
-   [examples/lwt_echo_server.ml]. *)
-module Server : sig
+module type Server_intf = sig
   type request_handler =
     Conduit_mirage.Flow.flow Httpaf.Server_connection.request_handler
 
@@ -9,11 +6,16 @@ module Server : sig
     :  ?config : Httpaf.Server_connection.Config.t
     -> request_handler : request_handler
     -> error_handler : Httpaf.Server_connection.error_handler
+    -> unit
     -> (Conduit_mirage.Flow.flow -> unit Lwt.t)
 end
 
+module Server : Server_intf
+
 module Server_with_conduit : sig
-  type t = (Conduit_mirage.Flow.flow -> unit Lwt.t)
+  include Server_intf
+
+  type t = Conduit_mirage.Flow.flow -> unit Lwt.t
 
   val connect:
     Conduit_mirage.t ->
