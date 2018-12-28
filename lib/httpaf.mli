@@ -689,22 +689,23 @@ module Reqd : sig
   val try_with : _ t -> (unit -> unit) -> (unit, exn) result
 end
 
+(** {2 Buffer Size Configuration} *)
+module Config : sig
+  type t =
+    { read_buffer_size          : int (** Default is [4096] *)
+    ; request_body_buffer_size  : int (** Default is [4096] *)
+    ; response_buffer_size      : int (** Default is [1024] *)
+    ; response_body_buffer_size : int (** Default is [4096] *)
+    }
+
+  val default : t
+  (** [default] is a configuration record with all parameters set to their
+      default values. *)
+end
 
 (** {2 Server Connection} *)
 
 module Server_connection : sig
-  module Config : sig
-    type t =
-      { read_buffer_size          : int (** Default is [4096] *)
-      ; response_buffer_size      : int (** Default is [1024] *)
-      ; response_body_buffer_size : int (** Default is [4096] *)
-      }
-
-    val default : t
-    (** [default] is a configuration record with all parameters set to their
-        default values. *)
-  end
-
   type 'handle t
 
   type error =
@@ -806,7 +807,8 @@ module Client_connection : sig
   type error_handler = error -> unit
 
   val request
-    :  Request.t
+    :  ?config:Config.t
+    -> Request.t
     -> error_handler:error_handler
     -> response_handler:response_handler
     -> [`write] Body.t * t

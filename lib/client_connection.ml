@@ -57,15 +57,14 @@ module Oneshot = struct
     ; mutable error_code : [ `Ok | error ]
     }
 
-  let request request ~error_handler ~response_handler =
+  let request ?(config=Config.default) request ~error_handler ~response_handler =
     let state = ref Awaiting_response in
     let request_method = request.Request.meth in
     let handler response body =
       state := Received_response(response, body);
       response_handler response body
     in
-    (* XXX(seliopou): This buffer size should be configurable *)
-    let request_body = Body.create (Bigstring.create 0x1000) in
+    let request_body = Body.create (Bigstring.create config.request_body_buffer_size) in
     let t =
       { request
       ; request_body
