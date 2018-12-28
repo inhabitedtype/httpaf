@@ -202,8 +202,6 @@ module Client = struct
       | `Close _ ->
         (* Log.Global.printf "write_close(%d)%!" (Fd.to_int_exn fd); *)
         Ivar.fill write_complete ();
-        if not (Fd.is_closed fd)
-        then Socket.shutdown socket `Send
     in
     let conn_monitor = Monitor.create () in
     Scheduler.within ~monitor:conn_monitor reader_thread;
