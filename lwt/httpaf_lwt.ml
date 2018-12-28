@@ -65,7 +65,12 @@ module Server = struct
   type request_handler =
     Lwt_unix.file_descr Httpaf.Server_connection.request_handler
 
-  let create_connection_handler ?config ~request_handler ~error_handler =
+  let create_connection_handler
+    ?config
+    ?(writev=Faraday_lwt_unix.writev_of_fd)
+    ?(read=read)
+    ~request_handler
+    ~error_handler =
     fun client_addr socket ->
       let module Server_connection = Httpaf.Server_connection in
       let connection =
@@ -117,7 +122,7 @@ module Server = struct
       in
 
 
-      let writev = Faraday_lwt_unix.writev_of_fd socket in
+      let writev = writev socket in
       let write_loop_exited, notify_write_loop_exited = Lwt.wait () in
 
       let rec write_loop () =

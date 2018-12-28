@@ -15,6 +15,12 @@ end
 module Server : sig
   val create_connection_handler
     :  ?config         : Server_connection.Config.t
+    -> ?writev:(Async.Fd.t
+                -> Faraday.bigstring Faraday.iovec list
+                -> [ `Ok of int | `Closed ] Async.Deferred.t)
+    -> ?read:(Async.Fd.t
+              -> Buffer.t
+              -> [ `Eof | `Ok of int ] Async.Deferred.t)
     -> request_handler : ('a -> Fd.t Server_connection.request_handler)
     -> error_handler   : ('a -> Server_connection.error_handler)
     -> ([< Socket.Address.t] as 'a)

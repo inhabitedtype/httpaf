@@ -16,6 +16,10 @@ module Server : sig
 
   val create_connection_handler
     :  ?config : Httpaf.Server_connection.Config.t
+    -> ?writev:(Lwt_unix.file_descr
+                -> Faraday.bigstring Faraday.iovec list
+                -> [`Ok of int | `Closed] Lwt.t)
+    -> ?read:(Lwt_unix.file_descr -> Buffer.t -> [ `Eof | `Ok of int ] Lwt.t)
     -> request_handler : (Unix.sockaddr -> request_handler)
     -> error_handler : (Unix.sockaddr -> Httpaf.Server_connection.error_handler)
       -> (Unix.sockaddr -> Lwt_unix.file_descr -> unit Lwt.t)
