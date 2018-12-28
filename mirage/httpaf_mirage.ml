@@ -279,7 +279,6 @@ module Client = struct
 
         | `Close _ ->
           Lwt.wakeup_later notify_write_loop_exited ();
-          shutdown flow;
           Lwt.return_unit
       in
 
