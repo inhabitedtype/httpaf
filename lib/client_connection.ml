@@ -133,9 +133,15 @@ module Oneshot = struct
   let _next_read_operation t =
     match !(t.state) with
     | Awaiting_response ->
-      if Reader.is_closed t.reader then
-        set_error_and_handle t (`Malformed_response "no response");
-      Reader.next t.reader
+      let next_op = Reader.next t.reader in
+      begin match next_op with
+      (* Pass through because it'll be handled in `next_read_operation` below *)
+      | `Error _ -> next_op
+      | _ ->
+        if Reader.is_closed t.reader then
+          set_error_and_handle t (`Malformed_response "no response");
+        next_op
+      end
     | Closed -> Reader.next t.reader
     | Received_response(_, response_body) ->
       if not (Body.is_closed response_body)
