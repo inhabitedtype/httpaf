@@ -96,7 +96,7 @@ module Server = struct
       let writev = Faraday_async.writev_of_fd fd in
       let request_handler = request_handler client_addr in
       let error_handler   = error_handler client_addr in
-      let conn = Server_connection.create ?config ~error_handler ~fd request_handler in
+      let conn = Server_connection.create ?config ~error_handler ~fd:socket request_handler in
       let read_complete = Ivar.create () in
       (* XXX(seliopou): Make this configurable *)
       let buffer = Buffer.create 0x1000 in
