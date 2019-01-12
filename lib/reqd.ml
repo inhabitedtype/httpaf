@@ -34,7 +34,7 @@
 type error =
   [ `Bad_request | `Bad_gateway | `Internal_server_error | `Exn of exn ]
 
-type 'handle response_state =
+type response_state =
   | Waiting   of (unit -> unit) ref
   | Complete  of Response.t
   | Streaming of Response.t * [`write] Body.t
@@ -67,14 +67,14 @@ module Writer = Serialize.Writer
  *  ]}
  *
  * *)
-type 'handle t =
+type t =
   { request                 : Request.t
   ; request_body            : [`read] Body.t
   ; writer                  : Writer.t
   ; response_body_buffer    : Bigstring.t
   ; error_handler           : error_handler
   ; mutable persistent      : bool
-  ; mutable response_state  : 'handle response_state
+  ; mutable response_state  : response_state
   ; mutable error_code      : [`Ok | error ]
   ; mutable wait_for_first_flush : bool
   }

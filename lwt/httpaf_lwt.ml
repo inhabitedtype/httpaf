@@ -75,9 +75,6 @@ let shutdown socket command =
 module Config = Httpaf.Config
 
 module Server = struct
-  type request_handler =
-    Lwt_unix.file_descr Httpaf.Server_connection.request_handler
-
   let create_connection_handler ?(config=Config.default) ~request_handler ~error_handler =
     fun client_addr socket ->
       let module Server_connection = Httpaf.Server_connection in
