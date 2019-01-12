@@ -72,26 +72,23 @@ let shutdown socket command =
   try Lwt_unix.shutdown socket command
   with Unix.Unix_error (Unix.ENOTCONN, _, _) -> ()
 
-
+module Config = Httpaf.Config
 
 module Server = struct
   type request_handler =
     Lwt_unix.file_descr Httpaf.Server_connection.request_handler
 
-
-
-  let create_connection_handler ?config ~request_handler ~error_handler =
+  let create_connection_handler ?(config=Config.default) ~request_handler ~error_handler =
     fun client_addr socket ->
       let module Server_connection = Httpaf.Server_connection in
       let connection =
         Server_connection.create
-          ?config
+          ~config
           ~error_handler:(error_handler client_addr)
           (request_handler client_addr)
       in
 
-
-      let read_buffer = Buffer.create 0x1000 in
+      let read_buffer = Buffer.create config.read_buffer_size in
       let read_loop_exited, notify_read_loop_exited = Lwt.wait () in
 
       let rec read_loop () =
@@ -179,13 +176,13 @@ end
 
 
 module Client = struct
-  let request socket request ~error_handler ~response_handler =
+  let request ?(config=Config.default) socket request ~error_handler ~response_handler =
     let module Client_connection = Httpaf.Client_connection in
     let request_body, connection =
-      Client_connection.request request ~error_handler ~response_handler in
+      Client_connection.request ~config request ~error_handler ~response_handler in
 
 
-    let read_buffer = Buffer.create 0x1000 in
+    let read_buffer = Buffer.create config.read_buffer_size in
     let read_loop_exited, notify_read_loop_exited = Lwt.wait () in
 
     let read_loop () =

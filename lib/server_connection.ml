@@ -46,15 +46,6 @@ end
 module Reader = Parse.Reader
 module Writer = Serialize.Writer
 
-module Config = struct
-  type t =
-    { response_buffer_size      : int
-    ; response_body_buffer_size : int }
-
-  let default =
-    { response_buffer_size      = 0x400
-    ; response_body_buffer_size = 0x1000 }
-end
 
 type 'fd request_handler = 'fd Reqd.t -> unit
 
@@ -128,7 +119,7 @@ let create ?(config=Config.default) ?(error_handler=default_error_handler) reque
     { Config
     . response_buffer_size
     ; response_body_buffer_size
-    } = config
+    ; _ } = config
   in
   let writer = Writer.create ~buffer_size:response_buffer_size () in
   let request_queue = Queue.create () in
