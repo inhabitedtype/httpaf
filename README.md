@@ -62,10 +62,10 @@ opam install --deps-only httpaf
 After this, you may install a development version of the library using the
 install command as usual.
 
-Tests can be run via jbuilder:
+Tests can be run via dune:
 
 ```bash
-jbuilder runtest
+dune runtest
 ```
 
 ## License
