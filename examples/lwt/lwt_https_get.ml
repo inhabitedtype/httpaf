@@ -61,7 +61,7 @@ let () =
     let response_handler = response_handler notify_response_received in
 
     let request_body =
-      Httpaf_lwt.Client.request_tls
+      Httpaf_lwt.Client.TLS.request
         socket
         request_headers
         ~error_handler

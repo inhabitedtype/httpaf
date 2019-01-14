@@ -1,15 +1,36 @@
+(* -*- tuareg -*- *)
+(* This was inspired by `conduit-lwt-unix`'s dune file *)
+
+let v ~ssl ~tls () =
+  let ssl, ssl_d =
+    if ssl then "ssl_io_real", "lwt_ssl "
+    else "ssl_io_dummy", ""
+  in
+  let tls, tls_d =
+    if tls then "tls_io_real", "tls.lwt "
+    else "tls_io_dummy", ""
+  in
+  Printf.sprintf {|
+(rule (copy %s.ml ssl_io.ml))
+(rule (copy %s.ml tls_io.ml))
+
 (library
  (name httpaf_lwt_unix)
  (public_name httpaf-lwt-unix)
- (libraries
-  faraday-lwt-unix
-  httpaf
-  lwt.unix
-  (select
-   tls_impl.ml
-   from
-   (tls.lwt -> tls_io.ml)
-   (lwt_ssl -> ssl_io.ml)))
- (modules buffer httpaf_lwt_unix tls_impl)
- (flags
-  (:standard -safe-string)))
+ (libraries faraday-lwt-unix httpaf lwt.unix %s%s)
+ (modules buffer httpaf_lwt_unix tls_io ssl_io)
+ (flags (:standard -safe-string)))
+|} ssl tls ssl_d tls_d
+
+let main () =
+  let is_installed s = Printf.kprintf Sys.command "ocamlfind query %s" s = 0 in
+  let ssl = is_installed "lwt_ssl" in
+  let tls = Sys.unix && is_installed "tls.lwt" in
+  Printf.printf
+    "Configuration\n\
+    \  ssl    : %b\n\
+    \  tls    : %b\n%!"
+    ssl tls;
+  v ~ssl ~tls ()
+
+let () = Jbuild_plugin.V1.send @@ main ()

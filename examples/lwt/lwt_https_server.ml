@@ -70,7 +70,7 @@ let connection_handler : Unix.sockaddr -> Lwt_unix.file_descr -> unit Lwt.t =
 
   let certfile = "./certificates/server.pem" in
   let keyfile = "./certificates/server.key" in
-  Httpaf_lwt.Server.create_tls_connection_handler
+  Httpaf_lwt.Server.TLS.create_connection_handler
     ?server:None
     ~certfile
     ~keyfile

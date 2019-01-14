@@ -163,25 +163,49 @@ module Server = struct
       in
       start_read_write_loops ~config ~socket connection
 
-  let create_tls_connection_handler
-    ?server
-    ?certfile
-    ?keyfile
-    ?(config=Config.default)
-    ~request_handler
-    ~error_handler =
-    fun client_addr socket ->
-      let connection =
-        Server_connection.create
-          ~config
-          ~error_handler:(error_handler client_addr)
-          (request_handler client_addr)
-      in
-      Tls_impl.make_server ?server ?certfile ?keyfile socket >>= fun tls_server ->
-      let readf = Tls_impl.readf tls_server in
-      let writev = Tls_impl.writev tls_server in
-      start_read_write_loops ~config ~readf ~writev ~socket connection
-      >>= Lwt.return
+  module TLS = struct
+    let create_connection_handler
+      ?server
+      ?certfile
+      ?keyfile
+      ?(config=Config.default)
+      ~request_handler
+      ~error_handler =
+      fun client_addr socket ->
+        let connection =
+          Server_connection.create
+            ~config
+            ~error_handler:(error_handler client_addr)
+            (request_handler client_addr)
+        in
+        Tls_io.make_server ?server ?certfile ?keyfile socket >>= fun tls_server ->
+        let readf = Tls_io.readf tls_server in
+        let writev = Tls_io.writev tls_server in
+        start_read_write_loops ~config ~readf ~writev ~socket connection
+        >>= Lwt.return
+  end
+
+  module SSL = struct
+    let create_connection_handler
+      ?server
+      ?certfile
+      ?keyfile
+      ?(config=Config.default)
+      ~request_handler
+      ~error_handler =
+      fun client_addr socket ->
+        let connection =
+          Server_connection.create
+            ~config
+            ~error_handler:(error_handler client_addr)
+            (request_handler client_addr)
+        in
+        Ssl_io.make_server ?server ?certfile ?keyfile socket >>= fun tls_server ->
+        let readf = Ssl_io.readf tls_server in
+        let writev = Ssl_io.writev tls_server in
+        start_read_write_loops ~config ~readf ~writev ~socket connection
+        >>= Lwt.return
+  end
 end
 
 
@@ -282,18 +306,33 @@ module Client = struct
     start_read_write_loops ~config ~socket connection;
     request_body
 
-  let request_tls ?client ?(config=Config.default) socket request ~error_handler ~response_handler =
-    let request_body, connection =
-      Client_connection.request ~config request ~error_handler ~response_handler
-    in
+  module TLS = struct
+    let request ?client ?(config=Config.default) socket request ~error_handler ~response_handler =
+      let request_body, connection =
+        Client_connection.request ~config request ~error_handler ~response_handler
+      in
 
-    Lwt.async(fun () ->
-      Tls_impl.make_client ?client socket >|= fun tls_client ->
-      let readf = Tls_impl.readf tls_client in
-      let writev = Tls_impl.writev tls_client in
+      Lwt.async(fun () ->
+        Tls_io.make_client ?client socket >|= fun tls_client ->
+        let readf = Tls_io.readf tls_client in
+        let writev = Tls_io.writev tls_client in
 
-      start_read_write_loops ~config ~readf ~writev ~socket connection);
-    request_body
+        start_read_write_loops ~config ~readf ~writev ~socket connection);
+      request_body
+  end
+
+  module SSL = struct
+    let request ?client ?(config=Config.default) socket request ~error_handler ~response_handler =
+      let request_body, connection =
+        Client_connection.request ~config request ~error_handler ~response_handler
+      in
+
+      Lwt.async(fun () ->
+        Ssl_io.make_client ?client socket >|= fun tls_client ->
+        let readf = Ssl_io.readf tls_client in
+        let writev = Ssl_io.writev tls_client in
+
+        start_read_write_loops ~config ~readf ~writev ~socket connection);
+      request_body
+  end
 end
-
-module Tls_impl = Tls_impl
