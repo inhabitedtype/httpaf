@@ -13,5 +13,7 @@ env:
   - POST_INSTALL_HOOK="opam install --with-test httpaf-async httpaf-lwt-unix && opam exec -- make examples"
   matrix:
   - OCAML_VERSION="4.07"
-  - OCAML_VERSION="4.06"
+  - |
+    PRE_INSTALL_HOOK="sudo apt-get install -y libgmp-dev; opam install tls"
+    OCAML_VERSION="4.06"
   - OCAML_VERSION="4.05"

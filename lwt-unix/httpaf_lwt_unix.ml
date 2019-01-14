@@ -34,50 +34,6 @@
 
 open Lwt.Infix
 
-module Buffer : sig
-  type t
-
-  val create : int -> t
-
-  val get : t -> f:(Lwt_bytes.t -> off:int -> len:int -> int) -> int
-  val put : t -> f:(Lwt_bytes.t -> off:int -> len:int -> int Lwt.t) -> int Lwt.t
-end = struct
-  type t =
-    { buffer      : Lwt_bytes.t
-    ; mutable off : int
-    ; mutable len : int }
-
-  let create size =
-    let buffer = Lwt_bytes.create size in
-    { buffer; off = 0; len = 0 }
-
-  let compress t =
-    if t.len = 0
-    then begin
-      t.off <- 0;
-      t.len <- 0;
-    end else if t.off > 0
-    then begin
-      Lwt_bytes.blit t.buffer t.off t.buffer 0 t.len;
-      t.off <- 0;
-    end
-
-  let get t ~f =
-    let n = f t.buffer ~off:t.off ~len:t.len in
-    t.off <- t.off + n;
-    t.len <- t.len - n;
-    if t.len = 0
-    then t.off <- 0;
-    n
-
-  let put t ~f =
-    compress t;
-    f t.buffer ~off:(t.off + t.len) ~len:(Lwt_bytes.length t.buffer - t.len)
-    >>= fun n ->
-    t.len <- t.len + n;
-    Lwt.return n
-end
-
 let read fd buffer =
   Lwt.catch
     (fun () ->
@@ -98,7 +54,6 @@ let read fd buffer =
     Lwt.return (`Ok bytes_read)
 
 
-
 let shutdown socket command =
   try Lwt_unix.shutdown socket command
   with Unix.Unix_error (Unix.ENOTCONN, _, _) -> ()
@@ -106,118 +61,148 @@ let shutdown socket command =
 module Config = Httpaf.Config
 
 module Server = struct
+  module Server_connection = Httpaf.Server_connection
+
+  let start_read_write_loops
+    ?(readf=read)
+    ?(writev=Faraday_lwt_unix.writev_of_fd)
+    ~config
+    ~socket
+    connection =
+    let read_buffer = Buffer.create config.Config.read_buffer_size in
+    let read_loop_exited, notify_read_loop_exited = Lwt.wait () in
+
+    let rec read_loop () =
+      let rec read_loop_step () =
+        match Server_connection.next_read_operation connection with
+        | `Read ->
+          readf socket read_buffer >>= begin function
+          | `Eof ->
+            Buffer.get read_buffer ~f:(fun bigstring ~off ~len ->
+              Server_connection.read_eof connection bigstring ~off ~len)
+            |> ignore;
+            read_loop_step ()
+          | `Ok _ ->
+            Buffer.get read_buffer ~f:(fun bigstring ~off ~len ->
+              Server_connection.read connection bigstring ~off ~len)
+            |> ignore;
+            read_loop_step ()
+          end
+
+        | `Yield ->
+          Server_connection.yield_reader connection read_loop;
+          Lwt.return_unit
+
+        | `Close ->
+          Lwt.wakeup_later notify_read_loop_exited ();
+          if not (Lwt_unix.state socket = Lwt_unix.Closed) then begin
+            shutdown socket Unix.SHUTDOWN_RECEIVE
+          end;
+          Lwt.return_unit
+      in
+
+      Lwt.async (fun () ->
+        Lwt.catch
+          read_loop_step
+          (fun exn ->
+            Server_connection.report_exn connection exn;
+            Lwt.return_unit))
+    in
+
+
+    let writev = writev socket in
+    let write_loop_exited, notify_write_loop_exited = Lwt.wait () in
+
+    let rec write_loop () =
+      let rec write_loop_step () =
+        match Server_connection.next_write_operation connection with
+        | `Write io_vectors ->
+          writev io_vectors >>= fun result ->
+          Server_connection.report_write_result connection result;
+          write_loop_step ()
+
+        | `Yield ->
+          Server_connection.yield_writer connection write_loop;
+          Lwt.return_unit
+
+        | `Close _ ->
+          Lwt.wakeup_later notify_write_loop_exited ();
+          if not (Lwt_unix.state socket = Lwt_unix.Closed) then begin
+            shutdown socket Unix.SHUTDOWN_SEND
+          end;
+          Lwt.return_unit
+      in
+
+      Lwt.async (fun () ->
+        Lwt.catch
+          write_loop_step
+          (fun exn ->
+            Server_connection.report_exn connection exn;
+            Lwt.return_unit))
+    in
+
+
+    read_loop ();
+    write_loop ();
+    Lwt.join [read_loop_exited; write_loop_exited] >>= fun () ->
+
+    if Lwt_unix.state socket <> Lwt_unix.Closed then
+      Lwt.catch
+        (fun () -> Lwt_unix.close socket)
+        (fun _exn -> Lwt.return_unit)
+    else
+      Lwt.return_unit
+
   let create_connection_handler ?(config=Config.default) ~request_handler ~error_handler =
     fun client_addr socket ->
-      let module Server_connection = Httpaf.Server_connection in
       let connection =
         Server_connection.create
           ~config
           ~error_handler:(error_handler client_addr)
           (request_handler client_addr)
       in
+      start_read_write_loops ~config ~socket connection
 
-      let read_buffer = Buffer.create config.read_buffer_size in
-      let read_loop_exited, notify_read_loop_exited = Lwt.wait () in
-
-      let rec read_loop () =
-        let rec read_loop_step () =
-          match Server_connection.next_read_operation connection with
-          | `Read ->
-            read socket read_buffer >>= begin function
-            | `Eof ->
-              Buffer.get read_buffer ~f:(fun bigstring ~off ~len ->
-                Server_connection.read_eof connection bigstring ~off ~len)
-              |> ignore;
-              read_loop_step ()
-            | `Ok _ ->
-              Buffer.get read_buffer ~f:(fun bigstring ~off ~len ->
-                Server_connection.read connection bigstring ~off ~len)
-              |> ignore;
-              read_loop_step ()
-            end
-
-          | `Yield ->
-            Server_connection.yield_reader connection read_loop;
-            Lwt.return_unit
-
-          | `Close ->
-            Lwt.wakeup_later notify_read_loop_exited ();
-            if not (Lwt_unix.state socket = Lwt_unix.Closed) then begin
-              shutdown socket Unix.SHUTDOWN_RECEIVE
-            end;
-            Lwt.return_unit
-        in
-
-        Lwt.async (fun () ->
-          Lwt.catch
-            read_loop_step
-            (fun exn ->
-              Server_connection.report_exn connection exn;
-              Lwt.return_unit))
+  let create_tls_connection_handler
+    ?server
+    ?certfile
+    ?keyfile
+    ?(config=Config.default)
+    ~request_handler
+    ~error_handler =
+    fun client_addr socket ->
+      let connection =
+        Server_connection.create
+          ~config
+          ~error_handler:(error_handler client_addr)
+          (request_handler client_addr)
       in
-
-
-      let writev = Faraday_lwt_unix.writev_of_fd socket in
-      let write_loop_exited, notify_write_loop_exited = Lwt.wait () in
-
-      let rec write_loop () =
-        let rec write_loop_step () =
-          match Server_connection.next_write_operation connection with
-          | `Write io_vectors ->
-            writev io_vectors >>= fun result ->
-            Server_connection.report_write_result connection result;
-            write_loop_step ()
-
-          | `Yield ->
-            Server_connection.yield_writer connection write_loop;
-            Lwt.return_unit
-
-          | `Close _ ->
-            Lwt.wakeup_later notify_write_loop_exited ();
-            if not (Lwt_unix.state socket = Lwt_unix.Closed) then begin
-              shutdown socket Unix.SHUTDOWN_SEND
-            end;
-            Lwt.return_unit
-        in
-
-        Lwt.async (fun () ->
-          Lwt.catch
-            write_loop_step
-            (fun exn ->
-              Server_connection.report_exn connection exn;
-              Lwt.return_unit))
-      in
-
-
-      read_loop ();
-      write_loop ();
-      Lwt.join [read_loop_exited; write_loop_exited] >>= fun () ->
-
-      if Lwt_unix.state socket <> Lwt_unix.Closed then
-        Lwt.catch
-          (fun () -> Lwt_unix.close socket)
-          (fun _exn -> Lwt.return_unit)
-      else
-        Lwt.return_unit
+      Tls_impl.make_server ?server ?certfile ?keyfile socket >>= fun tls_server ->
+      let readf = Tls_impl.readf tls_server in
+      let writev = Tls_impl.writev tls_server in
+      start_read_write_loops ~config ~readf ~writev ~socket connection
+      >>= Lwt.return
 end
 
 
 
 module Client = struct
-  let request ?(config=Config.default) socket request ~error_handler ~response_handler =
-    let module Client_connection = Httpaf.Client_connection in
-    let request_body, connection =
-      Client_connection.request ~config request ~error_handler ~response_handler in
+  module Client_connection = Httpaf.Client_connection
 
-
-    let read_buffer = Buffer.create config.read_buffer_size in
+  let start_read_write_loops
+    ?(readf=read)
+    ?(writev=Faraday_lwt_unix.writev_of_fd)
+    ~config
+    ~socket
+    connection =
+    let read_buffer = Buffer.create config.Config.read_buffer_size in
     let read_loop_exited, notify_read_loop_exited = Lwt.wait () in
 
     let read_loop () =
       let rec read_loop_step () =
         match Client_connection.next_read_operation connection with
         | `Read ->
-          read socket read_buffer >>= begin function
+          readf socket read_buffer >>= begin function
           | `Eof ->
             Buffer.get read_buffer ~f:(fun bigstring ~off ~len ->
               Client_connection.read_eof connection bigstring ~off ~len)
@@ -247,7 +232,7 @@ module Client = struct
     in
 
 
-    let writev = Faraday_lwt_unix.writev_of_fd socket in
+    let writev = writev socket in
     let write_loop_exited, notify_write_loop_exited = Lwt.wait () in
 
     let rec write_loop () =
@@ -287,7 +272,28 @@ module Client = struct
           (fun () -> Lwt_unix.close socket)
           (fun _exn -> Lwt.return_unit)
       else
-        Lwt.return_unit);
+        Lwt.return_unit)
 
+  let request ?(config=Config.default) socket request ~error_handler ~response_handler =
+    let request_body, connection =
+      Client_connection.request ~config request ~error_handler ~response_handler
+    in
+
+    start_read_write_loops ~config ~socket connection;
+    request_body
+
+  let request_tls ?client ?(config=Config.default) socket request ~error_handler ~response_handler =
+    let request_body, connection =
+      Client_connection.request ~config request ~error_handler ~response_handler
+    in
+
+    Lwt.async(fun () ->
+      Tls_impl.make_client ?client socket >|= fun tls_client ->
+      let readf = Tls_impl.readf tls_client in
+      let writev = Tls_impl.writev tls_client in
+
+      start_read_write_loops ~config ~readf ~writev ~socket connection);
     request_body
 end
+
+module Tls_impl = Tls_impl

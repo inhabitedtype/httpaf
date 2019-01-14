@@ -46,15 +46,40 @@ module Server : sig
     -> Unix.sockaddr
     -> Lwt_unix.file_descr
     -> unit Lwt.t
+
+  val create_tls_connection_handler
+    :  ?server         : Tls_impl.server
+    -> ?certfile       : string
+    -> ?keyfile        : string
+    -> ?config         : Config.t
+    -> request_handler : (Unix.sockaddr -> Server_connection.request_handler)
+    -> error_handler   : (Unix.sockaddr -> Server_connection.error_handler)
+    -> Unix.sockaddr
+    -> Lwt_unix.file_descr
+    -> unit Lwt.t
 end
 
 (* For an example, see [examples/lwt_get.ml]. *)
 module Client : sig
   val request
-    :  ?config          : Httpaf.Config.t
+    :  ?config          : Config.t
     -> Lwt_unix.file_descr
     -> Request.t
     -> error_handler    : Client_connection.error_handler
     -> response_handler : Client_connection.response_handler
-    -> [`write] Httpaf.Body.t
+    -> [`write] Body.t
+
+  val request_tls
+    :  ?client          : Tls_impl.client
+    -> ?config          : Config.t
+    -> Lwt_unix.file_descr
+    -> Request.t
+    -> error_handler    : Client_connection.error_handler
+    -> response_handler : Client_connection.response_handler
+    -> [`write] Body.t
+end
+
+module Tls_impl : sig
+  type client = Tls_impl.client
+  type server = Tls_impl.server
 end

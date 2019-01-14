@@ -1,5 +1,15 @@
 (library
  (name httpaf_lwt_unix)
  (public_name httpaf-lwt-unix)
- (libraries faraday-lwt-unix httpaf lwt.unix)
- (flags (:standard -safe-string)))
+ (libraries
+  faraday-lwt-unix
+  httpaf
+  lwt.unix
+  (select
+   tls_impl.ml
+   from
+   (tls.lwt -> tls_io.ml)
+   (lwt_ssl -> ssl_io.ml)))
+ (modules buffer httpaf_lwt_unix tls_impl)
+ (flags
+  (:standard -safe-string)))
