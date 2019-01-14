@@ -10,6 +10,7 @@ env:
   matrix:
   - PACKAGE="httpaf"       DISTRO="ubuntu-16.04"    OCAML_VERSION="4.07.1"
   - PACKAGE="httpaf-async" DISTRO="ubuntu-16.04"    OCAML_VERSION="4.07.1"
+  - PACKAGE="httpaf-lwt"   DISTRO="ubuntu-16.04"    OCAML_VERSION="4.07.1"
   - PACKAGE="httpaf"       DISTRO="ubuntu-16.04"    OCAML_VERSION="4.06.0"
   - PACKAGE="httpaf-async" DISTRO="ubuntu-16.04"    OCAML_VERSION="4.06.0"
   - PACKAGE="httpaf-lwt"   DISTRO="ubuntu-16.04"    OCAML_VERSION="4.06.0"
