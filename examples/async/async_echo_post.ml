@@ -5,7 +5,7 @@ open Httpaf
 open Httpaf_async
 
 
-let error_handler _ ?request error start_response =
+let error_handler _ ?request:_ error start_response =
   let response_body = start_response Headers.empty in
   begin match error with
   | `Exn exn ->
@@ -46,7 +46,7 @@ let main port max_accepts_per_batch () =
   Tcp.(Server.create_sock ~on_handler_error:`Raise
       ~backlog:10_000 ~max_connections:10_000 ~max_accepts_per_batch where_to_listen)
     (Server.create_connection_handler ~request_handler ~error_handler)
-  >>= fun server ->
+  >>= fun _server ->
   Deferred.never ()
 
 let () =

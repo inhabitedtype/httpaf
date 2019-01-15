@@ -56,7 +56,7 @@ let connection_handler =
         reqd (Response.create `Not_found) "Route not found"
   in
 
-  let error_handler _ ?request error start_response =
+  let error_handler _ ?request:_ error start_response =
     let response_body = start_response Headers.empty in
 
     begin match error with
