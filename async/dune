@@ -3,5 +3,9 @@
  (public_name httpaf-async)
  (wrapped false)
  (libraries
-   async core angstrom-async faraday-async httpaf)
+   async core angstrom-async faraday-async httpaf
+   (select ssl_io.ml from
+    (async_ssl  -> ssl_io_real.ml)
+    (!async_ssl -> ssl_io_dummy.ml)))
+ (modules buffer httpaf_async ssl_io)
  (flags (:standard -safe-string)))
