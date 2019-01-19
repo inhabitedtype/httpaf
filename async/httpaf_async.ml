@@ -204,10 +204,8 @@ module Client = struct
     Scheduler.within ~monitor:conn_monitor reader_thread;
     Scheduler.within ~monitor:conn_monitor writer_thread;
     Monitor.detach_and_iter_errors conn_monitor ~f:(fun exn ->
-      Client_connection.shutdown conn;
-      Log.Global.error "%s" (Exn.to_string exn);
-      if not (Fd.is_closed fd)
-      then don't_wait_for (Fd.close fd));
+      (* Log.Global.error "%s" (Exn.to_string exn); *)
+      Client_connection.report_exn conn exn);
     don't_wait_for (
       Deferred.all_unit
         [ Ivar.read read_complete
