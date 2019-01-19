@@ -5,7 +5,7 @@ let connection_handler : Unix.sockaddr -> Lwt_unix.file_descr -> unit Lwt.t =
   let module Response = Httpaf.Response in
   let module Status = Httpaf.Status in
 
-  let request_handler : Unix.sockaddr -> _ Reqd.t -> unit =
+  let request_handler : Unix.sockaddr -> Reqd.t -> unit =
       fun _client_address request_descriptor ->
 
     let request = Reqd.request request_descriptor in
