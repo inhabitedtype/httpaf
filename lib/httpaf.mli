@@ -636,7 +636,7 @@ module Reqd : sig
   val respond_with_string    : t -> Response.t -> string -> unit
   val respond_with_bigstring : t -> Response.t -> Bigstringaf.t -> unit
   val respond_with_streaming : ?flush_headers_immediately:bool -> t -> Response.t -> [`write] Body.t
-  val respond_with_upgrade : t -> Response.t -> [`write] Body.t
+  val respond_with_upgrade : t -> Response.t -> (t -> [`write] Body.t -> unit) -> [`write] Body.t
 
   (** {3 Exception Handling} *)
 
@@ -667,7 +667,6 @@ module Server_connection : sig
     [ `Bad_request | `Bad_gateway | `Internal_server_error | `Exn of exn ]
 
   type request_handler = Reqd.t -> unit
-  type upgrade_handler = Reqd.t -> [`write] Body.t -> unit
 
   type error_handler =
     ?request:Request.t -> error -> (Headers.t -> [`write] Body.t) -> unit
@@ -675,7 +674,6 @@ module Server_connection : sig
   val create
     :  ?config:Config.t
     -> ?error_handler:error_handler
-    -> ?upgrade_handler: upgrade_handler
     -> request_handler
     -> t
   (** [create ?config ?error_handler ~request_handler] creates a connection

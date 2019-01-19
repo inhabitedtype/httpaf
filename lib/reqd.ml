@@ -73,23 +73,20 @@ type t =
   ; writer                  : Writer.t
   ; response_body_buffer    : Bigstringaf.t
   ; error_handler           : error_handler
-  ; upgrade_handler         : upgrade_handler
   ; mutable persistent      : bool
   ; mutable response_state  : response_state
   ; mutable error_code      : [`Ok | error ]
   ; mutable wait_for_first_flush : bool
   }
-and upgrade_handler = t -> [`write] Body.t -> unit
 
 let default_waiting = Sys.opaque_identity (fun () -> ())
 
-let create error_handler upgrade_handler request request_body writer response_body_buffer =
+let create error_handler request request_body writer response_body_buffer =
   { request
   ; request_body
   ; writer
   ; response_body_buffer
   ; error_handler
-  ; upgrade_handler
   ; persistent              = Request.persistent_connection request
   ; response_state          = Waiting (ref default_waiting)
   ; error_code              = `Ok
@@ -172,7 +169,7 @@ let respond_with_streaming ?(flush_headers_immediately=false) t response =
     failwith "httpaf.Reqd.respond_with_streaming: invalid state, currently handling error";
   unsafe_respond_with_streaming ~flush_headers_immediately t response
 
-let unsafe_respond_with_upgrade t response =
+let unsafe_respond_with_upgrade t response upgrade_handler =
   match t.response_state with
   | Waiting when_done_waiting ->
     let response_body = Body.create t.response_body_buffer in
@@ -181,7 +178,7 @@ let unsafe_respond_with_upgrade t response =
       t.persistent <- Response.persistent_connection response;
     t.response_state <- Streaming(response, response_body);
     Writer.flush t.writer (fun () ->
-      t.upgrade_handler t response_body;
+      upgrade_handler t response_body;
       done_waiting when_done_waiting);
     response_body
   | Streaming _ ->
@@ -189,10 +186,10 @@ let unsafe_respond_with_upgrade t response =
   | Complete _ ->
     failwith "httpaf.Reqd.respond_with_streaming: response already complete"
 
-let respond_with_upgrade t response =
+let respond_with_upgrade t response upgrade_handler =
   if t.error_code <> `Ok then
     failwith "httpaf.Reqd.respond_with_streaming: invalid state, currently handling error";
-  unsafe_respond_with_upgrade t response
+  unsafe_respond_with_upgrade t response upgrade_handler
 
 let report_error t error =
   t.persistent <- false;

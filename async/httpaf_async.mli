@@ -6,8 +6,7 @@ open Httpaf
 module Server : sig
   val create_connection_handler
     :  ?config         : Config.t
-    -> request_handler : ('a -> Server_connection.request_handler)
-    -> ?upgrade_handler : ('a -> ([`Active], 'a) Socket.t -> Server_connection.upgrade_handler)
+    -> request_handler : ('a * ([`Active], 'a) Socket.t -> Server_connection.request_handler)
     -> error_handler   : ('a -> Server_connection.error_handler)
     -> ([< Socket.Address.t] as 'a)
     -> ([`Active], 'a) Socket.t

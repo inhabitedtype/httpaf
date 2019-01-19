@@ -109,20 +109,14 @@ module Server = struct
   let create_connection_handler
     ?(config=Config.default)
     ~request_handler
-    ?upgrade_handler
     ~error_handler =
     fun client_addr socket ->
       let module Server_connection = Httpaf.Server_connection in
-      let upgrade_handler = match upgrade_handler with
-      | None -> None
-      | Some upgrade_handler -> Some (upgrade_handler client_addr socket)
-      in
       let connection =
         Server_connection.create
           ~config
           ~error_handler:(error_handler client_addr)
-          ?upgrade_handler
-          (request_handler client_addr)
+          (request_handler (client_addr, socket))
       in
 
       let read_buffer = Buffer.create config.read_buffer_size in

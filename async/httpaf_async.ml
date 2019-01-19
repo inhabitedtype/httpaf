@@ -93,18 +93,13 @@ module Server = struct
   let create_connection_handler
     ?(config=Config.default)
     ~request_handler
-    ?upgrade_handler
     ~error_handler =
     fun client_addr socket ->
       let fd     = Socket.fd socket in
       let writev = Faraday_async.writev_of_fd fd in
-      let request_handler = request_handler client_addr in
+      let request_handler = request_handler (client_addr, socket) in
       let error_handler   = error_handler client_addr in
-      let upgrade_handler = match upgrade_handler with
-      | None -> None
-      | Some upgrade_handler -> Some (upgrade_handler client_addr socket)
-      in
-      let conn = Server_connection.create ~config ~error_handler ?upgrade_handler request_handler in
+      let conn = Server_connection.create ~config ~error_handler request_handler in
       let read_complete = Ivar.create () in
       let buffer = Buffer.create config.read_buffer_size in
       let rec reader_thread () =

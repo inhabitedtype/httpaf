@@ -3,7 +3,8 @@ open Async
 
 open Httpaf_async
 
-let request_handler (_ : Socket.Address.Inet.t) = Httpaf_examples.Server.echo_post
+let request_handler (_ : Socket.Address.Inet.t * ([`Active], 'a) Socket.t ) =
+  Httpaf_examples.Server.echo_post
 let error_handler (_ : Socket.Address.Inet.t) = Httpaf_examples.Server.error_handler
 
 let main port max_accepts_per_batch () =

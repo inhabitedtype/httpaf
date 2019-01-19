@@ -4,7 +4,8 @@ module Arg = Caml.Arg
 
 open Httpaf_lwt_unix
 
-let request_handler (_ : Unix.sockaddr) = Httpaf_examples.Server.echo_post
+let request_handler (_ : Unix.sockaddr * Lwt_unix.file_descr) =
+  Httpaf_examples.Server.echo_post
 let error_handler (_ : Unix.sockaddr) = Httpaf_examples.Server.error_handler
 
 let main port =

@@ -48,7 +48,6 @@ module Writer = Serialize.Writer
 
 
 type request_handler = Reqd.t -> unit
-type upgrade_handler = Reqd.upgrade_handler
 
 type error =
   [ `Bad_gateway | `Bad_request | `Internal_server_error | `Exn of exn]
@@ -61,7 +60,6 @@ type t =
   ; writer                 : Writer.t
   ; response_body_buffer   : Bigstringaf.t
   ; request_handler        : request_handler
-  ; upgrade_handler        : upgrade_handler
   ; error_handler          : error_handler
   ; request_queue          : Reqd.t Queue.t
     (* invariant: If [request_queue] is not empty, then the head of the queue
@@ -116,13 +114,9 @@ let default_error_handler ?request:_ error handle =
   Body.close_writer body
 ;;
 
-let default_upgrade_handler _reqd _response_body =
-  ()
-
 let create
   ?(config=Config.default)
   ?(error_handler=default_error_handler)
-  ?(upgrade_handler=default_upgrade_handler)
   request_handler =
   let
     { Config
@@ -137,7 +131,7 @@ let create
   let handler request request_body =
     let handle_now = Queue.is_empty request_queue in
     let reqd       =
-      Reqd.create error_handler upgrade_handler request request_body writer response_body_buffer in
+      Reqd.create error_handler request request_body writer response_body_buffer in
     Queue.push reqd request_queue;
     if handle_now then begin
       request_handler reqd;
@@ -148,7 +142,6 @@ let create
   ; writer
   ; response_body_buffer
   ; request_handler = request_handler
-  ; upgrade_handler = upgrade_handler
   ; error_handler   = error_handler
   ; request_queue
   ; wakeup_writer
