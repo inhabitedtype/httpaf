@@ -21,4 +21,4 @@ env:
   - PACKAGE="httpaf"       DISTRO="debian-testing"  OCAML_VERSION="4.03"
   - PACKAGE="httpaf-async" DISTRO="debian-testing"  OCAML_VERSION="4.03"
   - PACKAGE="httpaf-lwt"   DISTRO="debian-testing"  OCAML_VERSION="4.03"
-  - PACKAGE="httpaf" DISTRO="alpine" OCAML_VERSION="4.07" POST_INSTALL_HOOK="opam install . && opam exec -- dune build @all"
+  - PACKAGE="httpaf" DISTRO="alpine" OCAML_VERSION="4.07" POST_INSTALL_HOOK="opam install -t . && opam exec -- dune build @all"
