@@ -19,7 +19,7 @@ let error_handler _ ?request:_ error start_response =
 
 let request_handler _ reqd =
   match Reqd.request reqd  with
-  | { Request.meth = `POST; headers } ->
+  | { Request.meth = `POST; headers; _ } ->
     let response =
       let content_type =
         match Headers.get headers "content-type" with
