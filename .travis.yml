@@ -8,6 +8,7 @@ env:
   global:
   - PINS="httpaf-async:. httpaf-lwt:. httpaf:."
   - TESTS=true
+  - POST_INSTALL_HOOK="opam install -t . && opam exec -- make build tests"
   matrix:
   - PACKAGE="httpaf"       DISTRO="ubuntu"          OCAML_VERSION="4.07"
   - PACKAGE="httpaf-async" DISTRO="alpine"          OCAML_VERSION="4.07"
@@ -21,4 +22,3 @@ env:
   - PACKAGE="httpaf"       DISTRO="debian-testing"  OCAML_VERSION="4.03"
   - PACKAGE="httpaf-async" DISTRO="debian-testing"  OCAML_VERSION="4.03"
   - PACKAGE="httpaf-lwt"   DISTRO="debian-testing"  OCAML_VERSION="4.03"
-  - PACKAGE="httpaf" DISTRO="alpine" OCAML_VERSION="4.07" POST_INSTALL_HOOK="opam install -t . && opam exec -- dune build @all"
