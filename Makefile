@@ -9,7 +9,7 @@ test:
 	dune runtest
 
 examples:
-	dune build --dev @examples
+	dune build @examples
 
 install:
 	dune install
