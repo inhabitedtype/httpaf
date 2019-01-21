@@ -25,6 +25,7 @@ let body_to_strings = function
 ;;
 
 let case_to_strings = function
+  | `Raw      r, body -> r @ (body_to_strings body)
   | `Request  r, body -> [request_to_string  r] @ (body_to_strings body)
   | `Response r, body -> [response_to_string r] @ (body_to_strings body)
 

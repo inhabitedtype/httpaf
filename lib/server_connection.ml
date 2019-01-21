@@ -186,6 +186,8 @@ let set_error_and_handle ?request t error =
     t.error_handler ?request error (fun headers ->
       Writer.write_response writer (Response.create ~headers status);
       Body.of_faraday (Writer.faraday writer));
+    (* TODO(anmonteiro): uncomment to fix the failing tests. *)
+    (* wakeup_writer t; *)
   end
 
 let report_exn t exn =
