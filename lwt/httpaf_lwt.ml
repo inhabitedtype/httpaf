@@ -233,9 +233,6 @@ module Client = struct
 
         | `Close _ ->
           Lwt.wakeup_later notify_write_loop_exited ();
-          if not (Lwt_unix.state socket = Lwt_unix.Closed) then begin
-            shutdown socket Unix.SHUTDOWN_SEND
-          end;
           Lwt.return_unit
       in
 
