@@ -6,19 +6,12 @@ install: wget https://raw.githubusercontent.com/ocaml/ocaml-travisci-skeleton/ma
 script: bash -ex ./.travis-docker.sh
 env:
   global:
+  - DISTRO="ubuntu"
   - PINS="httpaf-async:. httpaf-lwt:. httpaf:."
+  - PACKAGE="httpaf"
   - TESTS=true
-  - POST_INSTALL_HOOK="opam install -t . && opam exec -- make build tests"
+  - POST_INSTALL_HOOK="opam install --with-test httpaf-async httpaf-lwt && opam exec -- make examples"
   matrix:
-  - PACKAGE="httpaf"       DISTRO="ubuntu"          OCAML_VERSION="4.07"
-  - PACKAGE="httpaf-async" DISTRO="alpine"          OCAML_VERSION="4.07"
-  - PACKAGE="httpaf-lwt"   DISTRO="debian-stable"   OCAML_VERSION="4.07"
-  - PACKAGE="httpaf"       DISTRO="ubuntu-lts"      OCAML_VERSION="4.06"
-  - PACKAGE="httpaf-async" DISTRO="fedora"          OCAML_VERSION="4.06"
-  - PACKAGE="httpaf-lwt"   DISTRO="opensuse"        OCAML_VERSION="4.05"
-  - PACKAGE="httpaf"       DISTRO="centos"          OCAML_VERSION="4.04"
-  - PACKAGE="httpaf-async" DISTRO="ubuntu"          OCAML_VERSION="4.04"
-  - PACKAGE="httpaf-lwt"   DISTRO="ubuntu"          OCAML_VERSION="4.04"
-  - PACKAGE="httpaf"       DISTRO="debian-testing"  OCAML_VERSION="4.03"
-  - PACKAGE="httpaf-async" DISTRO="debian-testing"  OCAML_VERSION="4.03"
-  - PACKAGE="httpaf-lwt"   DISTRO="debian-testing"  OCAML_VERSION="4.03"
+  - OCAML_VERSION="4.07"
+  - OCAML_VERSION="4.06"
+  - OCAML_VERSION="4.05"
