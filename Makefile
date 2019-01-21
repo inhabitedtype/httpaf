@@ -1,4 +1,4 @@
-.PHONY: all build clean test
+.PHONY: all build clean test examples
 
 build:
 	dune build @install
@@ -7,6 +7,9 @@ all: build
 
 test:
 	dune runtest
+
+examples:
+	dune build --dev @examples
 
 install:
 	dune install
