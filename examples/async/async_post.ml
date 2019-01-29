@@ -8,7 +8,7 @@ let response_handler finished response response_body =
   match response with
   | { Response.status = `OK; _ } ->
     let rec on_read bs ~off ~len =
-      Bigstring.to_string ~off ~len bs |> Core.Printf.printf "%s";
+      Bigstringaf.substring ~off ~len bs |> Core.Printf.printf "%s";
       Body.schedule_read response_body ~on_read ~on_eof
     and on_eof () = Ivar.fill finished () in
     Body.schedule_read response_body ~on_read ~on_eof;
