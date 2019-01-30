@@ -76,16 +76,16 @@ let write_string_chunk t chunk =
   write_string       t chunk
 
 let write_bigstring_chunk t chunk =
-  write_chunk_length t (Bigstring.length chunk);
+  write_chunk_length t (Bigstringaf.length chunk);
   write_bigstring    t chunk
 
 let schedule_bigstring_chunk t chunk =
-  write_chunk_length t (Bigstring.length chunk);
+  write_chunk_length t (Bigstringaf.length chunk);
   schedule_bigstring t chunk
 
 module Writer = struct
   type t =
-    { buffer                : Bigstring.t
+    { buffer                : Bigstringaf.t
       (* The buffer that the encoder uses for buffered writes. Managed by the
        * control module for the encoder. *)
     ; encoder               : Faraday.t
@@ -98,7 +98,7 @@ module Writer = struct
     }
 
   let create ?(buffer_size=0x800) () =
-    let buffer = Bigstring.create buffer_size in
+    let buffer = Bigstringaf.create buffer_size in
     let encoder = Faraday.of_bigstring buffer in
     { buffer
     ; encoder

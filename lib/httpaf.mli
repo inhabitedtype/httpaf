@@ -452,7 +452,7 @@ module Body : sig
   val schedule_read
     :  [`read] t
     -> on_eof  : (unit -> unit)
-    -> on_read : (Bigstring.t -> off:int -> len:int -> unit)
+    -> on_read : (Bigstringaf.t -> off:int -> len:int -> unit)
     -> unit
   (* [schedule_read t ~on_eof ~on_read] will setup [on_read] and [on_eof] as
      callbacks for when bytes are available in [t] for the application to
@@ -473,12 +473,12 @@ module Body : sig
       possible, this write will be combined with previous and/or subsequent
       writes before transmission. *)
 
-  val write_bigstring : [`write] t -> ?off:int -> ?len:int -> Bigstring.t -> unit
+  val write_bigstring : [`write] t -> ?off:int -> ?len:int -> Bigstringaf.t -> unit
   (** [write_bigstring w ?off ?len bs] copies [bs] into an internal buffer. If
       possible, this write will be combined with previous and/or subsequent
       writes before transmission. *)
 
-  val schedule_bigstring : [`write] t -> ?off:int -> ?len:int -> Bigstring.t -> unit
+  val schedule_bigstring : [`write] t -> ?off:int -> ?len:int -> Bigstringaf.t -> unit
   (** [schedule_bigstring w ?off ?len bs] schedules [bs] to be
       transmitted at the next opportunity without performing a copy. [bs]
       should not be modified until a subsequent call to {!flush} has
@@ -597,52 +597,6 @@ module Response : sig
 end
 
 
-(** Bigstring
-
-    A block of memory allocated on the C heap. Bigstring payloads won't get
-    relocated by the OCaml GC, making it safe to use in blocking system calls
-    without holding the OCaml runtime lock. *)
-module Bigstring : sig
-  type t =
-    (char, Bigarray.int8_unsigned_elt, Bigarray.c_layout) Bigarray.Array1.t
-  (** For compatiblity with other libraries, [Bigstring.t] is not abstract. *)
-
-  val create : int -> t
-  (** [create len] allocates a bigstring of length [len]. *)
-
-  val of_string : ?off:int -> ?len:int -> string -> t
-  (** [of_string ?off ?len str] allocates a bigstring and copies the contents
-      of [str] into it. if [off] or [len] are provided, [t] will only have
-      length [len] and only the specified range of the string will be copied
-      into it. *)
-
-  val length : t -> int
-  (** [length t] returns the length of the bigstring. *)
-
-  val get        : t -> int -> char
-  val unsafe_get : t -> int -> char
-  (** [get        t n] returns the nth byte of [t] as a [char].
-      [unsafe_get t n] does the same but will not perform bounds checking. *)
-
-  val set        : t -> int -> char -> unit
-  val unsafe_set : t -> int -> char -> unit
-  (** [set        t n] returns the nth byte of [t] as a [char].
-      [unsafe_set t n] does the same but will not perform bounds checking. *)
-
-  val sub : off:int -> ?len:int -> t -> t
-  (** [sub ~off ?len t] returns a sub-view into the bigstring [t], specified by
-      [off] and [len]. This is a {i non-copying operation}: [t] and the
-      returned sub-view will share underlying bytes. Modifying one will modify
-      the other. *)
-
-  val blit : t -> int -> t -> int -> int -> unit
-  val blit_from_string : string  -> int -> t -> int -> int -> unit
-  val blit_from_bytes  : Bytes.t -> int -> t -> int -> int -> unit
-
-  val to_string : ?off:int -> ?len:int -> t -> string
-end
-
-
 (** IOVec *)
 module IOVec : sig
   type 'a t = 'a Faraday.iovec =
@@ -680,7 +634,7 @@ module Reqd : sig
       more details. *)
 
   val respond_with_string    : t -> Response.t -> string -> unit
-  val respond_with_bigstring : t -> Response.t -> Bigstring.t -> unit
+  val respond_with_bigstring : t -> Response.t -> Bigstringaf.t -> unit
   val respond_with_streaming : ?flush_headers_immediately:bool -> t -> Response.t -> [`write] Body.t
 
   (** Exception Handling *)
@@ -728,14 +682,14 @@ module Server_connection : sig
   (** [next_read_operation t] returns a value describing the next operation
       that the caller should conduct on behalf of the connection. *)
 
-  val read : t -> Bigstring.t -> off:int -> len:int -> int
+  val read : t -> Bigstringaf.t -> off:int -> len:int -> int
   (** [read t bigstring ~off ~len] reads bytes of input from the provided range
       of [bigstring] and returns the number of bytes consumed by the
       connection.  {!read} should be called after {!next_read_operation}
       returns a [`Read] value and additional input is available for the
       connection to consume. *)
 
-  val read_eof : t -> Bigstring.t -> off:int -> len:int -> int
+  val read_eof : t -> Bigstringaf.t -> off:int -> len:int -> int
   (** [read t bigstring ~off ~len] reads bytes of input from the provided range
       of [bigstring] and returns the number of bytes consumed by the
       connection.  {!read} should be called after {!next_read_operation}
@@ -749,7 +703,7 @@ module Server_connection : sig
       after {next_read_operation} returns a [`Yield] value. *)
 
   val next_write_operation : t -> [
-    | `Write of Bigstring.t IOVec.t list
+    | `Write of Bigstringaf.t IOVec.t list
     | `Yield
     | `Close of int ]
   (** [next_write_operation t] returns a value describing the next operation
@@ -817,14 +771,14 @@ module Client_connection : sig
   (** [next_read_operation t] returns a value describing the next operation
       that the caller should conduct on behalf of the connection. *)
 
-  val read : t -> Bigstring.t -> off:int -> len:int -> int
+  val read : t -> Bigstringaf.t -> off:int -> len:int -> int
   (** [read t bigstring ~off ~len] reads bytes of input from the provided range
       of [bigstring] and returns the number of bytes consumed by the
       connection.  {!read} should be called after {!next_read_operation}
       returns a [`Read] value and additional input is available for the
       connection to consume. *)
 
-  val read_eof : t -> Bigstring.t -> off:int -> len:int -> int
+  val read_eof : t -> Bigstringaf.t -> off:int -> len:int -> int
   (** [read t bigstring ~off ~len] reads bytes of input from the provided range
       of [bigstring] and returns the number of bytes consumed by the
       connection.  {!read} should be called after {!next_read_operation}
@@ -833,7 +787,7 @@ module Client_connection : sig
       then shutdown the HTTP parser for the connection. *)
 
   val next_write_operation : t -> [
-    | `Write of Bigstring.t IOVec.t list
+    | `Write of Bigstringaf.t IOVec.t list
     | `Yield
     | `Close of int ]
   (** [next_write_operation t] returns a value describing the next operation

@@ -205,7 +205,7 @@ module Reader = struct
   type 'error parse_state =
     | Done
     | Fail    of 'error
-    | Partial of (Bigstring.t -> off:int -> len:int -> AU.more -> (unit, 'error) result AU.state)
+    | Partial of (Bigstringaf.t -> off:int -> len:int -> AU.more -> (unit, 'error) result AU.state)
 
   type 'error t =
     { parser              : (unit, 'error) result Angstrom.t
@@ -236,7 +236,7 @@ module Reader = struct
         handler request Body.empty;
         ok
       | `Fixed _ | `Chunked | `Close_delimited as encoding ->
-        let request_body = Body.create Bigstring.empty in
+        let request_body = Body.create Bigstringaf.empty in
         handler request request_body;
         body ~encoding request_body *> ok
     in
@@ -253,7 +253,7 @@ module Reader = struct
         handler response Body.empty;
         ok
       | `Fixed _ | `Chunked | `Close_delimited as encoding ->
-        let response_body = Body.create Bigstring.empty in
+        let response_body = Body.create Bigstringaf.empty in
         handler response response_body;
         body ~encoding response_body *> ok
     in

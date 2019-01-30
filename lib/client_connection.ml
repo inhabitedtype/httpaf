@@ -64,7 +64,7 @@ module Oneshot = struct
       state := Received_response(response, body);
       response_handler response body
     in
-    let request_body = Body.create (Bigstring.create config.request_body_buffer_size) in
+    let request_body = Body.create (Bigstringaf.create config.request_body_buffer_size) in
     let t =
       { request
       ; request_body

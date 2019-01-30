@@ -71,7 +71,7 @@ type t =
   { request                 : Request.t
   ; request_body            : [`read] Body.t
   ; writer                  : Writer.t
-  ; response_body_buffer    : Bigstring.t
+  ; response_body_buffer    : Bigstringaf.t
   ; error_handler           : error_handler
   ; mutable persistent      : bool
   ; mutable response_state  : response_state
@@ -130,7 +130,7 @@ let respond_with_string t response str =
   | Complete _ ->
     failwith "httpaf.Reqd.respond_with_string: response already complete"
 
-let respond_with_bigstring t response (bstr:Bigstring.t) =
+let respond_with_bigstring t response (bstr:Bigstringaf.t) =
   if t.error_code <> `Ok then
     failwith "httpaf.Reqd.respond_with_bigstring: invalid state, currently handling error";
   match t.response_state with

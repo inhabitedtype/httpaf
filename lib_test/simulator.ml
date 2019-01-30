@@ -35,12 +35,18 @@ let response_stream_to_body (`Response response, body) =
   | `Fixed xs | `Chunked xs -> String.concat "" (response :: xs)
 
 let iovec_to_string { IOVec.buffer; off; len } =
-  Bigstring.to_string ~off ~len buffer
+  Bigstringaf.substring ~off ~len buffer
 
 let bigstring_append_string bs s =
-  Bigstring.of_string (Bigstring.to_string bs ^ s)
+  let bs_len = Bigstringaf.length bs in
+  let s_len  = String.length s in
+  let bs' = Bigstringaf.create (bs_len + s_len) in
+  Bigstringaf.blit             bs ~src_off:0 bs' ~dst_off:0      ~len:bs_len;
+  Bigstringaf.blit_from_string s  ~src_off:0 bs' ~dst_off:bs_len ~len:s_len;
+  bs'
+;;
 
-let bigstring_empty = Bigstring.of_string ""
+let bigstring_empty = Bigstringaf.empty
 
 let test_server ~input ~output ~handler () =
   let reads  = List.(concat (map case_to_strings input)) in
@@ -67,19 +73,19 @@ let test_server ~input ~output ~handler () =
       | `Read, read::reads' ->
         debug " server iloop: read";
         let input     = bigstring_append_string input read in
-        let input_len = Bigstring.length input in
+        let input_len = Bigstringaf.length input in
         let result    = Server_connection.read conn input ~off:0 ~len:input_len in
         if result = input_len
         then bigstring_empty, reads'
-        else Bigstring.sub ~off:result input, reads'
+        else Bigstringaf.sub ~off:result ~len:(input_len - result) input, reads'
       | `Read, [] ->
         debug " server iloop: eof";
-        let input_len = Bigstring.length input in
+        let input_len = Bigstringaf.length input in
         ignore (Server_connection.read_eof conn input ~off:0 ~len:input_len : int);
         bigstring_empty, []
       | _          , [] ->
         debug " server iloop: eof";
-        let input_len = Bigstring.length input in
+        let input_len = Bigstringaf.length input in
         ignore (Server_connection.read_eof conn input ~off:0 ~len:input_len : int);
         bigstring_empty, []
       | `Close    , _     ->
@@ -121,7 +127,7 @@ let test_client ~request ~request_body_writes ~response_stream () =
   let response_handler response response_body =
     test_input := (response_to_string response) :: !test_input;
     let rec on_read bs ~off ~len =
-      test_input := Bigstring.to_string bs ~off ~len :: !test_input;
+      test_input := Bigstringaf.substring bs ~off ~len :: !test_input;
       Body.schedule_read response_body ~on_read ~on_eof
     and on_eof () = got_eof := true in
     Body.schedule_read response_body ~on_read ~on_eof
@@ -162,19 +168,19 @@ let test_client ~request ~request_body_writes ~response_stream () =
     | `Read, read::reads' ->
       debug " client iloop: read";
       let input     = bigstring_append_string input read in
-      let input_len = Bigstring.length input in
+      let input_len = Bigstringaf.length input in
       let result     = Client_connection.read conn input ~off:0 ~len:input_len in
       if result = input_len
       then bigstring_empty, reads'
-      else Bigstring.sub ~off:result input, reads'
+      else Bigstringaf.sub ~off:result ~len:(input_len - result) input, reads'
     | `Read, [] ->
       debug " client iloop: eof";
-      let input_len = Bigstring.length input in
+      let input_len = Bigstringaf.length input in
       ignore (Client_connection.read_eof conn input ~off:0 ~len:input_len : int);
       input, []
     | _          , [] ->
       debug " client iloop: eof";
-      let input_len = Bigstring.length input in
+      let input_len = Bigstringaf.length input in
       ignore (Client_connection.read_eof conn input ~off:0 ~len:input_len : int);
       input, []
     | `Close    , _     ->

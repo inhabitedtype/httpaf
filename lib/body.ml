@@ -36,7 +36,7 @@ type _ t =
   ; mutable read_scheduled         : bool
   ; mutable write_final_if_chunked : bool
   ; mutable on_eof                 : unit -> unit
-  ; mutable on_read                : Bigstring.t -> off:int -> len:int -> unit
+  ; mutable on_read                : Bigstringaf.t -> off:int -> len:int -> unit
   ; mutable when_ready_to_write    : unit -> unit
   ; buffered_bytes                 : int ref
   }
@@ -59,7 +59,7 @@ let create buffer =
   of_faraday (Faraday.of_bigstring buffer)
 
 let create_empty () =
-  let t = create Bigstring.empty in
+  let t = create Bigstringaf.empty in
   Faraday.close t.faraday;
   t
 
@@ -74,7 +74,7 @@ let write_string t ?off ?len s =
 let write_bigstring t ?off ?len b =
   Faraday.write_bigstring ?off ?len t.faraday b
 
-let schedule_bigstring t ?off ?len (b:Bigstring.t) =
+let schedule_bigstring t ?off ?len (b:Bigstringaf.t) =
   Faraday.schedule_bigstring ?off ?len t.faraday b
 
 let ready_to_write t =
