@@ -80,12 +80,12 @@ let test_server ~input ~output ~handler () =
         else Bigstringaf.sub ~off:result ~len:(input_len - result) input, reads'
       | `Read, [] ->
         debug " server iloop: eof";
-        let input_len = Bigstring.length input in
+        let input_len = Bigstringaf.length input in
         ignore (Server_connection.read_eof conn input ~off:0 ~len:input_len : int);
         bigstring_empty, []
       | _          , [] ->
         debug " server iloop: eof";
-        let input_len = Bigstring.length input in
+        let input_len = Bigstringaf.length input in
         ignore (Server_connection.read_eof conn input ~off:0 ~len:input_len : int);
         bigstring_empty, []
       | `Close    , _     ->
@@ -175,12 +175,12 @@ let test_client ~request ~request_body_writes ~response_stream () =
       else Bigstringaf.sub ~off:result ~len:(input_len - result) input, reads'
     | `Read, [] ->
       debug " client iloop: eof";
-      let input_len = Bigstring.length input in
+      let input_len = Bigstringaf.length input in
       ignore (Client_connection.read_eof conn input ~off:0 ~len:input_len : int);
       input, []
     | _          , [] ->
       debug " client iloop: eof";
-      let input_len = Bigstring.length input in
+      let input_len = Bigstringaf.length input in
       ignore (Client_connection.read_eof conn input ~off:0 ~len:input_len : int);
       input, []
     | `Close    , _     ->
