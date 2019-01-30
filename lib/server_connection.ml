@@ -64,8 +64,9 @@ type t =
   ; request_queue          : Reqd.t Queue.t
     (* invariant: If [request_queue] is not empty, then the head of the queue
        has already had [request_handler] called on it. *)
-  ; wakeup_writer  : (unit -> unit) list ref
-  ; wakeup_reader  : (unit -> unit) list ref
+  ; wakeup_writer      : (unit -> unit) list ref
+  ; wakeup_reader      : (unit -> unit) list ref
+  ; mutable error_body : [`write] Body.t option
   }
 
 let is_shutdown t =
@@ -143,6 +144,7 @@ let create ?(config=Config.default) ?(error_handler=default_error_handler) reque
   ; request_queue
   ; wakeup_writer
   ; wakeup_reader   = ref []
+  ; error_body      = None
   }
 
 let is_closed t = Reader.is_closed t.reader && Writer.is_closed t.writer
@@ -185,9 +187,10 @@ let set_error_and_handle ?request t error =
     let writer = t.writer in
     t.error_handler ?request error (fun headers ->
       Writer.write_response writer (Response.create ~headers status);
-      Body.of_faraday (Writer.faraday writer));
-    (* TODO(anmonteiro): uncomment to fix the failing tests. *)
-    (* wakeup_writer t; *)
+      let body = Body.of_faraday (Writer.faraday writer) in
+      t.error_body <- Some body;
+      wakeup_writer t;
+      body);
   end
 
 let report_exn t exn =
@@ -212,7 +215,7 @@ let advance_request_queue_if_necessary t =
       else if not (Reqd.requires_input reqd)
       then shutdown_reader t
     end
-  end else if Reader.is_closed t.reader
+  end else if Reader.is_closed t.reader && not (Reader.is_parse_failure t.reader)
   then shutdown t
 
 let _next_read_operation t =
@@ -274,5 +277,7 @@ let yield_writer t k =
     then on_wakeup_writer t k
     else begin shutdown t; k () end
   end else if Writer.is_closed t.writer then k () else begin
-    on_wakeup_writer t k
+    match t.error_body with
+    | Some body -> Body.when_ready_to_write body k
+    | None -> on_wakeup_writer t k
   end
