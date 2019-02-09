@@ -156,6 +156,8 @@ module Server_connection = struct
     ;;
   end
 
+  let write_operation = Alcotest.of_pp Write_operation.pp_hum
+
   let read_string t str =
     let len = String.length str in
     let input = Bigstringaf.of_string str ~off:0 ~len in
@@ -202,7 +204,7 @@ module Server_connection = struct
     let request_string = "/ GET HTTP/1.1\r\n\r\n" in
     let writer_woken_up = ref false in
     let t = create ~error_handler synchronous_raise in
-    Alcotest.(check (of_pp Write_operation.pp_hum)) "Writer is in a yield state"
+    Alcotest.check write_operation "Writer is in a yield state"
       `Yield (next_write_operation t);
     yield_writer t (fun () -> writer_woken_up := true);
     let c = read_string t request_string in
@@ -226,13 +228,13 @@ module Server_connection = struct
         error_handler ?request error start_response)
     in
     let t = create ~error_handler synchronous_raise in
-    Alcotest.(check (of_pp Write_operation.pp_hum)) "Writer is in a yield state"
+    Alcotest.check write_operation "Writer is in a yield state"
       `Yield (next_write_operation t);
     yield_writer t (fun () -> writer_woken_up := true);
     let c = read_string t request_string in
     Alcotest.(check int) "read consumes all input"
       (String.length request_string) c;
-    Alcotest.(check (of_pp Write_operation.pp_hum)) "Writer is in a yield state"
+    Alcotest.check write_operation "Writer is in a yield state"
       `Yield (next_write_operation t);
     !continue ();
     Alcotest.(check (of_pp Read_operation.pp_hum)) "Error shuts down the reader"
@@ -253,13 +255,13 @@ module Server_connection = struct
     let request_string = "/ GET HTTP/1.1\r\n\r\n" in
     let writer_woken_up = ref false in
     let t = create ~error_handler asynchronous_raise in
-    Alcotest.(check (of_pp Write_operation.pp_hum)) "Writer is in a yield state"
+    Alcotest.check write_operation "Writer is in a yield state"
       `Yield (next_write_operation t);
     yield_writer t (fun () -> writer_woken_up := true);
     let c = read_string t request_string in
     Alcotest.(check int) "read consumes all input"
       (String.length request_string) c;
-    Alcotest.(check (of_pp Write_operation.pp_hum)) "Writer is in a yield state"
+    Alcotest.check write_operation "Writer is in a yield state"
       `Yield (next_write_operation t);
     !continue ();
     Alcotest.(check (of_pp Read_operation.pp_hum)) "Error shuts down the reader"
@@ -284,16 +286,16 @@ module Server_connection = struct
     let request_string = "/ GET HTTP/1.1\r\n\r\n" in
     let writer_woken_up = ref false in
     let t = create ~error_handler asynchronous_raise in
-    Alcotest.(check (of_pp Write_operation.pp_hum)) "Writer is in a yield state"
+    Alcotest.check write_operation "Writer is in a yield state"
       `Yield (next_write_operation t);
     yield_writer t (fun () -> writer_woken_up := true);
     let c = read_string t request_string in
     Alcotest.(check int) "read consumes all input"
       (String.length request_string) c;
-    Alcotest.(check (of_pp Write_operation.pp_hum)) "Writer is in a yield state"
+    Alcotest.check write_operation "Writer is in a yield state"
       `Yield (next_write_operation t);
     !continue_request ();
-    Alcotest.(check (of_pp Write_operation.pp_hum)) "Writer is in a yield state"
+    Alcotest.check write_operation "Writer is in a yield state"
       `Yield (next_write_operation t);
     !continue_error ();
     Alcotest.(check (of_pp Read_operation.pp_hum)) "Error shuts down the reader"
