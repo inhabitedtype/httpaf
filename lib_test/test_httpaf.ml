@@ -157,6 +157,7 @@ module Server_connection = struct
   end
 
   let write_operation = Alcotest.of_pp Write_operation.pp_hum
+  let get_request_string = "GET / HTTP/1.1\r\n\r\n"
 
   let read_string t str =
     let len = String.length str in
@@ -201,15 +202,14 @@ module Server_connection = struct
   ;;
 
   let test_synchronous_error () =
-    let request_string = "/ GET HTTP/1.1\r\n\r\n" in
     let writer_woken_up = ref false in
     let t = create ~error_handler synchronous_raise in
     Alcotest.check write_operation "Writer is in a yield state"
       `Yield (next_write_operation t);
     yield_writer t (fun () -> writer_woken_up := true);
-    let c = read_string t request_string in
+    let c = read_string t get_request_string in
     Alcotest.(check int) "read consumes all input"
-      (String.length request_string) c;
+      (String.length get_request_string) c;
     Alcotest.(check (of_pp Read_operation.pp_hum)) "Error shuts down the reader"
       `Close (next_read_operation t);
     Alcotest.(check bool) "Writer woken up"
@@ -220,7 +220,6 @@ module Server_connection = struct
   ;;
 
   let test_synchronous_error_asynchronous_handling () =
-    let request_string = "/ GET HTTP/1.1\r\n\r\n" in
     let writer_woken_up = ref false in
     let continue = ref (fun () -> ()) in
     let error_handler ?request error start_response =
@@ -231,9 +230,9 @@ module Server_connection = struct
     Alcotest.check write_operation "Writer is in a yield state"
       `Yield (next_write_operation t);
     yield_writer t (fun () -> writer_woken_up := true);
-    let c = read_string t request_string in
+    let c = read_string t get_request_string in
     Alcotest.(check int) "read consumes all input"
-      (String.length request_string) c;
+      (String.length get_request_string) c;
     Alcotest.check write_operation "Writer is in a yield state"
       `Yield (next_write_operation t);
     !continue ();
@@ -252,15 +251,14 @@ module Server_connection = struct
     let asynchronous_raise reqd =
       continue := (fun () -> synchronous_raise reqd)
     in
-    let request_string = "/ GET HTTP/1.1\r\n\r\n" in
     let writer_woken_up = ref false in
     let t = create ~error_handler asynchronous_raise in
     Alcotest.check write_operation "Writer is in a yield state"
       `Yield (next_write_operation t);
     yield_writer t (fun () -> writer_woken_up := true);
-    let c = read_string t request_string in
+    let c = read_string t get_request_string in
     Alcotest.(check int) "read consumes all input"
-      (String.length request_string) c;
+      (String.length get_request_string) c;
     Alcotest.check write_operation "Writer is in a yield state"
       `Yield (next_write_operation t);
     !continue ();
@@ -283,15 +281,14 @@ module Server_connection = struct
       continue_error := (fun () ->
         error_handler ?request error start_response)
     in
-    let request_string = "/ GET HTTP/1.1\r\n\r\n" in
     let writer_woken_up = ref false in
     let t = create ~error_handler asynchronous_raise in
     Alcotest.check write_operation "Writer is in a yield state"
       `Yield (next_write_operation t);
     yield_writer t (fun () -> writer_woken_up := true);
-    let c = read_string t request_string in
+    let c = read_string t get_request_string in
     Alcotest.(check int) "read consumes all input"
-      (String.length request_string) c;
+      (String.length get_request_string) c;
     Alcotest.check write_operation "Writer is in a yield state"
       `Yield (next_write_operation t);
     !continue_request ();
