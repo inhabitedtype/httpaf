@@ -234,11 +234,11 @@ module Server_connection = struct
     let c = read_string t get_request_string in
     Alcotest.(check int) "read consumes all input"
       (String.length get_request_string) c;
+    Alcotest.check read_operation "Error shuts down the reader"
+      `Close (next_read_operation t);
     Alcotest.check write_operation "Writer is in a yield state"
       `Yield (next_write_operation t);
     !continue ();
-    Alcotest.check read_operation "Error shuts down the reader"
-      `Close (next_read_operation t);
     Alcotest.(check bool) "Writer woken up"
       true !writer_woken_up;
     Alcotest.(check (option string)) "Error response written"
