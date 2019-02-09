@@ -262,6 +262,8 @@ module Server_connection = struct
       (String.length get_request_string) c;
     Alcotest.check write_operation "Writer is in a yield state"
       `Yield (next_write_operation t);
+    Alcotest.check read_operation "Reader is in a read state"
+      `Yield (next_read_operation t);
     !continue ();
     Alcotest.check read_operation "Error shuts down the reader"
       `Close (next_read_operation t);
@@ -292,6 +294,8 @@ module Server_connection = struct
       (String.length get_request_string) c;
     Alcotest.check write_operation "Writer is in a yield state"
       `Yield (next_write_operation t);
+    Alcotest.check read_operation "Reader is in a read state"
+      `Yield (next_read_operation t);
     !continue_request ();
     Alcotest.check write_operation "Writer is in a yield state"
       `Yield (next_write_operation t);
