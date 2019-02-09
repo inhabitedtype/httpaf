@@ -128,8 +128,52 @@ module Server_connection = struct
     ;;
   end
 
+  module Write_operation = struct
+    type t = [ `Write of Bigstringaf.t IOVec.t list | `Yield | `Close of int ]
+
+    let iovecs_to_string iovecs =
+      let len = IOVec.lengthv iovecs in
+      let bytes = Bytes.create len in
+      let dst_off = ref 0 in
+      List.iter (fun { IOVec.buffer; off = src_off; len } ->
+        Bigstringaf.unsafe_blit_to_bytes buffer ~src_off bytes ~dst_off:!dst_off ~len;
+        dst_off := !dst_off + len)
+      iovecs;
+      Bytes.unsafe_to_string bytes
+    ;;
+
+    let pp_hum fmt t =
+      match t with
+      | `Write iovecs -> Format.fprintf fmt "Write %S" (iovecs_to_string iovecs)
+      | `Yield -> Format.pp_print_string fmt "Yield"
+      | `Close len -> Format.fprintf fmt "Close %i" len
+    ;;
+
+    let to_write_as_string t =
+      match t with
+      | `Write iovecs -> Some (iovecs_to_string iovecs)
+      | `Close _ | `Yield -> None
+    ;;
+  end
+
+  let read_string t str =
+    let len = String.length str in
+    let input = Bigstringaf.of_string str ~off:0 ~len in
+    read t input ~off:0 ~len;
+  ;;
+
   let default_request_handler reqd =
     Reqd.respond_with_string reqd (Response.create `OK) ""
+  ;;
+
+  let synchronous_raise reqd =
+    Reqd.report_exn reqd (Failure "caught this exception")
+  ;;
+
+  let error_handler ?request:_ _error start_response =
+    let resp_body = start_response Headers.empty in
+    Body.write_string resp_body "got an error";
+    Body.close_writer resp_body
   ;;
 
   let test_initial_reader_state () =
@@ -154,9 +198,121 @@ module Server_connection = struct
       `Close (next_read_operation t);
   ;;
 
+  let test_synchronous_error () =
+    let request_string = "/ GET HTTP/1.1\r\n\r\n" in
+    let writer_woken_up = ref false in
+    let t = create ~error_handler synchronous_raise in
+    Alcotest.(check (of_pp Write_operation.pp_hum)) "Writer is in a yield state"
+      `Yield (next_write_operation t);
+    yield_writer t (fun () -> writer_woken_up := true);
+    let c = read_string t request_string in
+    Alcotest.(check int) "read consumes all input"
+      (String.length request_string) c;
+    Alcotest.(check (of_pp Read_operation.pp_hum)) "Error shuts down the reader"
+      `Close (next_read_operation t);
+    Alcotest.(check bool) "Writer woken up"
+      true !writer_woken_up;
+    Alcotest.(check (option string)) "Error response written"
+      (Some "HTTP/1.1 500 Internal Server Error\r\n\r\ngot an error")
+      (next_write_operation t |> Write_operation.to_write_as_string)
+  ;;
+
+  let test_synchronous_error_asynchronous_handling () =
+    let request_string = "/ GET HTTP/1.1\r\n\r\n" in
+    let writer_woken_up = ref false in
+    let continue = ref (fun () -> ()) in
+    let error_handler ?request error start_response =
+      continue := (fun () ->
+        error_handler ?request error start_response)
+    in
+    let t = create ~error_handler synchronous_raise in
+    Alcotest.(check (of_pp Write_operation.pp_hum)) "Writer is in a yield state"
+      `Yield (next_write_operation t);
+    yield_writer t (fun () -> writer_woken_up := true);
+    let c = read_string t request_string in
+    Alcotest.(check int) "read consumes all input"
+      (String.length request_string) c;
+    Alcotest.(check (of_pp Write_operation.pp_hum)) "Writer is in a yield state"
+      `Yield (next_write_operation t);
+    !continue ();
+    Alcotest.(check (of_pp Read_operation.pp_hum)) "Error shuts down the reader"
+      `Close (next_read_operation t);
+    Alcotest.(check bool) "Writer woken up"
+      true !writer_woken_up;
+    Alcotest.(check (option string)) "Error response written"
+      (Some "HTTP/1.1 500 Internal Server Error\r\n\r\ngot an error")
+      (next_write_operation t |> Write_operation.to_write_as_string)
+  ;;
+
+
+  let test_asynchronous_error () =
+    let continue = ref (fun () -> ()) in
+    let asynchronous_raise reqd =
+      continue := (fun () -> synchronous_raise reqd)
+    in
+    let request_string = "/ GET HTTP/1.1\r\n\r\n" in
+    let writer_woken_up = ref false in
+    let t = create ~error_handler asynchronous_raise in
+    Alcotest.(check (of_pp Write_operation.pp_hum)) "Writer is in a yield state"
+      `Yield (next_write_operation t);
+    yield_writer t (fun () -> writer_woken_up := true);
+    let c = read_string t request_string in
+    Alcotest.(check int) "read consumes all input"
+      (String.length request_string) c;
+    Alcotest.(check (of_pp Write_operation.pp_hum)) "Writer is in a yield state"
+      `Yield (next_write_operation t);
+    !continue ();
+    Alcotest.(check (of_pp Read_operation.pp_hum)) "Error shuts down the reader"
+      `Close (next_read_operation t);
+    Alcotest.(check bool) "Writer woken up"
+      true !writer_woken_up;
+    Alcotest.(check (option string)) "Error response written"
+      (Some "HTTP/1.1 500 Internal Server Error\r\n\r\ngot an error")
+      (next_write_operation t |> Write_operation.to_write_as_string)
+  ;;
+
+  let test_asynchronous_error_asynchronous_handling () =
+    let continue_request = ref (fun () -> ()) in
+    let asynchronous_raise reqd =
+      continue_request := (fun () -> synchronous_raise reqd)
+    in
+    let continue_error = ref (fun () -> ()) in
+    let error_handler ?request error start_response =
+      continue_error := (fun () ->
+        error_handler ?request error start_response)
+    in
+    let request_string = "/ GET HTTP/1.1\r\n\r\n" in
+    let writer_woken_up = ref false in
+    let t = create ~error_handler asynchronous_raise in
+    Alcotest.(check (of_pp Write_operation.pp_hum)) "Writer is in a yield state"
+      `Yield (next_write_operation t);
+    yield_writer t (fun () -> writer_woken_up := true);
+    let c = read_string t request_string in
+    Alcotest.(check int) "read consumes all input"
+      (String.length request_string) c;
+    Alcotest.(check (of_pp Write_operation.pp_hum)) "Writer is in a yield state"
+      `Yield (next_write_operation t);
+    !continue_request ();
+    Alcotest.(check (of_pp Write_operation.pp_hum)) "Writer is in a yield state"
+      `Yield (next_write_operation t);
+    !continue_error ();
+    Alcotest.(check (of_pp Read_operation.pp_hum)) "Error shuts down the reader"
+      `Close (next_read_operation t);
+    Alcotest.(check bool) "Writer woken up"
+      true !writer_woken_up;
+    Alcotest.(check (option string)) "Error response written"
+      (Some "HTTP/1.1 500 Internal Server Error\r\n\r\ngot an error")
+      (next_write_operation t |> Write_operation.to_write_as_string)
+  ;;
+
+
   let tests =
     [ "initial reader state"  , `Quick, test_initial_reader_state
     ; "shutdown reader closed", `Quick, test_reader_is_closed_after_eof
+    ; "synchronous error, synchronous handling", `Quick, test_synchronous_error
+    ; "synchronous error, asynchronous handling", `Quick, test_synchronous_error_asynchronous_handling
+    ; "asynchronous error, synchronous handling", `Quick, test_asynchronous_error
+    ; "asynchronous error, asynchronous handling", `Quick, test_asynchronous_error_asynchronous_handling
     ]
 
 end
