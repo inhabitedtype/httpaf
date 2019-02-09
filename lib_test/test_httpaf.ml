@@ -157,6 +157,7 @@ module Server_connection = struct
   end
 
   let write_operation = Alcotest.of_pp Write_operation.pp_hum
+  let read_operation = Alcotest.of_pp Read_operation.pp_hum
   let get_request_string = "GET / HTTP/1.1\r\n\r\n"
 
   let read_string t str =
@@ -181,7 +182,7 @@ module Server_connection = struct
 
   let test_initial_reader_state () =
     let t = create default_request_handler in
-    Alcotest.(check (of_pp Read_operation.pp_hum)) "A new reader wants input"
+    Alcotest.check read_operation "A new reader wants input"
       `Read (next_read_operation t);
   ;;
 
@@ -189,7 +190,7 @@ module Server_connection = struct
     let t = create default_request_handler in
     let c = read_eof t Bigstringaf.empty ~off:0 ~len:0 in
     Alcotest.(check int) "read_eof with no input returns 0" 0 c;
-    Alcotest.(check (of_pp Read_operation.pp_hum)) "Shutting down a reader closes it"
+    Alcotest.check read_operation "Shutting down a reader closes it"
       `Close (next_read_operation t);
 
     let t = create default_request_handler in
@@ -197,7 +198,7 @@ module Server_connection = struct
     Alcotest.(check int) "read with no input returns 0" 0 c;
     let c = read_eof t Bigstringaf.empty ~off:0 ~len:0; in
     Alcotest.(check int) "read_eof with no input returns 0" 0 c;
-    Alcotest.(check (of_pp Read_operation.pp_hum)) "Shutting down a reader closes it"
+    Alcotest.check read_operation "Shutting down a reader closes it"
       `Close (next_read_operation t);
   ;;
 
@@ -210,7 +211,7 @@ module Server_connection = struct
     let c = read_string t get_request_string in
     Alcotest.(check int) "read consumes all input"
       (String.length get_request_string) c;
-    Alcotest.(check (of_pp Read_operation.pp_hum)) "Error shuts down the reader"
+    Alcotest.check read_operation "Error shuts down the reader"
       `Close (next_read_operation t);
     Alcotest.(check bool) "Writer woken up"
       true !writer_woken_up;
@@ -236,7 +237,7 @@ module Server_connection = struct
     Alcotest.check write_operation "Writer is in a yield state"
       `Yield (next_write_operation t);
     !continue ();
-    Alcotest.(check (of_pp Read_operation.pp_hum)) "Error shuts down the reader"
+    Alcotest.check read_operation "Error shuts down the reader"
       `Close (next_read_operation t);
     Alcotest.(check bool) "Writer woken up"
       true !writer_woken_up;
@@ -262,7 +263,7 @@ module Server_connection = struct
     Alcotest.check write_operation "Writer is in a yield state"
       `Yield (next_write_operation t);
     !continue ();
-    Alcotest.(check (of_pp Read_operation.pp_hum)) "Error shuts down the reader"
+    Alcotest.check read_operation "Error shuts down the reader"
       `Close (next_read_operation t);
     Alcotest.(check bool) "Writer woken up"
       true !writer_woken_up;
@@ -295,7 +296,7 @@ module Server_connection = struct
     Alcotest.check write_operation "Writer is in a yield state"
       `Yield (next_write_operation t);
     !continue_error ();
-    Alcotest.(check (of_pp Read_operation.pp_hum)) "Error shuts down the reader"
+    Alcotest.check read_operation "Error shuts down the reader"
       `Close (next_read_operation t);
     Alcotest.(check bool) "Writer woken up"
       true !writer_woken_up;
