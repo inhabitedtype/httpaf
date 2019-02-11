@@ -146,7 +146,6 @@ module Server = struct
       Scheduler.within ~monitor:conn_monitor reader_thread;
       Scheduler.within ~monitor:conn_monitor writer_thread;
       Monitor.detach_and_iter_errors conn_monitor ~f:(fun exn ->
-        (* Log.Global.error "%s" (Exn.to_string exn); *)
         Server_connection.report_exn conn exn);
       (* The Tcp module will close the file descriptor once this becomes determined. *)
       Deferred.all_unit
@@ -204,7 +203,6 @@ module Client = struct
     Scheduler.within ~monitor:conn_monitor reader_thread;
     Scheduler.within ~monitor:conn_monitor writer_thread;
     Monitor.detach_and_iter_errors conn_monitor ~f:(fun exn ->
-      (* Log.Global.error "%s" (Exn.to_string exn); *)
       Client_connection.report_exn conn exn);
     don't_wait_for (
       Deferred.all_unit

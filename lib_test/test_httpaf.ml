@@ -82,7 +82,7 @@ module IOVec = struct
   ;;
 
   let test_shiftv_raises () =
-    Alcotest.check_raises
+    Alcotest.check_raises 
       "IOVec.shiftv: -1 is a negative number"
       (Failure "IOVec.shiftv: -1 is a negative number")
       (fun () -> ignore (shiftv [] (-1)));

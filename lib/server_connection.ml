@@ -174,8 +174,7 @@ let set_error_and_handle ?request t error =
   if is_active t then begin
     assert (request = None);
     let reqd = current_reqd_exn t in
-    Reqd.report_error reqd error;
-    wakeup_writer t
+    Reqd.report_error reqd error
   end else begin
     let status =
       match (error :> [error | Status.standard]) with
