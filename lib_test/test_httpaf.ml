@@ -537,6 +537,112 @@ module Server_connection = struct
       `Read (next_read_operation t);
   ;;
 
+  let basic_handler body reqd =
+    let request_body = Reqd.request_body reqd in
+    Body.close_reader request_body;
+    Reqd.respond_with_string reqd (Response.create `OK) body;
+  ;;
+
+  let test_malformed_request () =
+    let malformed_request_string =
+      "GET / HTTP/1.1\r\nconnection: close\r\nX-Other-Header : shouldnt_have_space_before_colon\r\n\r\n"
+    in
+    let writer_woken_up = ref false in
+    let t = create ~error_handler (basic_handler "") in
+    Alcotest.check write_operation "Writer is in a yield state"
+      `Yield (next_write_operation t);
+    yield_writer t (fun () -> writer_woken_up := true);
+    let len = String.length malformed_request_string in
+    let input = Bigstringaf.of_string malformed_request_string ~off:0 ~len in
+    let c = read t input ~off:0 ~len in
+    Alcotest.(check bool) "read doesn't consume all input"
+      true (c < String.length malformed_request_string);
+    Alcotest.check read_operation "Error shuts down the reader"
+      `Close (next_read_operation t);
+    Alcotest.(check bool) "Writer woken up"
+      true !writer_woken_up;
+    Alcotest.(check (option string)) "Error response written"
+      (Some "HTTP/1.1 400 Bad Request\r\n\r\ngot an error")
+      (next_write_operation t |> Write_operation.to_write_as_string)
+  ;;
+
+  let read_string_eof t str =
+    let len = String.length str in
+    let input = Bigstringaf.of_string str ~off:0 ~len in
+    read_eof t input ~off:0 ~len;
+  ;;
+
+  let test_malformed_request_eof () =
+    let eof_request_string =
+      "GET / HTTP/1.1\r\nconnection: close\r\nX-Other-Header: EOF_after_this"
+    in
+    let writer_woken_up = ref false in
+    let t = create ~error_handler (basic_handler "") in
+    Alcotest.check write_operation "Writer is in a yield state"
+      `Yield (next_write_operation t);
+    yield_writer t (fun () -> writer_woken_up := true);
+    let c = read_string_eof t eof_request_string in
+    Alcotest.(check int) "read consumes all input"
+      (String.length eof_request_string) c;
+    Alcotest.check read_operation "Error shuts down the reader"
+      `Close (next_read_operation t);
+    Alcotest.(check bool) "Writer woken up"
+      true !writer_woken_up;
+    Alcotest.(check (option string)) "Error response written"
+      (Some "HTTP/1.1 400 Bad Request\r\n\r\ngot an error")
+      (next_write_operation t |> Write_operation.to_write_as_string)
+  ;;
+
+  let streaming_error_handler continue_error ?request:_ _error start_response =
+    let resp_body = start_response Headers.empty in
+    Body.write_string resp_body "got an error\n";
+    continue_error := (fun () ->
+      Body.write_string resp_body "more output";
+      Body.close_writer resp_body)
+  ;;
+
+  let test_malformed_request_streaming_error_response () =
+    let default_waiting = Sys.opaque_identity (fun () -> ()) in
+    let eof_request_string =
+      "GET / HTTP/1.1\r\nconnection: close\r\nX-Other-Header: EOF_after_this"
+    in
+    let writer_woken_up = ref false in
+    let continue_error = ref default_waiting in
+    let error_handler ?request error start_response =
+      continue_error := (fun () ->
+        streaming_error_handler continue_error ?request error start_response
+      )
+    in
+    let t = create ~error_handler (basic_handler "") in
+    Alcotest.check write_operation "Writer is in a yield state"
+      `Yield (next_write_operation t);
+    yield_writer t (fun () -> writer_woken_up := true);
+    let c = read_string_eof t eof_request_string in
+    Alcotest.(check int) "read consumes all input"
+      (String.length eof_request_string) c;
+    Alcotest.check read_operation "Error shuts down the reader"
+      `Close (next_read_operation t);
+    !continue_error ();
+    Alcotest.(check bool) "Writer woken up" true !writer_woken_up;
+    writer_woken_up := false;
+    Alcotest.(check (option string)) "Error response and first output written"
+      (Some "HTTP/1.1 400 Bad Request\r\n\r\ngot an error\n")
+      (next_write_operation t |> Write_operation.to_write_as_string);
+    let iovecs = match next_write_operation t with
+    | `Write iovecs -> iovecs
+    | _ -> assert false
+    in
+    report_write_result t (`Ok (IOVec.lengthv iovecs));
+    Alcotest.check write_operation "Writer is in a yield state"
+      `Yield (next_write_operation t);
+    yield_writer t (fun () -> writer_woken_up := true);
+    !continue_error ();
+    Alcotest.(check bool) "Writer woken up once more input is available"
+      true !writer_woken_up;
+    Alcotest.(check (option string)) "Error response written"
+      (Some "more output")
+      (next_write_operation t |> Write_operation.to_write_as_string)
+  ;;
 
   let tests =
     [ "initial reader state"  , `Quick, test_initial_reader_state
@@ -551,6 +657,9 @@ module Server_connection = struct
     ; "asynchronous error, synchronous handling", `Quick, test_asynchronous_error
     ; "asynchronous error, asynchronous handling", `Quick, test_asynchronous_error_asynchronous_handling
     ; "chunked encoding", `Quick, test_chunked_encoding
+    ; "malformed request", `Quick, test_malformed_request
+    ; "malformed request (EOF)", `Quick, test_malformed_request_eof
+    ; "malformed request, streaming response", `Quick, test_malformed_request_streaming_error_response
     ]
 end
 
