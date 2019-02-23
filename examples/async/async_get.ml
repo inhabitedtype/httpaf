@@ -38,7 +38,7 @@ let main port host () =
 
 let () =
   Command.async_spec
-    ~summary:"Start a hello world Async server"
+    ~summary:"Start a hello world Async client"
     Command.Spec.(empty +>
       flag "-p" (optional_with_default 80 int)
         ~doc:"int destination port"
