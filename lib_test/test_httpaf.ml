@@ -337,7 +337,7 @@ module Server_connection = struct
       (Some second_write)
       (next_write_operation t |> Write_operation.to_write_as_string);
     report_write_result t (`Ok (String.length second_write));
-    let final_write = "0\r\n" in
+    let final_write = "0\r\n\r\n" in
     Alcotest.(check (option string)) "Final chunk written"
       (Some final_write)
       (next_write_operation t |> Write_operation.to_write_as_string);
