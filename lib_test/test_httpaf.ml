@@ -82,7 +82,7 @@ module IOVec = struct
   ;;
 
   let test_shiftv_raises () =
-    Alcotest.check_raises 
+    Alcotest.check_raises
       "IOVec.shiftv: -1 is a negative number"
       (Failure "IOVec.shiftv: -1 is a negative number")
       (fun () -> ignore (shiftv [] (-1)));
@@ -309,6 +309,43 @@ module Server_connection = struct
       (next_write_operation t |> Write_operation.to_write_as_string)
   ;;
 
+  let test_chunked_encoding () =
+    let request_handler reqd =
+      let response =
+        Response.create `OK
+          ~headers:(Headers.of_list [ "Transfer-encoding", "chunked" ])
+      in
+      let resp_body = Reqd.respond_with_streaming reqd response in
+      Body.write_string resp_body "First chunk";
+      Body.flush resp_body (fun () ->
+        Body.write_string resp_body "Second chunk";
+        Body.close_writer resp_body);
+    in
+    let t = create ~error_handler request_handler in
+    Alcotest.check write_operation "Writer is in a yield state"
+      `Yield (next_write_operation t);
+    let c = read_string t get_request_string in
+    Alcotest.(check int) "read consumes all input"
+      (String.length get_request_string) c;
+    let first_write = "HTTP/1.1 200 OK\r\nTransfer-encoding: chunked\r\n\r\nb\r\nFirst chunk\r\n" in
+    Alcotest.(check (option string)) "First chunk written"
+      (Some first_write)
+      (next_write_operation t |> Write_operation.to_write_as_string);
+    report_write_result t (`Ok (String.length first_write));
+    let second_write = "c\r\nSecond chunk\r\n" in
+    Alcotest.(check (option string)) "Second chunk written"
+      (Some second_write)
+      (next_write_operation t |> Write_operation.to_write_as_string);
+    report_write_result t (`Ok (String.length second_write));
+    let final_write = "0\r\n\r\n" in
+    Alcotest.(check (option string)) "Final chunk written"
+      (Some final_write)
+      (next_write_operation t |> Write_operation.to_write_as_string);
+    report_write_result t (`Ok (String.length final_write));
+    Alcotest.check read_operation "Keep-alive"
+      `Read (next_read_operation t);
+  ;;
+
 
   let tests =
     [ "initial reader state"  , `Quick, test_initial_reader_state
@@ -317,6 +354,7 @@ module Server_connection = struct
     ; "synchronous error, asynchronous handling", `Quick, test_synchronous_error_asynchronous_handling
     ; "asynchronous error, synchronous handling", `Quick, test_asynchronous_error
     ; "asynchronous error, asynchronous handling", `Quick, test_asynchronous_error_asynchronous_handling
+    ; "chunked encoding", `Quick, test_chunked_encoding
     ]
 
 end

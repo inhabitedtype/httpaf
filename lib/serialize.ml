@@ -73,15 +73,18 @@ let write_chunk_length t len =
 
 let write_string_chunk t chunk =
   write_chunk_length t (String.length chunk);
-  write_string       t chunk
+  write_string       t chunk;
+  write_crlf         t
 
 let write_bigstring_chunk t chunk =
   write_chunk_length t (Bigstringaf.length chunk);
-  write_bigstring    t chunk
+  write_bigstring    t chunk;
+  write_crlf         t
 
 let schedule_bigstring_chunk t chunk =
   write_chunk_length t (Bigstringaf.length chunk);
-  schedule_bigstring t chunk
+  schedule_bigstring t chunk;
+  write_crlf         t
 
 module Writer = struct
   type t =
@@ -133,7 +136,8 @@ module Writer = struct
   let schedule_chunk t iovecs =
     let length = IOVec.lengthv iovecs in
     write_chunk_length t.encoder length;
-    schedule_fixed t iovecs
+    schedule_fixed t iovecs;
+    write_crlf     t.encoder
 
   let flush t f =
     flush t.encoder f
