@@ -68,11 +68,11 @@ type t =
   ; wakeup_reader  : (unit -> unit) list ref
   }
 
-let is_shutdown t =
+let is_closed t =
   Reader.is_closed t.reader && Writer.is_closed t.writer
 
 let is_waiting t =
-  not (is_shutdown t) && Queue.is_empty t.request_queue
+  not (is_closed t) && Queue.is_empty t.request_queue
 
 let is_active t =
   not (Queue.is_empty t.request_queue)
@@ -81,12 +81,12 @@ let current_reqd_exn t =
   Queue.peek_exn t.request_queue
 
 let on_wakeup_reader t k =
-  if is_shutdown t
+  if is_closed t
   then failwith "on_wakeup_reader on closed conn"
   else t.wakeup_reader := k::!(t.wakeup_reader)
 
 let on_wakeup_writer t k =
-  if is_shutdown t
+  if is_closed t
   then failwith "on_wakeup_writer on closed conn"
   else t.wakeup_writer := k::!(t.wakeup_writer)
 
@@ -144,8 +144,6 @@ let create ?(config=Config.default) ?(error_handler=default_error_handler) reque
   ; wakeup_writer
   ; wakeup_reader   = ref []
   }
-
-let is_closed t = Reader.is_closed t.reader && Writer.is_closed t.writer
 
 let shutdown_reader t =
   Reader.force_close t.reader;
