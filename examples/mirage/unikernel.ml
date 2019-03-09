@@ -11,7 +11,7 @@ module Dispatch (C: Mirage_types_lwt.CONSOLE) (Http: HTTP) = struct
     log c "Replying: %s" path >|= fun () ->
     "Hello from the httpaf unikernel"
 
-  let dispatcher c reqd =
+  let dispatcher c flow reqd =
     let {Request.target; _} = Reqd.request reqd in
     Lwt.catch
       (fun () ->
@@ -29,7 +29,7 @@ module Dispatch (C: Mirage_types_lwt.CONSOLE) (Http: HTTP) = struct
     |> ignore
 
   let serve c dispatch =
-    let error_handler ?request:_ _error mk_response =
+    let error_handler flow ?request:_ _error mk_response =
       let response_body = mk_response Headers.empty in
       Body.write_string response_body "Error handled";
       Body.flush response_body (fun () -> Body.close_writer response_body)
