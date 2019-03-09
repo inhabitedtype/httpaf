@@ -1,7 +1,0 @@
-(jbuild_version 1)
-
-(library
- ((name httpaf_mirage)
-  (public_name httpaf-mirage)
-  (libraries (faraday-lwt httpaf lwt mirage-conduit cstruct))
-  (flags (:standard -safe-string))))
