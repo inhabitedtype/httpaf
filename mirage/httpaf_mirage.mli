@@ -1,9 +1,8 @@
 module type Server_intf = sig
-  type request_handler =
-    Conduit_mirage.Flow.flow Httpaf.Server_connection.request_handler
+  type request_handler = Httpaf.Server_connection.request_handler
 
   val create_connection_handler
-    :  ?config : Httpaf.Server_connection.Config.t
+    :  ?config : Httpaf.Config.t
     -> request_handler : request_handler
     -> error_handler : Httpaf.Server_connection.error_handler
     -> unit
