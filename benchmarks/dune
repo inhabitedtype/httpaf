@@ -10,4 +10,5 @@
 
 (alias
  (name benchmarks)
- (deps (glob_files *.exe)))
+ (deps
+  (glob_files *.exe)))

@@ -41,8 +41,12 @@ open Httpaf
 module Server : sig
   val create_connection_handler
     :  ?config         : Config.t
-    -> request_handler : (Unix.sockaddr -> Server_connection.request_handler)
-    -> error_handler   : (Unix.sockaddr -> Server_connection.error_handler)
+    -> request_handler :
+        (Unix.sockaddr * Lwt_unix.file_descr
+        -> Server_connection.request_handler)
+    -> error_handler   :
+        (Unix.sockaddr * Lwt_unix.file_descr
+        -> Server_connection.error_handler)
     -> Unix.sockaddr
     -> Lwt_unix.file_descr
     -> unit Lwt.t

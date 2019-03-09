@@ -1,0 +1,6 @@
+(library
+ (name httpaf_lwt)
+ (public_name httpaf-lwt)
+ (libraries httpaf lwt)
+ (flags
+  (:standard -safe-string)))

@@ -15,6 +15,7 @@ depends: [
   "ocaml" {>= "4.03.0"}
   "faraday-lwt"
   "httpaf"
+  "httpaf-lwt"
   "mirage-conduit"
   "cstruct"
   "jbuilder" {build & >= "1.0+beta10"}

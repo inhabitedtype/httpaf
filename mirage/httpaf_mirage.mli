@@ -1,11 +1,10 @@
 module type Server_intf = sig
-  type request_handler = Httpaf.Server_connection.request_handler
-
   val create_connection_handler
     :  ?config : Httpaf.Config.t
-    -> request_handler : request_handler
-    -> error_handler : Httpaf.Server_connection.error_handler
-    -> unit
+    -> request_handler :
+        (Conduit_mirage.Flow.flow -> Httpaf.Server_connection.request_handler)
+    -> error_handler :
+        (Conduit_mirage.Flow.flow -> Httpaf.Server_connection.error_handler)
     -> (Conduit_mirage.Flow.flow -> unit Lwt.t)
 end
 
@@ -24,7 +23,8 @@ end
 (* For an example, see [examples/lwt_get.ml]. *)
 module Client : sig
   val request
-    :  Conduit_mirage.Flow.flow
+    :  ?config : Httpaf.Config.t
+    -> Conduit_mirage.Flow.flow
     -> Httpaf.Request.t
     -> error_handler : Httpaf.Client_connection.error_handler
     -> response_handler : Httpaf.Client_connection.response_handler

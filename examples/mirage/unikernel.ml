@@ -35,9 +35,9 @@ module Dispatch (C: Mirage_types_lwt.CONSOLE) (Http: HTTP) = struct
       Body.flush response_body (fun () -> Body.close_writer response_body)
     in
     Http.create_connection_handler
+      ?config:None
       ~request_handler:(dispatch c)
       ~error_handler
-      ()
 end
 
 (** Server boilerplate *)

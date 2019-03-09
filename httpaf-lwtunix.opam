@@ -1,10 +1,7 @@
 opam-version: "2.0"
-name: "httpaf-lwt-unix"
+name: "httpaf-lwt"
 maintainer: "Spiros Eliopoulos <spiros@inhabitedtype.com>"
-authors: [
-  "Anton Bachin <antonbachin@yahoo.com>"
-  "Spiros Eliopoulos <spiros@inhabitedtype.com>"
-]
+authors: [ "Anton Bachin <antonbachin@yahoo.com>" ]
 license: "BSD-3-clause"
 homepage: "https://github.com/inhabitedtype/httpaf"
 bug-reports: "https://github.com/inhabitedtype/httpaf/issues"
@@ -17,8 +14,7 @@ depends: [
   "ocaml" {>= "4.03.0"}
   "faraday-lwt-unix"
   "httpaf"
-  "httpaf-lwt"
   "dune" {build}
   "lwt"
 ]
-synopsis: "Lwt + Unix support for http/af"
+synopsis: "Lwt support for http/af"
