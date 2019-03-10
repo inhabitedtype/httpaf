@@ -1,21 +1,18 @@
 open Httpaf
 
-module Buffer : sig
-  type t
-
-  val create : int -> t
-
-  val get : t -> f:(Bigstringaf.t -> off:int -> len:int -> int) -> int
-  val put : t -> f:(Bigstringaf.t -> off:int -> len:int -> int Lwt.t) -> int Lwt.t
-end
-
 module type IO = sig
   type t
 
-  val read : t -> Buffer.t -> [> `Eof | `Ok of int ] Lwt.t
+  (** The region [[off, off + len)] is where read bytes can be written to *)
+  val read
+    :  t
+    -> Bigstringaf.t
+    -> off:int
+    -> len:int
+    -> [ `Eof | `Ok of int ] Lwt.t
 
   val writev
-     : t
+    : t
     -> Faraday.bigstring Faraday.iovec list
     -> [ `Closed | `Ok of int ] Lwt.t
 

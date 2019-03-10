@@ -3,14 +3,11 @@ open Lwt.Infix
 module Io
   : Httpaf_lwt.IO with
     type t = Unix.sockaddr * Lwt_unix.file_descr = struct
-  module Buffer = Httpaf_lwt.Buffer
   type t = Unix.sockaddr * Lwt_unix.file_descr
 
-   let read (_, fd) buffer =
+  let read (_, fd) bigstring ~off ~len =
     Lwt.catch
-      (fun () ->
-        Buffer.put buffer ~f:(fun bigstring ~off ~len ->
-          Lwt_bytes.read fd bigstring off len))
+      (fun () -> Lwt_bytes.read fd bigstring off len)
       (function
       | Unix.Unix_error (Unix.EBADF, _, _) as exn ->
         Lwt.fail exn

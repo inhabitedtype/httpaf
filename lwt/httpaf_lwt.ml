@@ -35,7 +35,17 @@
 open Lwt.Infix
 
 (* Based on the Buffer module in httpaf_async.ml. *)
-module Buffer = struct
+module Buffer : sig
+  type t
+
+  val create : int -> t
+
+  val get : t -> f:(Bigstringaf.t -> off:int -> len:int -> int) -> int
+  val put
+    :  t
+    -> f:(Bigstringaf.t -> off:int -> len:int -> [ `Eof | `Ok of int ] Lwt.t)
+    -> [ `Eof | `Ok of int ] Lwt.t
+end = struct
   type t =
     { buffer      : Bigstringaf.t
     ; mutable off : int
@@ -67,15 +77,22 @@ module Buffer = struct
   let put t ~f =
     compress t;
     f t.buffer ~off:(t.off + t.len) ~len:(Bigstringaf.length t.buffer - t.len)
-    >>= fun n ->
-    t.len <- t.len + n;
-    Lwt.return n
+    >|= function
+      | `Eof -> `Eof
+      | `Ok n as ret ->
+        t.len <- t.len + n;
+        ret
 end
 
 module type IO = sig
   type t
 
-  val read : t -> Buffer.t -> [> `Eof | `Ok of int ] Lwt.t
+  val read
+    :  t
+    -> Bigstringaf.t
+    -> off:int
+    -> len:int
+    -> [ `Eof | `Ok of int ] Lwt.t
 
   val writev
      : t
@@ -109,7 +126,7 @@ module Server (Io: IO) = struct
         let rec read_loop_step () =
           match Server_connection.next_read_operation connection with
           | `Read ->
-            Io.read t read_buffer >>= begin function
+            Buffer.put ~f:(Io.read t) read_buffer >>= begin function
             | `Eof ->
               Buffer.get read_buffer ~f:(fun bigstring ~off ~len ->
                 Server_connection.read_eof connection bigstring ~off ~len)
@@ -194,7 +211,7 @@ module Client (Io: IO) = struct
       let rec read_loop_step () =
         match Client_connection.next_read_operation connection with
         | `Read ->
-          Io.read socket read_buffer >>= begin function
+          Buffer.put ~f:(Io.read socket) read_buffer >>= begin function
           | `Eof ->
             Buffer.get read_buffer ~f:(fun bigstring ~off ~len ->
               Client_connection.read_eof connection bigstring ~off ~len)

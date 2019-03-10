@@ -1,7 +1,6 @@
 open Lwt.Infix
 
 module Io : Httpaf_lwt.IO with type t = Conduit_mirage.Flow.flow = struct
-  module Buffer = Httpaf_lwt.Buffer
   type t = Conduit_mirage.Flow.flow
 
   let shutdown flow =
@@ -15,26 +14,24 @@ module Io : Httpaf_lwt.IO with type t = Conduit_mirage.Flow.flow = struct
 
   let close flow = shutdown flow
 
-  let read flow buffer =
+  let read flow bigstring ~off ~len:_ =
     let open Conduit_mirage in
     Lwt.catch
       (fun () ->
-        Buffer.put buffer ~f:(fun bigstring ~off ~len:_ ->
-          Flow.read flow >|= function
-          | Ok (`Data buf) ->
-            Bigstringaf.blit buf.buffer ~src_off:buf.off bigstring ~dst_off:off ~len:buf.len;
-            buf.len
-          | Ok `Eof -> 0
-          | Error error -> raise (Failure (Format.asprintf "%a" Flow.pp_error error))))
+        Flow.read flow >|= function
+        | Ok (`Data buf) ->
+          Bigstringaf.blit
+            buf.buffer
+            ~src_off:buf.off bigstring
+            ~dst_off:off
+            ~len:buf.len;
+          `Ok buf.len
+        | Ok `Eof -> `Eof
+        | Error error ->
+          raise (Failure (Format.asprintf "%a" Flow.pp_error error)))
       (fun exn ->
         shutdown flow >>= fun () ->
         Lwt.fail exn)
-
-    >>= fun bytes_read ->
-    if bytes_read = 0 then
-      Lwt.return `Eof
-    else
-      Lwt.return (`Ok bytes_read)
 
   let writev flow = fun iovecs ->
       let open Conduit_mirage in
