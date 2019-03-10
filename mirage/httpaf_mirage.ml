@@ -1,7 +1,10 @@
 open Lwt.Infix
 
-module Io : Httpaf_lwt.IO with type t = Conduit_mirage.Flow.flow = struct
-  type t = Conduit_mirage.Flow.flow
+module Io : Httpaf_lwt.IO with
+    type socket = Conduit_mirage.Flow.flow
+    and type addr = unit = struct
+  type socket = Conduit_mirage.Flow.flow
+  type addr = unit
 
   let shutdown flow =
     Conduit_mirage.Flow.close flow
@@ -59,15 +62,21 @@ module Io : Httpaf_lwt.IO with type t = Conduit_mirage.Flow.flow = struct
           Lwt.fail exn)
 end
 
-module Server = Httpaf_lwt.Server (Io)
+module Server = struct
+  include Httpaf_lwt.Server (Io)
+
+  let create_connection_handler ?config ~request_handler ~error_handler =
+    fun flow ->
+      let request_handler = fun () -> request_handler in
+      let error_handler = fun () -> error_handler in
+      create_connection_handler ?config ~request_handler ~error_handler () flow
+end
 
 module type Server_intf = sig
   val create_connection_handler
     :  ?config : Httpaf.Config.t
-    -> request_handler :
-        (Conduit_mirage.Flow.flow -> Httpaf.Server_connection.request_handler)
-    -> error_handler :
-        (Conduit_mirage.Flow.flow -> Httpaf.Server_connection.error_handler)
+    -> request_handler : Httpaf.Server_connection.request_handler
+    -> error_handler : Httpaf.Server_connection.error_handler
     -> (Conduit_mirage.Flow.flow -> unit Lwt.t)
 end
 
@@ -79,15 +88,13 @@ module Server_with_conduit = struct
   type t = Conduit_mirage.Flow.flow -> unit Lwt.t
 
   let listen handler flow =
-      Lwt.finalize
-        (fun () -> handler flow)
-        (fun () -> Flow.close flow)
+    Lwt.finalize
+      (fun () -> handler flow)
+      (fun () -> Flow.close flow)
 
   let connect t =
     let listen s f = Conduit_mirage.listen t s (listen f) in
     Lwt.return listen
 end
-
-
 
 module Client = Httpaf_lwt.Client (Io)

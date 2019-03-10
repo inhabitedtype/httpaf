@@ -1,10 +1,8 @@
 module type Server_intf = sig
   val create_connection_handler
     :  ?config : Httpaf.Config.t
-    -> request_handler :
-        (Conduit_mirage.Flow.flow -> Httpaf.Server_connection.request_handler)
-    -> error_handler :
-        (Conduit_mirage.Flow.flow -> Httpaf.Server_connection.error_handler)
+    -> request_handler : Httpaf.Server_connection.request_handler
+    -> error_handler : Httpaf.Server_connection.error_handler
     -> (Conduit_mirage.Flow.flow -> unit Lwt.t)
 end
 

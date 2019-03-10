@@ -2,18 +2,20 @@ open Lwt.Infix
 
 module Io
   : Httpaf_lwt.IO with
-    type t = Unix.sockaddr * Lwt_unix.file_descr = struct
-  type t = Unix.sockaddr * Lwt_unix.file_descr
+    type socket = Lwt_unix.file_descr
+    and type addr = Unix.sockaddr = struct
+  type socket = Lwt_unix.file_descr
+  type addr = Unix.sockaddr
 
-  let read (_, fd) bigstring ~off ~len =
+  let read socket bigstring ~off ~len =
     Lwt.catch
-      (fun () -> Lwt_bytes.read fd bigstring off len)
+      (fun () -> Lwt_bytes.read socket bigstring off len)
       (function
       | Unix.Unix_error (Unix.EBADF, _, _) as exn ->
         Lwt.fail exn
       | exn ->
         Lwt.async (fun () ->
-          Lwt_unix.close fd);
+          Lwt_unix.close socket);
         Lwt.fail exn)
 
      >>= fun bytes_read ->
@@ -22,21 +24,21 @@ module Io
     else
       Lwt.return (`Ok bytes_read)
 
-   let writev (_, fd) = Faraday_lwt_unix.writev_of_fd fd
+  let writev socket = Faraday_lwt_unix.writev_of_fd socket
 
    let shutdown socket command =
     try Lwt_unix.shutdown socket command
     with Unix.Unix_error (Unix.ENOTCONN, _, _) -> ()
 
-   let shutdown_send (_, socket) =
+  let shutdown_send socket =
     if not (Lwt_unix.state socket = Lwt_unix.Closed) then
       shutdown socket Unix.SHUTDOWN_SEND
 
-   let shutdown_receive (_, socket) =
+  let shutdown_receive socket =
     if not (Lwt_unix.state socket = Lwt_unix.Closed) then
       shutdown socket Unix.SHUTDOWN_RECEIVE
 
-   let close (_, socket) =
+  let close socket =
     if Lwt_unix.state socket <> Lwt_unix.Closed then
       Lwt.catch
         (fun () -> Lwt_unix.close socket)
@@ -45,18 +47,6 @@ module Io
       Lwt.return_unit
 end
 
- module Server = struct
-  include Httpaf_lwt.Server (Io)
+module Server = Httpaf_lwt.Server (Io)
 
-   let create_connection_handler ?config ~request_handler ~error_handler =
-    fun client_addr file_descr ->
-      create_connection_handler ?config ~request_handler ~error_handler (client_addr, file_descr)
-end
-
- module Client = struct
-  include Httpaf_lwt.Client (Io)
-
-   let request ?config socket req ~error_handler ~response_handler =
-    let addr = Unix.getsockname (Lwt_unix.unix_file_descr socket) in
-    request ?config (addr, socket) req ~error_handler ~response_handler
-end
+module Client = Httpaf_lwt.Client (Io)

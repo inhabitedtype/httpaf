@@ -85,38 +85,39 @@ end = struct
 end
 
 module type IO = sig
-  type t
+  type socket
+  type addr
 
   val read
-    :  t
+    :  socket
     -> Bigstringaf.t
     -> off:int
     -> len:int
     -> [ `Eof | `Ok of int ] Lwt.t
 
   val writev
-     : t
+     : socket
     -> Faraday.bigstring Faraday.iovec list
     -> [ `Closed | `Ok of int ] Lwt.t
 
-  val shutdown_send : t -> unit
+  val shutdown_send : socket -> unit
 
-  val shutdown_receive : t -> unit
+  val shutdown_receive : socket -> unit
 
-  val close : t -> unit Lwt.t
+  val close : socket -> unit Lwt.t
 end
 
 module Config = Httpaf.Config
 
 module Server (Io: IO) = struct
   let create_connection_handler ?(config=Config.default) ~request_handler ~error_handler =
-    fun t ->
+    fun client_addr socket ->
       let module Server_connection = Httpaf.Server_connection in
       let connection =
         Server_connection.create
           ~config
-          ~error_handler:(error_handler t)
-          (request_handler t)
+          ~error_handler:(error_handler client_addr)
+          (request_handler client_addr)
       in
 
       let read_buffer = Buffer.create config.read_buffer_size in
@@ -126,7 +127,7 @@ module Server (Io: IO) = struct
         let rec read_loop_step () =
           match Server_connection.next_read_operation connection with
           | `Read ->
-            Buffer.put ~f:(Io.read t) read_buffer >>= begin function
+            Buffer.put ~f:(Io.read socket) read_buffer >>= begin function
             | `Eof ->
               Buffer.get read_buffer ~f:(fun bigstring ~off ~len ->
                 Server_connection.read_eof connection bigstring ~off ~len)
@@ -145,7 +146,7 @@ module Server (Io: IO) = struct
 
           | `Close ->
             Lwt.wakeup_later notify_read_loop_exited ();
-            Io.shutdown_receive t;
+            Io.shutdown_receive socket;
             Lwt.return_unit
         in
 
@@ -158,7 +159,7 @@ module Server (Io: IO) = struct
       in
 
 
-      let writev = Io.writev t in
+      let writev = Io.writev socket in
       let write_loop_exited, notify_write_loop_exited = Lwt.wait () in
 
       let rec write_loop () =
@@ -175,7 +176,7 @@ module Server (Io: IO) = struct
 
           | `Close _ ->
             Lwt.wakeup_later notify_write_loop_exited ();
-            Io.shutdown_send t;
+            Io.shutdown_send socket;
             Lwt.return_unit
         in
 
@@ -192,9 +193,8 @@ module Server (Io: IO) = struct
       write_loop ();
       Lwt.join [read_loop_exited; write_loop_exited] >>= fun () ->
 
-      Io.close t
+      Io.close socket
 end
-
 
 
 module Client (Io: IO) = struct

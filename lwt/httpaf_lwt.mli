@@ -1,26 +1,27 @@
 open Httpaf
 
 module type IO = sig
-  type t
+  type socket
+  type addr
 
   (** The region [[off, off + len)] is where read bytes can be written to *)
   val read
-    :  t
+    :  socket
     -> Bigstringaf.t
     -> off:int
     -> len:int
     -> [ `Eof | `Ok of int ] Lwt.t
 
   val writev
-    : t
+    : socket
     -> Faraday.bigstring Faraday.iovec list
     -> [ `Closed | `Ok of int ] Lwt.t
 
-  val shutdown_send : t -> unit
+  val shutdown_send : socket -> unit
 
-  val shutdown_receive : t -> unit
+  val shutdown_receive : socket -> unit
 
-  val close : t -> unit Lwt.t
+  val close : socket -> unit Lwt.t
 end
 
 (* The function that results from [create_connection_handler] should be passed
@@ -29,9 +30,10 @@ end
 module Server (Io: IO) : sig
   val create_connection_handler
     :  ?config         : Config.t
-    -> request_handler : (Io.t -> Server_connection.request_handler)
-    -> error_handler   : (Io.t -> Server_connection.error_handler)
-    -> Io.t
+    -> request_handler : (Io.addr -> Server_connection.request_handler)
+    -> error_handler   : (Io.addr -> Server_connection.error_handler)
+    -> Io.addr
+    -> Io.socket
     -> unit Lwt.t
 end
 
@@ -39,7 +41,7 @@ end
 module Client (Io: IO) : sig
   val request
     :  ?config          : Httpaf.Config.t
-    -> Io.t
+    -> Io.socket
     -> Request.t
     -> error_handler    : Client_connection.error_handler
     -> response_handler : Client_connection.response_handler
