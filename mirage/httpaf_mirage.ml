@@ -48,8 +48,8 @@ module Io : Httpaf_lwt.IO with
           Flow.writev flow cstruct_iovecs >|= fun x ->
           match x with
           | Ok () ->
-            let written = List.fold_left (fun acc {Cstruct.len; off; _} ->
-              acc + (len - off))
+            let written = List.fold_left (fun acc { Cstruct.len; _ } ->
+              acc + len)
               0 cstruct_iovecs
             in
             `Ok written
