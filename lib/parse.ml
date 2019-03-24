@@ -279,7 +279,8 @@ module Reader = struct
     | AU.Partial { committed; continue } ->
       t.parse_state <- Partial continue;
       committed
-  and start t state =
+
+  let start t state =
       match state with
       | AU.Done _         -> failwith "httpaf.Parse.unable to start parser"
       | AU.Fail(0, marks, msg) ->
@@ -287,7 +288,6 @@ module Reader = struct
       | AU.Partial { committed = 0; continue } ->
         t.parse_state <- Partial continue
       | _ -> assert false
-  ;;
 
   let rec read_with_more t bs ~off ~len more =
     let consumed =
