@@ -1,5 +1,5 @@
 (executables
- (libraries httpaf httpaf-lwt httpaf_examples base stdio lwt lwt.unix)
+ (libraries httpaf httpaf-lwt-unix httpaf_examples base stdio lwt lwt.unix)
  (names lwt_get lwt_post lwt_echo_post))
 
 (alias
