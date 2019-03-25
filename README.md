@@ -47,7 +47,53 @@ much flat along the x-axis. Here are some additional statistics from that run
 
 ## Usage
 
-WIP
+Here is a Hello, World! program written using httpaf. It only responds to `GET`
+requests to the `/hello/*` target. As it does not itself do any IO, it can be
+used with both the Async and Lwt runtimes. See the [`examples`][examples] directory for
+usage of the individual runtimes.
+
+[examples]: https://github.com/inhabitedtype/httpaf/tree/master/examples
+
+```ocaml
+open Httpaf
+module String = Caml.String
+
+let invalid_request reqd status body =
+  (* Responses without an explicit length or transfer-encoding are
+     close-delimited. *)
+  let headers = Headers.of_list [ "Connection", "close" ] in
+  Reqd.respond_with_string reqd (Response.create ~headers status) body
+;;
+
+let request_handler reqd =
+  let { Request.meth; target; _ } = Reqd.request reqd in
+  match meth with
+  | `GET ->
+    begin match String.split_on_char '/' target with
+    | "" :: "hello" :: rest ->
+      let who =
+        match rest with
+        | [] -> "world"
+        | who :: _ -> who
+      in
+      let response_body = Printf.sprintf "Hello, %s!\n" who in
+      (* Specify the length of the response. *)
+      let headers =
+        Headers.of_list
+          [ "Content-length", string_of_int (String.length response_body) ]
+      in
+      Reqd.respond_with_string reqd (Response.create ~headers `OK) response_body
+    | _ ->
+      let response_body = Printf.sprintf "%S not found\n" target in
+      invalid_request reqd `Not_found response_body
+    end
+  | meth ->
+    let response_body =
+      Printf.sprintf "%s is not an allowed method\n" (Method.to_string meth)
+    in
+    invalid_request reqd `Method_not_allowed response_body
+;;
+```
 
 ## Development
 
