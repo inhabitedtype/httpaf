@@ -353,7 +353,7 @@ module Headers : sig
       following equations should hold:
 
         {ul
-        {- [to_list (of__rev_list lst) = List.rev lst] }
+        {- [to_list (of_rev_list lst) = List.rev lst] }
         {- [get (of_rev_list [("k", "v1"); ("k", "v2")]) "k" = Some "v1"]. }} *)
 
   val to_list : t -> (name * value) list
