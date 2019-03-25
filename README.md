@@ -20,30 +20,6 @@ Install the library and its dependencies via [OPAM][opam]:
 ```bash
 opam install httpaf
 ```
-## Performance
-
-The reason for http/af's existence is [mirage/ocaml-cohttp#328][328], which
-highlights the poor scalability of cohttp. This is due to a number of factors,
-including poor scheduling, excessive allocation, and starvation of the server's
-accept loop. Here is a comparison chart of the data from that issue, along with
-data from an async-based http/af server. This server was run on a VM with 3
-virtual cores, the host being circa 2015 MacBook Pro:
-
-[328]: https://github.com/mirage/ocaml-cohttp/issues/328
-
-![http/af comparsion to cohttp](https://raw.githubusercontent.com/inhabitedtype/httpaf/master/images/httpaf-comparison.png)
-
-The http/af latency histogram, relative to the cohttp histograms, is pretty
-much flat along the x-axis. Here are some additional statistics from that run
-(with latencies in milliseconds):
-
-```
-#[Mean    =       27.719, StdDeviation   =       31.570]
-#[Max     =      263.424, Total count    =      1312140]
-#[Buckets =           27, SubBuckets     =         2048]
-----------------------------------------------------------
-  1709909 requests in 1.00m, 3.33GB read
-```
 
 ## Usage
 
@@ -93,6 +69,31 @@ let request_handler reqd =
     in
     invalid_request reqd `Method_not_allowed response_body
 ;;
+```
+
+## Performance
+
+The reason for http/af's existence is [mirage/ocaml-cohttp#328][328], which
+highlights the poor scalability of cohttp. This is due to a number of factors,
+including poor scheduling, excessive allocation, and starvation of the server's
+accept loop. Here is a comparison chart of the data from that issue, along with
+data from an async-based http/af server. This server was run on a VM with 3
+virtual cores, the host being circa 2015 MacBook Pro:
+
+[328]: https://github.com/mirage/ocaml-cohttp/issues/328
+
+![http/af comparsion to cohttp](https://raw.githubusercontent.com/inhabitedtype/httpaf/master/images/httpaf-comparison.png)
+
+The http/af latency histogram, relative to the cohttp histograms, is pretty
+much flat along the x-axis. Here are some additional statistics from that run
+(with latencies in milliseconds):
+
+```
+#[Mean    =       27.719, StdDeviation   =       31.570]
+#[Max     =      263.424, Total count    =      1312140]
+#[Buckets =           27, SubBuckets     =         2048]
+----------------------------------------------------------
+  1709909 requests in 1.00m, 3.33GB read
 ```
 
 ## Development
