@@ -31,7 +31,7 @@
     POSSIBILITY OF SUCH DAMAGE.
   ----------------------------------------------------------------------------*)
 
-type t = Response0.t =
+type t =
   { version : Version.t
   ; status  : Status.t
   ; reason  : string
