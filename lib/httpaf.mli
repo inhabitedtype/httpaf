@@ -78,7 +78,7 @@ end
     and what is expected by the client as a successful result.
 
     See {{:https://tools.ietf.org/html/rfc7231#section-4} RFC7231§4} for more
-    detials. *)
+    details. *)
 module Method : sig
   type standard = [
     | `GET
@@ -354,7 +354,7 @@ module Headers : sig
 
         {ul
         {- [to_list (of__rev_list lst) = List.rev lst] }
-        {- [get (of_list [("k", "v1"); ("k", "v2")]) "k" = Some "v1"]. }} *)
+        {- [get (of_rev_list [("k", "v1"); ("k", "v2")]) "k" = Some "v1"]. }} *)
 
   val to_list : t -> (name * value) list
   (** [to_list t] is the association list of header fields contained in [t] in
