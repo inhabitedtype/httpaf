@@ -285,8 +285,8 @@ module Status : sig
       status codes. *)
 
   val is_error : t -> bool
-  (** [is_server_error t] is true iff [t] belongs to the Client Error or Server
-      Error class of status codes. *)
+  (** [is_error t] is true iff [t] belongs to the Client Error or Server Error
+      class of status codes. *)
 
   val to_string : t -> string
   val of_string : string -> t
@@ -456,7 +456,7 @@ module Body : sig
     -> unit
   (* [schedule_read t ~on_eof ~on_read] will setup [on_read] and [on_eof] as
      callbacks for when bytes are available in [t] for the application to
-     consum, or when the input channel has been closed and no further bytes
+     consume, or when the input channel has been closed and no further bytes
      will be received by the application.
 
      Once either of these callbacks have been called, they become inactive. The
@@ -490,7 +490,7 @@ module Body : sig
       will be called.
 
       The type of the output channel is runtime-dependent, as are guarantees about
-      whether those packets have been queued for deliver or have actually been
+      whether those packets have been queued for delivery or have actually been
       received by the intended recipient. *)
 
   val close_reader : [`read] t -> unit
@@ -628,7 +628,7 @@ module Reqd : sig
       The following functions will initiate a response for the corresponding
       request in [t]. Depending on the state of the current connection, and the
       header values of the response, this may cause the connection to close or
-      to perisist for reuse by the client.
+      to persist for reuse by the client.
 
       See {{:https://tools.ietf.org/html/rfc7230#section-6.3} RFC7230§6.3} for
       more details. *)
@@ -690,9 +690,9 @@ module Server_connection : sig
       connection to consume. *)
 
   val read_eof : t -> Bigstringaf.t -> off:int -> len:int -> int
-  (** [read t bigstring ~off ~len] reads bytes of input from the provided range
-      of [bigstring] and returns the number of bytes consumed by the
-      connection.  {!read} should be called after {!next_read_operation}
+  (** [read_eof t bigstring ~off ~len] reads bytes of input from the provided 
+      range of [bigstring] and returns the number of bytes consumed by the
+      connection.  {!read_eof} should be called after {!next_read_operation}
       returns a [`Read] and an EOF has been received from the communication
       channel. The connection will attempt to consume any buffered input and
       then shutdown the HTTP parser for the connection. *)
@@ -735,8 +735,8 @@ module Server_connection : sig
   val is_closed : t -> bool
   (** [is_closed t] is [true] if both the read and write processors have been
       shutdown. When this is the case {!next_read_operation} will return
-      [`Close _] and {!next_write_operation} will do the same will return a
-      [`Write _] until all buffered output has been flushed. *)
+      [`Close _] and {!next_write_operation} will return [`Write _] until all
+      buffered output has been flushed. *)
 
   val error_code : t -> error option
   (** [error_code t] returns the [error_code] that caused the connection to
@@ -779,9 +779,9 @@ module Client_connection : sig
       connection to consume. *)
 
   val read_eof : t -> Bigstringaf.t -> off:int -> len:int -> int
-  (** [read t bigstring ~off ~len] reads bytes of input from the provided range
-      of [bigstring] and returns the number of bytes consumed by the
-      connection.  {!read} should be called after {!next_read_operation}
+  (** [read_eof t bigstring ~off ~len] reads bytes of input from the provided 
+      range of [bigstring] and returns the number of bytes consumed by the
+      connection.  {!read_eof} should be called after {!next_read_operation}
       returns a [`Read] and an EOF has been received from the communication
       channel. The connection will attempt to consume any buffered input and
       then shutdown the HTTP parser for the connection. *)
@@ -812,7 +812,7 @@ module Client_connection : sig
 
   val report_exn : t -> exn -> unit
   (** [report_exn t exn] reports that an error [exn] has been caught and
-      that it has been attributed to [t]. Calling this function will swithc [t]
+      that it has been attributed to [t]. Calling this function will switch [t]
       into an error state. Depending on the state [t] is transitioning from, it
       may call its error handler before terminating the connection. *)
 
