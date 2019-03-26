@@ -1,0 +1,4 @@
+(library
+ (name        httpaf_examples)
+ (libraries   httpaf base stdio)
+ (flags (:standard -safe-string)))
