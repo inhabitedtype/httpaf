@@ -61,7 +61,7 @@ let write_request t { Request.meth; target; version; headers } =
   write_version t version; write_crlf  t;
   write_headers t headers
 
-let write_response t { Response0.version; status; reason; headers } =
+let write_response t { Response.version; status; reason; headers } =
   write_version t version; write_space t;
   write_status  t status ; write_space t;
   write_string  t reason ; write_crlf  t;
