@@ -454,14 +454,14 @@ module Body : sig
     -> on_eof  : (unit -> unit)
     -> on_read : (Bigstringaf.t -> off:int -> len:int -> unit)
     -> unit
-  (* [schedule_read t ~on_eof ~on_read] will setup [on_read] and [on_eof] as
-     callbacks for when bytes are available in [t] for the application to
-     consume, or when the input channel has been closed and no further bytes
-     will be received by the application.
+  (** [schedule_read t ~on_eof ~on_read] will setup [on_read] and [on_eof] as
+      callbacks for when bytes are available in [t] for the application to
+      consume, or when the input channel has been closed and no further bytes
+      will be received by the application.
 
-     Once either of these callbacks have been called, they become inactive. The
-     application is responsible for scheduling subsequent reads, either within
-     the [on_read] callback or by some other mechanism. *)
+      Once either of these callbacks have been called, they become inactive. 
+      The application is responsible for scheduling subsequent reads, either 
+      within the [on_read] callback or by some other mechanism. *)
 
   val write_char : [`write] t -> char -> unit
   (** [write_char w char] copies [char] into an internal buffer. If possible,
@@ -479,10 +479,10 @@ module Body : sig
       writes before transmission. *)
 
   val schedule_bigstring : [`write] t -> ?off:int -> ?len:int -> Bigstringaf.t -> unit
-  (** [schedule_bigstring w ?off ?len bs] schedules [bs] to be
-      transmitted at the next opportunity without performing a copy. [bs]
-      should not be modified until a subsequent call to {!flush} has
-      successfully completed. *)
+  (** [schedule_bigstring w ?off ?len bs] schedules [bs] to be transmitted at
+      the next opportunity without performing a copy. [bs] should not be
+      modified until a subsequent call to {!flush} has successfully 
+      completed. *)
 
   val flush : [`write] t -> (unit -> unit) -> unit
   (** [flush t f] makes all bytes in [t] available for writing to the awaiting
@@ -503,7 +503,7 @@ module Body : sig
       to the output channel. *)
 
   val is_closed : _ t -> bool
-  (** [is_closed t] is true if {!close} has been called on [t] and [false]
+  (** [is_closed t] is [true] if {!close} has been called on [t] and [false]
       otherwise. A closed [t] may still have pending output. *)
 
 end
@@ -637,7 +637,7 @@ module Reqd : sig
   val respond_with_bigstring : t -> Response.t -> Bigstringaf.t -> unit
   val respond_with_streaming : ?flush_headers_immediately:bool -> t -> Response.t -> [`write] Body.t
 
-  (** Exception Handling *)
+  (** {3 Exception Handling} *)
 
   val report_exn : t -> exn -> unit
   val try_with : t -> (unit -> unit) -> (unit, exn) result
