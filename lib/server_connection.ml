@@ -197,48 +197,48 @@ let set_error_and_handle ?request t error =
 let report_exn t exn =
   set_error_and_handle t (`Exn exn)
 
-let advance_request_queue_if_necessary t =
-  if is_active t then begin
-    let reqd = current_reqd_exn t in
-    if Reqd.persistent_connection reqd then begin
-      if Reqd.is_complete reqd then begin
-        ignore (Queue.take t.request_queue);
-        if not (Queue.is_empty t.request_queue)
-        then t.request_handler (current_reqd_exn t);
-        wakeup_reader t;
-      end
-    end else begin
-      ignore (Queue.take t.request_queue);
-      Queue.iter Reqd.close_request_body t.request_queue;
-      Queue.clear t.request_queue;
-      Queue.push reqd t.request_queue;
-      wakeup_writer t;
-      if Reqd.is_complete reqd
-      then shutdown t
-      else if not (Reqd.requires_input reqd)
-      then shutdown_reader t
-    end
-  end else if Reader.is_closed t.reader
-  then shutdown t
-
-let _next_read_operation t =
-  advance_request_queue_if_necessary t;
-  if is_active t then begin
-    let reqd = current_reqd_exn t in
-    if      Reqd.requires_input        reqd then Reader.next t.reader
-    else if Reqd.persistent_connection reqd then `Yield
-    else begin
-      shutdown_reader t;
-      Reader.next t.reader
-    end
-  end else
+let rec _next_read_operation t =
+  if not (is_active t) then (
+    if Reader.is_closed t.reader
+    then shutdown t;
     Reader.next t.reader
+  ) else (
+    let reqd = current_reqd_exn t in
+    match Reqd.input_state reqd with
+    | Provide -> Reader.next t.reader
+    | Wait    -> `Yield
+    | Complete ->
+      (match Reqd.output_state reqd with
+      | Complete ->
+        ignore (Queue.take t.request_queue);
+        if Reqd.persistent_connection reqd then (
+          if not (Queue.is_empty t.request_queue)
+          then t.request_handler (Queue.peek_exn t.request_queue);
+          wakeup_reader t;
+          _next_read_operation t;
+        ) else (
+          shutdown t;
+          Reader.next t.reader
+        )
+      | Wait
+      | Ready ->
+        if not (Reqd.persistent_connection reqd) then (
+          shutdown_reader t;
+          Reader.next t.reader
+        ) else `Yield
+      | Upgrade -> assert false)
+    | Upgrade ->
+      assert (Reqd.output_state reqd = Upgrade);
+      shutdown t;
+      `Upgrade
+  )
+;;
 
 let next_read_operation t =
   match _next_read_operation t with
   | `Error (`Parse _)             -> set_error_and_handle          t `Bad_request; `Close
   | `Error (`Bad_request request) -> set_error_and_handle ~request t `Bad_request; `Close
-  | (`Read | `Yield | `Close) as operation -> operation
+  | (`Read | `Yield | `Close | `Upgrade) as operation -> operation
 
 let read_with_more t bs ~off ~len more =
   let call_handler = Queue.is_empty t.request_queue in
@@ -269,9 +269,39 @@ let flush_response_body t =
 ;;
 
 let next_write_operation t =
-  advance_request_queue_if_necessary t;
-  flush_response_body t;
-  Writer.next t.writer
+  if not (is_active t) then (
+    if Reader.is_closed t.reader
+    then shutdown t;
+    Writer.next t.writer
+  ) else (
+    let reqd = current_reqd_exn t in
+    match Reqd.output_state reqd with
+    | Wait -> `Yield
+    | Ready ->
+      assert (Reqd.input_state reqd <> Upgrade);
+      Reqd.flush_response_body reqd;
+      Writer.next t.writer
+    | Complete ->
+      (match Reqd.input_state reqd with
+      | Complete ->
+        ignore (Queue.take t.request_queue);
+        if Reqd.persistent_connection reqd then (
+          if not (Queue.is_empty t.request_queue)
+          then t.request_handler (Queue.peek_exn t.request_queue);
+          wakeup_reader t
+        ) else (
+          shutdown t
+        );
+        Writer.next t.writer
+      | Provide
+      | Wait    -> `Yield
+      | Upgrade -> assert false)
+    | Upgrade ->
+      assert (Reqd.input_state reqd = Upgrade);
+      shutdown t;
+      `Upgrade(Reqd.request reqd, Reqd.response_exn reqd)
+  )
+;;
 
 let report_write_result t result =
   Writer.report_result t.writer result
@@ -279,11 +309,17 @@ let report_write_result t result =
 let yield_writer t k =
   if is_active t then begin
     let reqd = current_reqd_exn t in
-    if Reqd.requires_output reqd
-    then Reqd.on_more_output_available reqd k
-    else if Reqd.persistent_connection reqd
-    then on_wakeup_writer t k
-    else begin shutdown t; k () end
+    match Reqd.output_state reqd with
+    | Complete ->
+      if Reqd.persistent_connection reqd
+      then on_wakeup_writer t k
+      else begin
+        shutdown t;
+        k ()
+      end
+    | Wait -> Reqd.on_more_output_available reqd k
+    | Ready
+    | Upgrade -> k ()
   end else if Writer.is_closed t.writer then k () else begin
     on_wakeup_writer t k
   end
