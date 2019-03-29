@@ -3,5 +3,5 @@
  (public_name httpaf-async)
  (wrapped false)
  (libraries
-   async core angstrom-async faraday-async httpaf)
+   async core faraday-async httpaf)
  (flags (:standard -safe-string)))
