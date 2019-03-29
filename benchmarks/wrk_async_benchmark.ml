@@ -40,13 +40,14 @@ let main port max_accepts_per_batch () =
   Deferred.never ()
 
 let () =
-  Command.async_spec
+  Command.async
     ~summary:"Start a hello world Async server"
-    Command.Spec.(empty +>
-      flag "-p" (optional_with_default 8080 int)
-        ~doc:"int Source port to listen on"
-      +>
-      flag "-a" (optional_with_default 1 int)
-        ~doc:"int Maximum accepts per batch"
-    ) main
+    Command.Param.(
+      map (both
+          (flag "-p" (optional_with_default 8080 int)
+            ~doc:"int Source port to listen on")
+          (flag "-a" (optional_with_default 1 int)
+            ~doc:"int Maximum accepts per batch"))
+        ~f:(fun (port, accepts) ->
+              (fun () -> main port accepts ())))
   |> Command.run

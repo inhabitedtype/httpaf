@@ -52,13 +52,14 @@ let main port host () =
 ;;
 
 let () =
-  Command.async_spec
+  Command.async
     ~summary:"Start a hello world Async client"
-    Command.Spec.(empty +>
-      flag "-p" (optional_with_default 80 int)
-        ~doc:"int destination port"
-      +>
-      flag "-a" (required string)
-        ~doc:"string destination ip"
-    ) main
+    Command.Param.(
+      map (both
+          (flag "-p" (optional_with_default 80 int)
+            ~doc:"int destination port")
+          (flag "-h" (required string)
+            ~doc:"string destination host"))
+        ~f:(fun (port, host) ->
+              (fun () -> main port host ())))
   |> Command.run
