@@ -1,6 +1,6 @@
 (executables
- (names lwt_get lwt_post lwt_echo_server)
- (libraries httpaf httpaf-lwt lwt lwt.unix))
+ (libraries httpaf httpaf-lwt httpaf_examples base stdio lwt lwt.unix)
+ (names lwt_get lwt_post lwt_echo_post))
 
 (alias
  (name examples)

@@ -4,26 +4,14 @@ open Async
 open Httpaf
 open Httpaf_async
 
-let response_handler finished response response_body =
-  match response with
-  | { Response.status = `OK; _ } ->
-    let rec on_read bs ~off ~len =
-      Bigstringaf.substring ~off ~len bs |> Core.Printf.printf "%s";
-      Body.schedule_read response_body ~on_read ~on_eof
-    and on_eof () = Ivar.fill finished () in
-    Body.schedule_read response_body ~on_read ~on_eof;
-  | response ->
-    Format.fprintf Format.std_formatter "%a\n%!" Response.pp_hum response;
-    Core.exit 1
-;;
-
 let error_handler _ = assert false
 
 let main port host () =
   let where_to_connect = Tcp.Where_to_connect.of_host_and_port { host; port } in
-  let finished = Ivar.create () in
   Tcp.connect_sock where_to_connect
   >>= fun socket ->
+    let finished = Ivar.create () in
+    let response_handler = Httpaf_examples.Client.print ~on_eof:(Ivar.fill finished) in
     let headers =
       Headers.of_list
       [ "transfer-encoding", "chunked"
@@ -34,7 +22,7 @@ let main port host () =
     let request_body =
       Client.request
         ~error_handler
-        ~response_handler:(response_handler finished)
+        ~response_handler
         socket
         (Request.create ~headers `POST "/")
     in
