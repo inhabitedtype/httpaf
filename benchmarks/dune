@@ -1,10 +1,13 @@
 (executable
- (libraries httpaf httpaf-async async core)
- (modules wrk_async_benchmark)
  (name wrk_async_benchmark)
- (flags (:standard -w -9)))
+ (modules wrk_async_benchmark)
+ (libraries httpaf httpaf_examples httpaf-async async core))
 
 (executable
  (name wrk_lwt_benchmark)
  (modules Wrk_lwt_benchmark)
- (libraries httpaf httpaf-lwt lwt.unix))
+ (libraries httpaf httpaf_examples httpaf-lwt lwt.unix base))
+
+(alias
+ (name benchmarks)
+ (deps (glob_files *.exe)))
