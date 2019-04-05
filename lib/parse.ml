@@ -181,7 +181,7 @@ let body ~encoding writer =
       in
       _hex >>= fun size ->
       if size = 0L
-      then finish writer
+      then eol *> finish writer
       else fixed size ~unexpected:"expected more from body chunk" *> eol *> p)
   | `Close_delimited ->
     fix (fun p ->
