@@ -111,6 +111,23 @@ module IOVec = struct
     ; "shiftv raises ", `Quick, test_shiftv_raises ]
 end
 
+let maybe_serialize_body f body =
+  match body with
+  | None -> ()
+  | Some body -> Faraday.write_string f body
+
+let request_to_string ?body r =
+  let f = Faraday.create 0x1000 in
+  Httpaf_private.Serialize.write_request f r;
+  maybe_serialize_body f body;
+  Faraday.serialize_to_string f
+
+let response_to_string ?body r =
+  let f = Faraday.create 0x1000 in
+  Httpaf_private.Serialize.write_response f r;
+  maybe_serialize_body f body;
+  Faraday.serialize_to_string f
+
 module Server_connection = struct
   include Server_connection
 
@@ -158,16 +175,83 @@ module Server_connection = struct
 
   let write_operation = Alcotest.of_pp Write_operation.pp_hum
   let read_operation = Alcotest.of_pp Read_operation.pp_hum
-  let get_request_string = "GET / HTTP/1.1\r\n\r\n"
 
   let read_string t str =
     let len = String.length str in
     let input = Bigstringaf.of_string str ~off:0 ~len in
-    read t input ~off:0 ~len;
+    let c = read t input ~off:0 ~len in
+    Alcotest.(check int) "read consumes all input" len c;
+  ;;
+
+  let read_request t r =
+    let request_string = request_to_string r in
+    read_string t request_string
+  ;;
+
+  let reader_yielded t =
+    Alcotest.check read_operation "Reader is in a yield state"
+      `Yield (next_read_operation t);
+  ;;
+
+  let write_string ?(msg="output written") t str =
+    let len = String.length str in
+    Alcotest.(check (option string)) msg
+      (next_write_operation t |> Write_operation.to_write_as_string)
+      (Some str);
+    report_write_result t (`Ok len);
+  ;;
+
+  let write_response ?(msg="response written") ?body t r =
+    let response_string = response_to_string ?body r in
+    write_string ~msg t response_string
+  ;;
+
+  let writer_yielded t =
+    Alcotest.check write_operation "Writer is in a yield state"
+      `Yield (next_write_operation t);
+  ;;
+
+  let connection_is_shutdown t =
+    Alcotest.check read_operation "Reader is closed"
+      `Close (next_read_operation t);
+    Alcotest.check write_operation "Writer is closed"
+      (`Close 0) (next_write_operation t);
+  ;;
+
+  let request_handler_with_body body reqd =
+    Body.close_reader (Reqd.request_body reqd);
+    Reqd.respond_with_string reqd (Response.create `OK) body
   ;;
 
   let default_request_handler reqd =
-    Reqd.respond_with_string reqd (Response.create `OK) ""
+    request_handler_with_body "" reqd
+  ;;
+
+  let echo_handler response reqd =
+    let request_body  = Reqd.request_body reqd in
+    let response_body = Reqd.respond_with_streaming reqd response in
+    let rec on_read buffer ~off ~len =
+      Body.write_string response_body (Bigstringaf.substring ~off ~len buffer);
+      Body.flush response_body (fun () ->
+        Body.schedule_read request_body ~on_eof ~on_read)
+      and on_eof () = print_endline "got eof"; Body.close_writer response_body in
+    Body.schedule_read request_body ~on_eof ~on_read;
+  ;;
+
+  let streaming_handler ?(flush=false) response writes reqd =
+    let writes = ref writes in
+    let request_body = Reqd.request_body reqd in
+    Body.close_reader request_body;
+    let body = Reqd.respond_with_streaming ~flush_headers_immediately:flush reqd response in
+    let rec write () =
+      match !writes with
+      | [] -> Body.close_writer body
+      | w :: ws ->
+        Body.write_string body w;
+        writes := ws;
+        Body.flush body write
+    in
+    write ();
   ;;
 
   let synchronous_raise reqd =
@@ -190,34 +274,122 @@ module Server_connection = struct
     let t = create default_request_handler in
     let c = read_eof t Bigstringaf.empty ~off:0 ~len:0 in
     Alcotest.(check int) "read_eof with no input returns 0" 0 c;
-    Alcotest.check read_operation "Shutting down a reader closes it"
-      `Close (next_read_operation t);
+    connection_is_shutdown t;
 
     let t = create default_request_handler in
     let c = read t Bigstringaf.empty ~off:0 ~len:0 in
     Alcotest.(check int) "read with no input returns 0" 0 c;
     let c = read_eof t Bigstringaf.empty ~off:0 ~len:0; in
     Alcotest.(check int) "read_eof with no input returns 0" 0 c;
-    Alcotest.check read_operation "Shutting down a reader closes it"
-      `Close (next_read_operation t);
+    connection_is_shutdown t;
+  ;;
+
+  let test_single_get () =
+    (* Single GET *)
+    let t = create default_request_handler in
+    read_request   t (Request.create `GET "/");
+    write_response t (Response.create `OK);
+
+    (* Single GET, close the connection *)
+    let t = create default_request_handler in
+    read_request   t (Request.create `GET "/" ~headers:(Headers.of_list ["connection", "close"]));
+    write_response t (Response.create `OK);
+    connection_is_shutdown t;
+
+    (* Single GET, with reponse body *)
+    let response_body = "This is a test" in
+    let t = create (request_handler_with_body response_body) in
+    read_request   t (Request.create `GET "/" ~headers:(Headers.of_list ["connection", "close"]));
+    write_response t
+      ~body:response_body
+      (Response.create `OK);
+    connection_is_shutdown t;
+  ;;
+
+  let test_echo_post () =
+    let request = Request.create `GET "/" ~headers:(Headers.of_list ["transfer-encoding", "chunked"]) in
+
+    (* Echo a single chunk *)
+    let response =
+      Response.create `OK ~headers:(Headers.of_list ["transfer-encoding", "chunked"])
+    in
+    let t = create (echo_handler response) in
+    read_request t request;
+    read_string  t "e\r\nThis is a test";
+    write_response t
+      ~body:"e\r\nThis is a test\r\n"
+      response;
+    read_string  t "\r\n0\r\n";
+    write_string t "0\r\n\r\n";
+    writer_yielded t;
+
+    (* Echo two chunks *)
+    let response =
+      Response.create `OK ~headers:(Headers.of_list ["transfer-encoding", "chunked"])
+    in
+    let t = create (echo_handler response) in
+    read_request t request;
+    read_string  t "e\r\nThis is a test";
+    write_response t
+      ~body:"e\r\nThis is a test\r\n"
+      response;
+    read_string  t "\r\n21\r\n... that involves multiple chunks";
+    write_string t "21\r\n... that involves multiple chunks\r\n";
+    read_string  t "\r\n0\r\n";
+    write_string t "0\r\n\r\n";
+    writer_yielded t;
+
+    (* Echo and close *)
+    let response =
+      Response.create `OK ~headers:(Headers.of_list ["connection", "close"])
+    in
+    let t = create (echo_handler response) in
+    read_request t request;
+    read_string  t "e\r\nThis is a test";
+    write_response t
+      ~body:"This is a test"
+      response;
+    read_string  t "\r\n21\r\n... that involves multiple chunks";
+    read_string  t "\r\n0\r\n";
+    write_string t "... that involves multiple chunks";
+    writer_yielded t;
+    connection_is_shutdown t;
+  ;;
+
+  let test_streaming_response () =
+    let request  = Request.create `GET "/" in
+    let response = Response.create `OK in
+
+    let t = create (streaming_handler response ["Hello "; "world!"]) in
+    read_request   t request;
+    write_response t
+      ~body:"Hello "
+      response;
+    write_string   t "world!";
+    writer_yielded t;
+  ;;
+
+  let test_multiple_get () =
+    let t = create default_request_handler in
+    read_request   t (Request.create `GET "/");
+    write_response t (Response.create `OK);
+    read_request   t (Request.create `GET "/");
+    write_response t (Response.create `OK);
   ;;
 
   let test_synchronous_error () =
     let writer_woken_up = ref false in
     let t = create ~error_handler synchronous_raise in
-    Alcotest.check write_operation "Writer is in a yield state"
-      `Yield (next_write_operation t);
     yield_writer t (fun () -> writer_woken_up := true);
-    let c = read_string t get_request_string in
-    Alcotest.(check int) "read consumes all input"
-      (String.length get_request_string) c;
+    read_request t (Request.create `GET "/");
     Alcotest.check read_operation "Error shuts down the reader"
       `Close (next_read_operation t);
     Alcotest.(check bool) "Writer woken up"
       true !writer_woken_up;
-    Alcotest.(check (option string)) "Error response written"
-      (Some "HTTP/1.1 500 Internal Server Error\r\n\r\ngot an error")
-      (next_write_operation t |> Write_operation.to_write_as_string)
+    write_response t
+      ~msg:"Error response written"
+      (Response.create `Internal_server_error)
+      ~body:"got an error"
   ;;
 
   let test_synchronous_error_asynchronous_handling () =
@@ -228,22 +400,19 @@ module Server_connection = struct
         error_handler ?request error start_response)
     in
     let t = create ~error_handler synchronous_raise in
-    Alcotest.check write_operation "Writer is in a yield state"
-      `Yield (next_write_operation t);
+    writer_yielded t;
     yield_writer t (fun () -> writer_woken_up := true);
-    let c = read_string t get_request_string in
-    Alcotest.(check int) "read consumes all input"
-      (String.length get_request_string) c;
+    read_request t (Request.create `GET "/");
     Alcotest.check read_operation "Error shuts down the reader"
       `Close (next_read_operation t);
-    Alcotest.check write_operation "Writer is in a yield state"
-      `Yield (next_write_operation t);
+    writer_yielded t;
     !continue ();
     Alcotest.(check bool) "Writer woken up"
       true !writer_woken_up;
-    Alcotest.(check (option string)) "Error response written"
-      (Some "HTTP/1.1 500 Internal Server Error\r\n\r\ngot an error")
-      (next_write_operation t |> Write_operation.to_write_as_string)
+    write_response t
+      ~msg:"Error response written"
+      (Response.create `Internal_server_error)
+      ~body:"got an error"
   ;;
 
 
@@ -254,24 +423,20 @@ module Server_connection = struct
     in
     let writer_woken_up = ref false in
     let t = create ~error_handler asynchronous_raise in
-    Alcotest.check write_operation "Writer is in a yield state"
-      `Yield (next_write_operation t);
+    writer_yielded t;
     yield_writer t (fun () -> writer_woken_up := true);
-    let c = read_string t get_request_string in
-    Alcotest.(check int) "read consumes all input"
-      (String.length get_request_string) c;
-    Alcotest.check write_operation "Writer is in a yield state"
-      `Yield (next_write_operation t);
-    Alcotest.check read_operation "Reader is in a read state"
-      `Yield (next_read_operation t);
+    read_request t (Request.create `GET "/");
+    writer_yielded t;
+    reader_yielded t;
     !continue ();
     Alcotest.check read_operation "Error shuts down the reader"
       `Close (next_read_operation t);
     Alcotest.(check bool) "Writer woken up"
       true !writer_woken_up;
-    Alcotest.(check (option string)) "Error response written"
-      (Some "HTTP/1.1 500 Internal Server Error\r\n\r\ngot an error")
-      (next_write_operation t |> Write_operation.to_write_as_string)
+    write_response t
+      ~msg:"Error response written"
+      (Response.create `Internal_server_error)
+      ~body:"got an error"
   ;;
 
   let test_asynchronous_error_asynchronous_handling () =
@@ -286,27 +451,22 @@ module Server_connection = struct
     in
     let writer_woken_up = ref false in
     let t = create ~error_handler asynchronous_raise in
-    Alcotest.check write_operation "Writer is in a yield state"
-      `Yield (next_write_operation t);
-    yield_writer t (fun () -> writer_woken_up := true);
-    let c = read_string t get_request_string in
-    Alcotest.(check int) "read consumes all input"
-      (String.length get_request_string) c;
-    Alcotest.check write_operation "Writer is in a yield state"
-      `Yield (next_write_operation t);
-    Alcotest.check read_operation "Reader is in a read state"
-      `Yield (next_read_operation t);
+    writer_yielded t;
+    yield_writer   t (fun () -> writer_woken_up := true);
+    read_request   t (Request.create `GET "/");
+    writer_yielded t;
+    reader_yielded t;
     !continue_request ();
-    Alcotest.check write_operation "Writer is in a yield state"
-      `Yield (next_write_operation t);
+    writer_yielded t;
     !continue_error ();
     Alcotest.check read_operation "Error shuts down the reader"
       `Close (next_read_operation t);
     Alcotest.(check bool) "Writer woken up"
       true !writer_woken_up;
-    Alcotest.(check (option string)) "Error response written"
-      (Some "HTTP/1.1 500 Internal Server Error\r\n\r\ngot an error")
-      (next_write_operation t |> Write_operation.to_write_as_string)
+    write_response t
+      ~msg:"Error response written"
+      (Response.create `Internal_server_error)
+      ~body:"got an error"
   ;;
 
   let test_chunked_encoding () =
@@ -322,26 +482,18 @@ module Server_connection = struct
         Body.close_writer resp_body);
     in
     let t = create ~error_handler request_handler in
-    Alcotest.check write_operation "Writer is in a yield state"
-      `Yield (next_write_operation t);
-    let c = read_string t get_request_string in
-    Alcotest.(check int) "read consumes all input"
-      (String.length get_request_string) c;
-    let first_write = "HTTP/1.1 200 OK\r\nTransfer-encoding: chunked\r\n\r\nb\r\nFirst chunk\r\n" in
-    Alcotest.(check (option string)) "First chunk written"
-      (Some first_write)
-      (next_write_operation t |> Write_operation.to_write_as_string);
-    report_write_result t (`Ok (String.length first_write));
-    let second_write = "c\r\nSecond chunk\r\n" in
-    Alcotest.(check (option string)) "Second chunk written"
-      (Some second_write)
-      (next_write_operation t |> Write_operation.to_write_as_string);
-    report_write_result t (`Ok (String.length second_write));
-    let final_write = "0\r\n\r\n" in
-    Alcotest.(check (option string)) "Final chunk written"
-      (Some final_write)
-      (next_write_operation t |> Write_operation.to_write_as_string);
-    report_write_result t (`Ok (String.length final_write));
+    writer_yielded t;
+    read_request t (Request.create `GET "/");
+    write_response t
+      ~msg:"First chunk written"
+      ~body:"b\r\nFirst chunk\r\n"
+      (Response.create `OK ~headers:(Headers.of_list ["Transfer-encoding", "chunked"]));
+    write_string t
+      ~msg:"Second chunk"
+      "c\r\nSecond chunk\r\n";
+    write_string t
+      ~msg:"Final chunk written"
+      "0\r\n\r\n";
     Alcotest.check read_operation "Keep-alive"
       `Read (next_read_operation t);
   ;;
@@ -350,6 +502,10 @@ module Server_connection = struct
   let tests =
     [ "initial reader state"  , `Quick, test_initial_reader_state
     ; "shutdown reader closed", `Quick, test_reader_is_closed_after_eof
+    ; "single GET"            , `Quick, test_single_get
+    ; "multiple GETs"         , `Quick, test_multiple_get
+    ; "echo POST"             , `Quick, test_echo_post
+    ; "streaming response"    , `Quick, test_streaming_response
     ; "synchronous error, synchronous handling", `Quick, test_synchronous_error
     ; "synchronous error, asynchronous handling", `Quick, test_synchronous_error_asynchronous_handling
     ; "asynchronous error, synchronous handling", `Quick, test_asynchronous_error
