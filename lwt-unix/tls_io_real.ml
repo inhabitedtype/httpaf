@@ -38,7 +38,7 @@ let writev tls _fd =
     | exn -> Lwt.fail exn)
 
 type client = Tls_lwt.Unix.t
-type server = Tls.Config.server
+type server = Tls_lwt.Unix.t
 
 let make_client ?client socket =
   match client with
@@ -48,20 +48,24 @@ let make_client ?client socket =
     let config = Tls.Config.client ~authenticator () in
     Tls_lwt.Unix.client_of_fd config socket
 
-let make_server ?server ?certfile ?keyfile socket
-  =
-  let config = match server, certfile, keyfile with
-  | Some server, _, _ -> Lwt.return server
-  | None, Some cert, Some priv_key ->
-    X509_lwt.private_of_pems ~cert ~priv_key >>= fun certificate ->
-    X509_lwt.authenticator `No_authentication_I'M_STUPID >|= fun authenticator ->
-    Tls.Config.server
-      ~certificates:(`Single certificate)
-      ~authenticator
-      ()
-  | _ ->
-    Lwt.fail (Invalid_argument "Certfile and Keyfile required when server isn't provided")
+let make_server ?server ?certfile ?keyfile socket =
+  let server =
+    match server, certfile, keyfile with
+    | Some server, _, _ ->
+      Lwt.return server
+    | None, Some cert, Some priv_key ->
+      X509_lwt.private_of_pems ~cert ~priv_key >>= fun certificate ->
+      let config =
+        Tls.Config.server
+          ~alpn_protocols:[ "http/1.1" ]
+          ~certificates:
+            (`Single certificate)
+          ()
+      in
+      Tls_lwt.Unix.server_of_fd config socket
+    | _ ->
+      Lwt.fail
+        (Invalid_argument
+           "Certfile and Keyfile required when server isn't provided")
   in
-  config >>= fun config -> Tls_lwt.Unix.server_of_fd config socket
-
-
+  server
