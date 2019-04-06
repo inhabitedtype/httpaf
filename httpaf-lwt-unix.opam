@@ -20,4 +20,5 @@ depends: [
   "dune" {build}
   "lwt"
 ]
+depopts: ["tls" "lwt_ssl"]
 synopsis: "Lwt support for http/af"
