@@ -128,53 +128,53 @@ let response_to_string ?body r =
   maybe_serialize_body f body;
   Faraday.serialize_to_string f
 
+module Read_operation = struct
+  type t = [ `Read | `Yield | `Close ]
+
+  let pp_hum fmt t =
+    let str =
+      match t with
+      | `Read -> "Read"
+      | `Yield -> "Yield"
+      | `Close -> "Close"
+    in
+    Format.pp_print_string fmt str
+  ;;
+end
+
+module Write_operation = struct
+  type t = [ `Write of Bigstringaf.t IOVec.t list | `Yield | `Close of int ]
+
+  let iovecs_to_string iovecs =
+    let len = IOVec.lengthv iovecs in
+    let bytes = Bytes.create len in
+    let dst_off = ref 0 in
+    List.iter (fun { IOVec.buffer; off = src_off; len } ->
+      Bigstringaf.unsafe_blit_to_bytes buffer ~src_off bytes ~dst_off:!dst_off ~len;
+      dst_off := !dst_off + len)
+    iovecs;
+    Bytes.unsafe_to_string bytes
+  ;;
+
+  let pp_hum fmt t =
+    match t with
+    | `Write iovecs -> Format.fprintf fmt "Write %S" (iovecs_to_string iovecs)
+    | `Yield -> Format.pp_print_string fmt "Yield"
+    | `Close len -> Format.fprintf fmt "Close %i" len
+  ;;
+
+  let to_write_as_string t =
+    match t with
+    | `Write iovecs -> Some (iovecs_to_string iovecs)
+    | `Close _ | `Yield -> None
+  ;;
+end
+
+let write_operation = Alcotest.of_pp Write_operation.pp_hum
+let read_operation = Alcotest.of_pp Read_operation.pp_hum
+
 module Server_connection = struct
-  include Server_connection
-
-  module Read_operation = struct
-    type t = [ `Read | `Yield | `Close ]
-
-    let pp_hum fmt t =
-      let str =
-        match t with
-        | `Read -> "Read"
-        | `Yield -> "Yield"
-        | `Close -> "Close"
-      in
-      Format.pp_print_string fmt str
-    ;;
-  end
-
-  module Write_operation = struct
-    type t = [ `Write of Bigstringaf.t IOVec.t list | `Yield | `Close of int ]
-
-    let iovecs_to_string iovecs =
-      let len = IOVec.lengthv iovecs in
-      let bytes = Bytes.create len in
-      let dst_off = ref 0 in
-      List.iter (fun { IOVec.buffer; off = src_off; len } ->
-        Bigstringaf.unsafe_blit_to_bytes buffer ~src_off bytes ~dst_off:!dst_off ~len;
-        dst_off := !dst_off + len)
-      iovecs;
-      Bytes.unsafe_to_string bytes
-    ;;
-
-    let pp_hum fmt t =
-      match t with
-      | `Write iovecs -> Format.fprintf fmt "Write %S" (iovecs_to_string iovecs)
-      | `Yield -> Format.pp_print_string fmt "Yield"
-      | `Close len -> Format.fprintf fmt "Close %i" len
-    ;;
-
-    let to_write_as_string t =
-      match t with
-      | `Write iovecs -> Some (iovecs_to_string iovecs)
-      | `Close _ | `Yield -> None
-    ;;
-  end
-
-  let write_operation = Alcotest.of_pp Write_operation.pp_hum
-  let read_operation = Alcotest.of_pp Read_operation.pp_hum
+  open Server_connection
 
   let read_string t str =
     let len = String.length str in
@@ -196,8 +196,8 @@ module Server_connection = struct
   let write_string ?(msg="output written") t str =
     let len = String.length str in
     Alcotest.(check (option string)) msg
-      (next_write_operation t |> Write_operation.to_write_as_string)
-      (Some str);
+      (Some str)
+      (next_write_operation t |> Write_operation.to_write_as_string);
     report_write_result t (`Ok len);
   ;;
 
@@ -512,7 +512,116 @@ module Server_connection = struct
     ; "asynchronous error, asynchronous handling", `Quick, test_asynchronous_error_asynchronous_handling
     ; "chunked encoding", `Quick, test_chunked_encoding
     ]
+end
 
+module Client_connection = struct
+  open Client_connection
+
+  module Response = struct
+    include Response
+
+    let pp = pp_hum
+    let equal x y = x = y
+  end
+
+  let read_string t str =
+    let len = String.length str in
+    let input = Bigstringaf.of_string str ~off:0 ~len in
+    let c = read t input ~off:0 ~len in
+    Alcotest.(check int) "read consumes all input" len c;
+  ;;
+
+  let read_response t r =
+    let request_string = response_to_string r in
+    read_string t request_string
+  ;;
+
+  let write_string ?(msg="output written") t str =
+    let len = String.length str in
+    Alcotest.(check (option string)) msg
+      (Some str)
+      (next_write_operation t |> Write_operation.to_write_as_string);
+    report_write_result t (`Ok len);
+  ;;
+
+  let write_request ?(msg="request written") t r =
+    let request_string = request_to_string r in
+    write_string ~msg t request_string
+  ;;
+
+  let writer_yielded t =
+    Alcotest.check write_operation "Writer is in a yield state"
+      `Yield (next_write_operation t);
+  ;;
+
+  let connection_is_shutdown t =
+    Alcotest.check read_operation "Reader is closed"
+      `Close (next_read_operation t :> [`Close | `Read | `Yield]);
+    Alcotest.check write_operation "Writer is closed"
+      (`Close 0) (next_write_operation t);
+  ;;
+
+  let default_response_handler expected_response response body =
+    Alcotest.check (module Response) "expected response" expected_response response;
+    let on_read _ ~off:_ ~len:_ = () in
+    let on_eof () = () in
+    Body.schedule_read body ~on_read ~on_eof;
+  ;;
+
+  let no_error_handler _ = assert false
+
+  let test_get () =
+    let request' = Request.create `GET "/" in
+    let response = Response.create `OK in
+
+    (* Single GET *)
+    let body, t =
+      request
+        request'
+        ~response_handler:(default_response_handler response)
+        ~error_handler:no_error_handler
+    in
+    Body.close_writer body;
+    write_request  t request';
+    Alcotest.check write_operation "Writer is closed"
+      (`Close 0) (next_write_operation t);
+    read_response  t response;
+
+    (* Single GET, reponse closes connection *)
+    let response =
+      Response.create `OK ~headers:(Headers.of_list [ "connection", "close" ])
+    in
+    let body, t =
+      request
+        request'
+        ~response_handler:(default_response_handler response)
+        ~error_handler:no_error_handler
+    in
+    Body.close_writer body;
+    write_request  t request';
+    read_response  t response;
+    let c = read_eof t Bigstringaf.empty ~off:0 ~len:0 in
+    Alcotest.(check int) "read_eof with no input returns 0" 0 c;
+    connection_is_shutdown t;
+
+    (* Single GET, streaming body *)
+    let response =
+      Response.create `OK ~headers:(Headers.of_list [ "transfer-encoding", "chunked" ])
+    in
+    let body, t =
+      request
+        request'
+        ~response_handler:(default_response_handler response)
+        ~error_handler:no_error_handler
+    in
+    Body.close_writer body;
+    write_request  t request';
+    read_response  t response;
+    read_string    t "d\r\nHello, world!\r\n0\r\n\r\n";
+  ;;
+
+  let tests =
+    [ "GET", `Quick, test_get ]
 end
 
 let () =
@@ -520,5 +629,6 @@ let () =
     [ "version"          , Version.tests
     ; "method"           , Method.tests
     ; "iovec"            , IOVec.tests
-    ; "server_connection", Server_connection.tests
+    ; "clien connection" , Client_connection.tests
+    ; "server connection", Server_connection.tests
     ]

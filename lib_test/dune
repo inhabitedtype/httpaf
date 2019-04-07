@@ -1,16 +1,10 @@
 (executables
  (libraries bigstringaf httpaf alcotest)
- (modules test_httpaf test_httpaf_client simulator)
- (names   test_httpaf test_httpaf_client))
+ (modules test_httpaf)
+ (names   test_httpaf))
 
 (alias
  (name runtest)
  (package httpaf)
  (deps test_httpaf.exe)
- (action (run %{deps})))
-
-(alias
- (name runtest)
- (package httpaf)
- (deps test_httpaf_client.exe)
  (action (run %{deps})))

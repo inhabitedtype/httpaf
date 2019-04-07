@@ -168,6 +168,8 @@ module Oneshot = struct
 
   let next_write_operation t =
     flush_request_body t;
+    if Body.is_closed t.request_body
+    then Writer.close t.writer;
     Writer.next t.writer
   ;;
 
