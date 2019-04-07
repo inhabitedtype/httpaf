@@ -1,5 +1,5 @@
 (*----------------------------------------------------------------------------
-    Copyright (c) 2017 Inhabited Type LLC.
+    Copyright (c) 2017-2019 Inhabited Type LLC.
 
     All rights reserved.
 
@@ -90,10 +90,21 @@ module Oneshot = struct
       Body.transfer_to_writer_with_encoding t.request_body ~encoding t.writer
   ;;
 
+  let set_error_and_handle_without_shutdown t error =
+    t.state := Closed;
+    t.error_code <- (error :> [`Ok | error]);
+    t.error_handler error;
+  ;;
+
+  let unexpected_eof t =
+    set_error_and_handle_without_shutdown t (`Malformed_response "unexpected eof");
+  ;;
+
   let shutdown_reader t =
     Reader.force_close t.reader;
     begin match !(t.state) with
-    | Awaiting_response | Closed -> ()
+    | Awaiting_response -> unexpected_eof t;
+    | Closed -> ()
     | Received_response(_, response_body) ->
       Body.close_reader response_body;
       Body.execute_read response_body;
@@ -113,9 +124,7 @@ module Oneshot = struct
 
   let set_error_and_handle t error =
     shutdown t;
-    t.state := Closed;
-    t.error_code <- (error :> [`Ok | error]);
-    t.error_handler error;
+    set_error_and_handle_without_shutdown t error;
   ;;
 
   let report_exn t exn =
@@ -164,7 +173,13 @@ module Oneshot = struct
     read_with_more t bs ~off ~len Incomplete
 
   let read_eof t bs ~off ~len =
-    read_with_more t bs ~off ~len Complete
+    let bytes_read = read_with_more t bs ~off ~len Complete in
+    begin match !(t.state) with
+    | Received_response _ | Closed -> ()
+    | Awaiting_response -> unexpected_eof t;
+    end;
+    bytes_read
+  ;;
 
   let next_write_operation t =
     flush_request_body t;
