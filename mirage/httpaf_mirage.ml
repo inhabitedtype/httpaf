@@ -1,13 +1,12 @@
 open Lwt.Infix
 
-module Io : Httpaf_lwt.IO with
-    type socket = Conduit_mirage.Flow.flow
-    and type addr = unit = struct
-  type socket = Conduit_mirage.Flow.flow
+module Make_IO (Flow: Mirage_flow_lwt.S) :
+  Httpaf_lwt.IO with type socket = Flow.flow and type addr = unit = struct
+  type socket = Flow.flow
   type addr = unit
 
   let shutdown flow =
-    Conduit_mirage.Flow.close flow
+    Flow.close flow
 
   let shutdown_receive flow =
     Lwt.async (fun () -> shutdown flow)
@@ -18,7 +17,6 @@ module Io : Httpaf_lwt.IO with
   let close flow = shutdown flow
 
   let read flow bigstring ~off ~len:_ =
-    let open Conduit_mirage in
     Lwt.catch
       (fun () ->
         Flow.read flow >|= function
@@ -37,7 +35,6 @@ module Io : Httpaf_lwt.IO with
         Lwt.fail exn)
 
   let writev flow = fun iovecs ->
-      let open Conduit_mirage in
       let cstruct_iovecs = List.map (fun {Faraday.buffer; off; len} ->
         Cstruct.of_bigarray ~off ~len buffer)
         iovecs
@@ -58,8 +55,10 @@ module Io : Httpaf_lwt.IO with
           Lwt.fail exn)
 end
 
-module Server = struct
-  include Httpaf_lwt.Server (Io)
+module Server (Flow : Mirage_flow_lwt.S) = struct
+  include Httpaf_lwt.Server (Make_IO (Flow))
+
+  type flow = Flow.flow
 
   let create_connection_handler ?config ~request_handler ~error_handler =
     fun flow ->
@@ -69,17 +68,18 @@ module Server = struct
 end
 
 module type Server_intf = sig
+  type flow
+
   val create_connection_handler
     :  ?config : Httpaf.Config.t
     -> request_handler : Httpaf.Server_connection.request_handler
     -> error_handler : Httpaf.Server_connection.error_handler
-    -> (Conduit_mirage.Flow.flow -> unit Lwt.t)
+    -> (flow -> unit Lwt.t)
 end
 
 module Server_with_conduit = struct
   open Conduit_mirage
-
-  include Server
+  include Server (Conduit_mirage.Flow)
 
   type t = Conduit_mirage.Flow.flow -> unit Lwt.t
 
@@ -93,4 +93,4 @@ module Server_with_conduit = struct
     Lwt.return listen
 end
 
-module Client = Httpaf_lwt.Client (Io)
+module Client (Flow : Mirage_flow_lwt.S) = Httpaf_lwt.Client (Make_IO (Flow))
