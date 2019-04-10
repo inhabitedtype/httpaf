@@ -171,6 +171,7 @@ module Server = struct
       ?(config=Config.default)
       ~request_handler
       ~error_handler =
+      let make_tls_server = Tls_io.make_server ?server ?certfile ?keyfile in
       fun client_addr socket ->
         let connection =
           Server_connection.create
@@ -178,7 +179,7 @@ module Server = struct
             ~error_handler:(error_handler client_addr)
             (request_handler client_addr)
         in
-        Tls_io.make_server ?server ?certfile ?keyfile socket >>= fun tls_server ->
+        make_tls_server socket >>= fun tls_server ->
         let readf = Tls_io.readf tls_server in
         let writev = Tls_io.writev tls_server in
         start_read_write_loops ~config ~readf ~writev ~socket connection
@@ -193,6 +194,7 @@ module Server = struct
       ?(config=Config.default)
       ~request_handler
       ~error_handler =
+      let make_ssl_server = Ssl_io.make_server ?server ?certfile ?keyfile in
       fun client_addr socket ->
         let connection =
           Server_connection.create
@@ -200,7 +202,7 @@ module Server = struct
             ~error_handler:(error_handler client_addr)
             (request_handler client_addr)
         in
-        Ssl_io.make_server ?server ?certfile ?keyfile socket >>= fun tls_server ->
+        make_ssl_server socket >>= fun tls_server ->
         let readf = Ssl_io.readf tls_server in
         let writev = Ssl_io.writev tls_server in
         start_read_write_loops ~config ~readf ~writev ~socket connection
