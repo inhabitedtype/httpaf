@@ -18,6 +18,7 @@ depends: [
   "faraday-lwt-unix"
   "httpaf"
   "dune" {build}
+  "ocamlfind" {build}
   "lwt"
 ]
 depopts: ["tls" "lwt_ssl"]
