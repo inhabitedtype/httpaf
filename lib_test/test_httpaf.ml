@@ -536,6 +536,11 @@ module Client_connection = struct
     read_string t request_string
   ;;
 
+  let reader_ready t =
+    Alcotest.check read_operation "Reader is ready"
+      `Read (next_read_operation t :> [`Close | `Read | `Yield]);
+  ;;
+
   let write_string ?(msg="output written") t str =
     let len = String.length str in
     Alcotest.(check (option string)) msg
@@ -620,8 +625,35 @@ module Client_connection = struct
     read_string    t "d\r\nHello, world!\r\n0\r\n\r\n";
   ;;
 
+  let test_response_eof () =
+    let request' = Request.create `GET "/" in
+    let response = Response.create `OK in (* not actually writen to the channel *)
+
+    let error_message = ref None in
+    let body, t =
+      request
+        request'
+        ~response_handler:(default_response_handler response)
+        ~error_handler:(function
+          | `Malformed_response msg -> error_message := Some msg
+          | _ -> assert false)
+    in
+    Body.close_writer body;
+    write_request  t request';
+    Alcotest.check write_operation "Writer is closed"
+      (`Close 0) (next_write_operation t);
+    reader_ready t;
+    let c = read_eof t Bigstringaf.empty ~off:0 ~len:0 in
+    Alcotest.(check int) "read_eof with no input returns 0" 0 c;
+    connection_is_shutdown t;
+    Alcotest.(check (option string)) "unexpected eof"
+      (Some "unexpected eof")
+      !error_message
+  ;;
+
   let tests =
-    [ "GET", `Quick, test_get ]
+    [ "GET"         , `Quick, test_get
+    ; "Response EOF", `Quick, test_response_eof ]
 end
 
 let () =
