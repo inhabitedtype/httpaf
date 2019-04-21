@@ -392,7 +392,6 @@ module Server_connection = struct
     read_string  t "\r\n21\r\n... that involves multiple chunks";
     read_string  t "\r\n0\r\n";
     write_string t "... that involves multiple chunks";
-    writer_yielded t;
     connection_is_shutdown t;
   ;;
 
