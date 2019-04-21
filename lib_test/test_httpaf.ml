@@ -211,11 +211,15 @@ module Server_connection = struct
       `Yield (next_write_operation t);
   ;;
 
+  let writer_closed t =
+    Alcotest.check write_operation "Writer is closed"
+      (`Close 0) (next_write_operation t);
+  ;;
+
   let connection_is_shutdown t =
     Alcotest.check read_operation "Reader is closed"
       `Close (next_read_operation t);
-    Alcotest.check write_operation "Writer is closed"
-      (`Close 0) (next_write_operation t);
+    writer_closed  t;
   ;;
 
   let request_handler_with_body body reqd =
@@ -304,6 +308,42 @@ module Server_connection = struct
       ~body:response_body
       (Response.create `OK);
     connection_is_shutdown t;
+  ;;
+
+  let test_asynchronous_response () =
+    let response_body = "hello, world!" in
+    let response_body_length = String.length response_body in
+    let response =
+      Response.create
+        `OK
+        ~headers:(Headers.of_list [("content-length", string_of_int response_body_length)])
+    in
+    let continue = ref (fun () -> ()) in
+    let t = create (fun reqd ->
+      continue := fun () ->
+        Body.close_reader (Reqd.request_body reqd);
+        let data = Bigstringaf.of_string ~off:0 ~len:response_body_length response_body in
+        let size = Bigstringaf.length data in
+        let response =
+          Response.create
+            `OK
+            ~headers:(Headers.of_list [("content-length", string_of_int size)])
+        in
+        let response_body =
+          Reqd.respond_with_streaming reqd response in
+        Body.write_bigstring response_body data;
+        Body.close_writer response_body)
+     in
+    read_request   t (Request.create `GET "/");
+    reader_yielded t;
+    writer_yielded t;
+    !continue ();
+    write_response t ~body:response_body response;
+    read_request   t (Request.create `GET "/");
+    reader_yielded t;
+    writer_yielded t;
+    !continue ();
+    write_response t ~body:response_body response
   ;;
 
   let test_echo_post () =
@@ -504,6 +544,7 @@ module Server_connection = struct
     ; "shutdown reader closed", `Quick, test_reader_is_closed_after_eof
     ; "single GET"            , `Quick, test_single_get
     ; "multiple GETs"         , `Quick, test_multiple_get
+    ; "asynchronous response" , `Quick, test_asynchronous_response
     ; "echo POST"             , `Quick, test_echo_post
     ; "streaming response"    , `Quick, test_streaming_response
     ; "synchronous error, synchronous handling", `Quick, test_synchronous_error
