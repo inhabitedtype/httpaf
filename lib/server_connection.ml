@@ -195,6 +195,8 @@ let advance_request_queue_if_necessary t =
     if Reqd.persistent_connection reqd then begin
       if Reqd.is_complete reqd then begin
         ignore (Queue.take t.request_queue);
+        if not (Queue.is_empty t.request_queue)
+        then t.request_handler (current_reqd_exn t);
         wakeup_reader t;
       end
     end else begin
