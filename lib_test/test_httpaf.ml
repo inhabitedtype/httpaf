@@ -599,11 +599,15 @@ module Client_connection = struct
       `Yield (next_write_operation t);
   ;;
 
+  let writer_closed t =
+    Alcotest.check write_operation "Writer is closed"
+      (`Close 0) (next_write_operation t);
+  ;;
+
   let connection_is_shutdown t =
     Alcotest.check read_operation "Reader is closed"
       `Close (next_read_operation t :> [`Close | `Read | `Yield]);
-    Alcotest.check write_operation "Writer is closed"
-      (`Close 0) (next_write_operation t);
+    writer_closed t;
   ;;
 
   let default_response_handler expected_response response body =
@@ -628,8 +632,7 @@ module Client_connection = struct
     in
     Body.close_writer body;
     write_request  t request';
-    Alcotest.check write_operation "Writer is closed"
-      (`Close 0) (next_write_operation t);
+    writer_closed  t;
     read_response  t response;
 
     (* Single GET, reponse closes connection *)
@@ -680,8 +683,7 @@ module Client_connection = struct
     in
     Body.close_writer body;
     write_request  t request';
-    Alcotest.check write_operation "Writer is closed"
-      (`Close 0) (next_write_operation t);
+    writer_closed  t;
     reader_ready t;
     let c = read_eof t Bigstringaf.empty ~off:0 ~len:0 in
     Alcotest.(check int) "read_eof with no input returns 0" 0 c;
