@@ -6,7 +6,7 @@
 (executable
  (name wrk_lwt_benchmark)
  (modules Wrk_lwt_benchmark)
- (libraries httpaf httpaf_examples httpaf-lwt lwt.unix base))
+ (libraries httpaf httpaf_examples httpaf-lwt-unix lwt.unix base))
 
 (alias
  (name benchmarks)

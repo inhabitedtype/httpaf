@@ -1,7 +1,10 @@
 opam-version: "2.0"
 name: "httpaf-lwt"
 maintainer: "Spiros Eliopoulos <spiros@inhabitedtype.com>"
-authors: [ "Anton Bachin <antonbachin@yahoo.com>" ]
+authors: [
+  "Anton Bachin <antonbachin@yahoo.com>"
+  "Spiros Eliopoulos <spiros@inhabitedtype.com>"
+]
 license: "BSD-3-clause"
 homepage: "https://github.com/inhabitedtype/httpaf"
 bug-reports: "https://github.com/inhabitedtype/httpaf/issues"

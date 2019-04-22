@@ -1,5 +1,5 @@
 open Base
-open Httpaf_lwt
+open Httpaf_lwt_unix
 module Arg = Caml.Arg
 
 let main port =

@@ -3,7 +3,7 @@ open Lwt.Infix
 module Arg = Caml.Arg
 
 open Httpaf
-open Httpaf_lwt
+open Httpaf_lwt_unix
 
 let error_handler _ = assert false
 
@@ -49,6 +49,4 @@ let () =
     ]
     ignore
     "lwt_get.exe [-h HOST] [-p N]";
-
-  Lwt_main.run (main !port !host)
 ;;
