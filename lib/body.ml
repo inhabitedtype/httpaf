@@ -130,12 +130,13 @@ let schedule_read t ~on_eof ~on_read =
 
 let has_pending_output t =
   (* Force another write poll to make sure that the final chunk is emitted for
-   * chunk-encoded bodies. 
-   *
-   * XXX(seliopou): Note that the body data type does not keep track of
-   * encodings, so this happens even for non-chunk-encoded bodies. This should
-   * only happen for chunk-encoded bodies, but that's a fix for another day. *)
-  Faraday.has_pending_output t.faraday 
+     chunk-encoded bodies.
+
+     Note that the body data type does not keep track of encodings, so it is
+     necessary for [transfer_to_writer_with_encoding] to check the encoding and
+     clear the [write_final_if_chunked] field when outputting a fixed or
+     close-delimited body. *)
+  Faraday.has_pending_output t.faraday
   || (Faraday.is_closed t.faraday && t.write_final_if_chunked)
 
 let close_reader t =
@@ -169,8 +170,13 @@ let transfer_to_writer_with_encoding t ~encoding writer =
     let lengthv  = IOVec.lengthv iovecs in
     buffered := !buffered + lengthv;
     begin match encoding with
-    | `Fixed _ | `Close_delimited -> Serialize.Writer.schedule_fixed writer iovecs
-    | `Chunked                    -> Serialize.Writer.schedule_chunk writer iovecs
+    | `Fixed _ | `Close_delimited ->
+      (* Play nicely with [has_pending_output] in the case of a fixed or
+         close-delimited encoding. *)
+      t.write_final_if_chunked <- false;
+      Serialize.Writer.schedule_fixed writer iovecs
+    | `Chunked ->
+      Serialize.Writer.schedule_chunk writer iovecs
     end;
     Serialize.Writer.flush writer (fun () ->
       Faraday.shift faraday lengthv;
