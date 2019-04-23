@@ -31,8 +31,7 @@ let () =
       map (both
           (flag "-p" (optional_with_default 80 int)
             ~doc:"int destination port")
-          (flag "-h" (required string)
-            ~doc:"string destination host"))
+          (anon ("host" %: string)))
         ~f:(fun (port, host) ->
               (fun () -> main port host ())))
   |> Command.run

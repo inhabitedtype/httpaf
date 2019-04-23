@@ -39,14 +39,17 @@ let main port host =
 ;;
 
 let () =
-  let host = ref "127.0.0.1" in
+  let host = ref None in
   let port = ref 8080 in
 
   Arg.parse
-    [
-      "-h", Set_string host, " Hostname (127.0.0.1 by default)";
-      "-p", Set_int port, " Port number (8080 by default)";
-    ]
-    ignore
-    "lwt_get.exe [-h HOST] [-p N]";
+    ["-p", Set_int port, " Port number (8080 by default)"]
+    (fun host_argument -> host := Some host_argument)
+    "lwt_get.exe [-p N] HOST";
+  let host =
+    match !host with
+    | None -> failwith "No hostname provided"
+    | Some host -> host
+  in
+  Lwt_main.run (main !port host)
 ;;
