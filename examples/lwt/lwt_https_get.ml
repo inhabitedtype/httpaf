@@ -3,7 +3,7 @@ open Lwt.Infix
 module Arg = Caml.Arg
 
 open Httpaf
-open Httpaf_lwt
+open Httpaf_lwt_unix
 
 let error_handler _ = assert false
 

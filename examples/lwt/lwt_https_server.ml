@@ -2,7 +2,7 @@ open Base
 open Lwt.Infix
 module Arg = Caml.Arg
 
-open Httpaf_lwt
+open Httpaf_lwt_unix
 
 let request_handler (_ : Unix.sockaddr) = Httpaf_examples.Server.echo_post
 let error_handler (_ : Unix.sockaddr) = Httpaf_examples.Server.error_handler
