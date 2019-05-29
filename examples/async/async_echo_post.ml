@@ -16,7 +16,7 @@ let main port max_accepts_per_batch () =
     Stdio.printf "To send a POST request, try one of the following\n\n";
     Stdio.printf "  echo \"Testing echo POST\" | dune exec examples/async/async_post.exe\n";
     Stdio.printf "  echo \"Testing echo POST\" | dune exec examples/lwt/lwt_post.exe\n";
-    Stdio.printf "  echo \"Testing echo POST\" | curl -XPOST --data @- http://localhost:8080\n\n%!";
+    Stdio.printf "  echo \"Testing echo POST\" | curl -XPOST --data @- http://localhost:%d\n\n%!" port;
     Deferred.never ()
 ;;
 
