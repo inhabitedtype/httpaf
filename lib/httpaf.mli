@@ -745,6 +745,9 @@ module Server_connection : sig
   (**/**)
   val shutdown : t -> unit
   (**/**)
+
+  val switch_handler : t -> Bytes_handler.t option
+  (** [switch_handler t] optionally returns the new handler *)
 end
 
 (** {2 Client Connection} *)

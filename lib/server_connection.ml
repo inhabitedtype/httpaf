@@ -62,10 +62,11 @@ type t =
   ; request_handler        : request_handler
   ; error_handler          : error_handler
   ; request_queue          : Reqd.t Queue.t
-    (* invariant: If [request_queue] is not empty, then the head of the queue
-       has already had [request_handler] called on it. *)
+  (* invariant: If [request_queue] is not empty, then the head of the queue
+     has already had [request_handler] called on it. *)
   ; wakeup_writer  : (unit -> unit) list ref
   ; wakeup_reader  : (unit -> unit) list ref
+  ; should_handover : bool
   }
 
 let is_closed t =
@@ -117,7 +118,7 @@ let default_error_handler ?request:_ error handle =
 let create ?(config=Config.default) ?(error_handler=default_error_handler) request_handler =
   let
     { Config
-    . response_buffer_size
+      . response_buffer_size
     ; response_body_buffer_size
     ; _ } = config
   in
@@ -143,6 +144,7 @@ let create ?(config=Config.default) ?(error_handler=default_error_handler) reque
   ; request_queue
   ; wakeup_writer
   ; wakeup_reader   = ref []
+  ; should_handover = false
   }
 
 let shutdown_reader t =
@@ -182,8 +184,8 @@ let set_error_and_handle ?request t error =
     shutdown_reader t;
     let writer = t.writer in
     t.error_handler ?request error (fun headers ->
-      Writer.write_response writer (Response.create ~headers status);
-      Body.of_faraday (Writer.faraday writer));
+        Writer.write_response writer (Response.create ~headers status);
+        Body.of_faraday (Writer.faraday writer));
   end
 
 let report_exn t exn =
@@ -194,6 +196,9 @@ let advance_request_queue_if_necessary t =
     let reqd = current_reqd_exn t in
     if Reqd.persistent_connection reqd then begin
       if Reqd.is_complete reqd then begin
+        if Reqd.is_upgrading reqd then begin
+          ()
+        end ;
         ignore (Queue.take t.request_queue);
         if not (Queue.is_empty t.request_queue)
         then t.request_handler (current_reqd_exn t);
@@ -274,3 +279,6 @@ let yield_writer t k =
   end else if Writer.is_closed t.writer then k () else begin
     on_wakeup_writer t k
   end
+
+let switch_handler _t : Bytes_handler.t option = None
+  

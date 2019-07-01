@@ -106,38 +106,47 @@ let shutdown socket command =
 module Config = Httpaf.Config
 
 module Server = struct
-  let create_connection_handler ?(config=Config.default) ~request_handler ~error_handler =
+  let create_connection_handler
+      ?(config=Config.default)
+      ~request_handler
+      ~error_handler =
     fun client_addr socket ->
-      let module Server_connection = Httpaf.Server_connection in
-      let connection =
-        Server_connection.create
-          ~config
-          ~error_handler:(error_handler client_addr)
-          (request_handler client_addr)
+
+      let bytes_handler =
+        ref @@
+        Httpaf__.Bytes_handler.bind
+          (module Httpaf.Server_connection)
+          (Httpaf.Server_connection.create
+             ~config
+             ~error_handler:(error_handler client_addr)
+             (request_handler client_addr))
       in
 
       let read_buffer = Buffer.create config.read_buffer_size in
       let read_loop_exited, notify_read_loop_exited = Lwt.wait () in
 
+      let connection_read = ref !bytes_handler.read in
+      let connection_read_eof = ref !bytes_handler.read_eof in
+
       let rec read_loop () =
         let rec read_loop_step () =
-          match Server_connection.next_read_operation connection with
+          match !bytes_handler.next_read_operation () with
           | `Read ->
             read socket read_buffer >>= begin function
             | `Eof ->
               Buffer.get read_buffer ~f:(fun bigstring ~off ~len ->
-                Server_connection.read_eof connection bigstring ~off ~len)
+                !connection_read_eof bigstring ~off ~len)
               |> ignore;
               read_loop_step ()
             | `Ok _ ->
               Buffer.get read_buffer ~f:(fun bigstring ~off ~len ->
-                Server_connection.read connection bigstring ~off ~len)
+                !connection_read bigstring ~off ~len)
               |> ignore;
               read_loop_step ()
             end
 
           | `Yield ->
-            Server_connection.yield_reader connection read_loop;
+            !bytes_handler.yield_reader () read_loop;
             Lwt.return_unit
 
           | `Close ->
@@ -152,7 +161,7 @@ module Server = struct
           Lwt.catch
             read_loop_step
             (fun exn ->
-              Server_connection.report_exn connection exn;
+              !bytes_handler.report_exn exn;
               Lwt.return_unit))
       in
 
@@ -162,15 +171,22 @@ module Server = struct
 
       let rec write_loop () =
         let rec write_loop_step () =
-          match Server_connection.next_write_operation connection with
+          match !bytes_handler.next_write_operation () with
           | `Write io_vectors ->
             writev io_vectors >>= fun result ->
-            Server_connection.report_write_result connection result;
+            !bytes_handler.report_write_result result;
             write_loop_step ()
 
-          | `Yield ->
-            Server_connection.yield_writer connection write_loop;
-            Lwt.return_unit
+          | `Yield -> begin
+              match !bytes_handler.switch_handler () with
+              | Some new_handler ->
+                bytes_handler := new_handler;
+                write_loop_step ()
+              | None -> begin
+                  !bytes_handler.yield_writer write_loop;
+                  Lwt.return_unit
+                end
+            end
 
           | `Close _ ->
             Lwt.wakeup_later notify_write_loop_exited ();
@@ -184,7 +200,7 @@ module Server = struct
           Lwt.catch
             write_loop_step
             (fun exn ->
-              Server_connection.report_exn connection exn;
+              !bytes_handler.report_exn exn;
               Lwt.return_unit))
       in
 

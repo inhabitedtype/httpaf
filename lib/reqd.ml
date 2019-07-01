@@ -77,6 +77,7 @@ type t =
   ; mutable response_state  : response_state
   ; mutable error_code      : [`Ok | error ]
   ; mutable wait_for_first_flush : bool
+  ; mutable handler_after_upgrade : string option
   }
 
 let default_waiting = Sys.opaque_identity (fun () -> ())
@@ -91,6 +92,7 @@ let create error_handler request request_body writer response_body_buffer =
   ; response_state          = Waiting (ref default_waiting)
   ; error_code              = `Ok
   ; wait_for_first_flush    = true
+  ; handler_after_upgrade   = None
   }
 
 let done_waiting when_done_waiting =
@@ -169,6 +171,17 @@ let respond_with_streaming ?(flush_headers_immediately=false) t response =
     failwith "httpaf.Reqd.respond_with_streaming: invalid state, currently handling error";
   unsafe_respond_with_streaming ~flush_headers_immediately t response
 
+let respond_with_upgrade t response =
+  match t.response_state with
+  | Waiting when_done_waiting ->
+    Writer.write_response  t.writer response;
+    t.handler_after_upgrade <- Some "yes";
+    when_done_waiting
+  | Streaming _ ->
+    failwith "httpaf.Reqd.respond_with_streaming: response already started"
+  | Complete _ ->
+    failwith "httpaf.Reqd.respond_with_streaming: response already complete"
+
 let report_error t error =
   t.persistent <- false;
   Body.close_reader t.request_body;
@@ -240,6 +253,11 @@ let requires_output { response_state; _ } =
 
 let is_complete t =
   not (requires_input t || requires_output t)
+
+let is_upgrading t =
+  match t.handler_after_upgrade with
+  | Some _ -> true
+  | None -> false
 
 let flush_request_body t =
   let request_body = request_body t in
