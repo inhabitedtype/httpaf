@@ -79,6 +79,7 @@ type client_error = [
   | `I_m_a_teapot
   | `Enhance_your_calm
   | `Upgrade_required
+  | `Too_many_requests
   ]
 
 type server_error = [
@@ -144,6 +145,7 @@ let default_reason_phrase = function
   | `I_m_a_teapot -> "I'm a teapot" (* RFC 2342 *)
   | `Enhance_your_calm -> "Enhance Your Calm"
   | `Upgrade_required -> "Upgrade Required"
+  | `Too_many_requests -> "Too Many Requests"
  (* Server error *)
   | `Internal_server_error -> "Internal Server Error"
   | `Not_implemented -> "Not Implemented"
@@ -194,6 +196,7 @@ let to_code = function
   | `I_m_a_teapot -> 418
   | `Enhance_your_calm -> 420
   | `Upgrade_required -> 426
+  | `Too_many_requests -> 429
  (* Server error *)
   | `Internal_server_error -> 500
   | `Not_implemented -> 501
@@ -245,6 +248,7 @@ let really_unsafe_of_code = function
   | 418 -> `I_m_a_teapot 
   | 420 -> `Enhance_your_calm 
   | 426 -> `Upgrade_required
+  | 429 -> `Too_many_requests
  (* Server error *)
   | 500 -> `Internal_server_error 
   | 501 -> `Not_implemented 
@@ -346,6 +350,7 @@ let to_string = function (* don't allocate *)
   | `I_m_a_teapot -> "418"
   | `Enhance_your_calm -> "420"
   | `Upgrade_required -> "426"
+  | `Too_many_requests -> "429"
  (* Server error *)
   | `Internal_server_error -> "500"
   | `Not_implemented -> "501"
