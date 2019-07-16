@@ -43,24 +43,20 @@ let of_list t = of_rev_list (List.rev t)
 let to_rev_list t = t
 let to_list t = List.rev (to_rev_list t)
 
-exception Local
-
 module CI = struct
   let lower c =
     if c >= 0x41 && c <= 0x5a then c + 32 else c
 
-  let equal x y =
-    let len = String.length x in
-    len = String.length y &&
-    match for i = 0 to len - 1 do
+  let rec equal_aux x y len i =
+    if i = len then true
+    else
       let c1 = Char.code (String.unsafe_get x i) in
       let c2 = Char.code (String.unsafe_get y i) in
-      if c1 = c2
-      then ()
-      else if lower c1 <> lower c2 then raise Local
-    done with
-    | () -> true
-    | exception Local -> false
+      if lower c1 <> lower c2 then false else equal_aux x y len (i + 1)
+
+  let equal x y =
+    let len = String.length x in
+    len = String.length y && equal_aux x y len 0
 end
 
 let rec mem t name =
@@ -84,6 +80,8 @@ let add_multi =
 
 let add_unless_exists t name value =
   if mem t name then t else (name,value)::t
+
+exception Local
 
 let replace t name value =
   let rec loop t n nv seen =
