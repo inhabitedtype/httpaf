@@ -76,7 +76,6 @@ type t =
   ; mutable persistent      : bool
   ; mutable response_state  : response_state
   ; mutable error_code      : [`Ok | error ]
-  ; mutable wait_for_first_flush : bool
   }
 
 let default_waiting = Sys.opaque_identity (fun () -> ())
@@ -90,7 +89,6 @@ let create error_handler request request_body writer response_body_buffer =
   ; persistent              = Request.persistent_connection request
   ; response_state          = Waiting (ref default_waiting)
   ; error_code              = `Ok
-  ; wait_for_first_flush    = true
   }
 
 let done_waiting when_done_waiting =
@@ -148,12 +146,11 @@ let respond_with_bigstring t response (bstr:Bigstringaf.t) =
     failwith "httpaf.Reqd.respond_with_bigstring: response already complete"
 
 let unsafe_respond_with_streaming ~flush_headers_immediately t response =
-  t.wait_for_first_flush <- not flush_headers_immediately;
   match t.response_state with
   | Waiting when_done_waiting ->
     let response_body = Body.create t.response_body_buffer in
     Writer.write_response t.writer response;
-    if t.wait_for_first_flush then Writer.yield t.writer;
+    if not flush_headers_immediately then Writer.yield t.writer;
     if t.persistent then
       t.persistent <- Response.persistent_connection response;
     t.response_state <- Streaming(response, response_body);
