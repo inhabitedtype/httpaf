@@ -408,6 +408,33 @@ module Server_connection = struct
     writer_yielded t;
   ;;
 
+  let test_empty_fixed_streaming_response () =
+    let request  = Request.create `GET "/" in
+    let response =
+      Response.create `OK
+        ~headers:(Headers.of_list ["Content-length", "0"])
+    in
+
+    let t = create (streaming_handler response []) in
+    read_request   t request;
+    write_response t response;
+    writer_yielded t;
+  ;;
+
+  let test_empty_chunked_streaming_response () =
+    let request  = Request.create `GET "/" in
+    let response =
+      Response.create `OK
+        ~headers:(Headers.of_list ["Transfer-encoding", "chunked"])
+    in
+
+    let t = create (streaming_handler response []) in
+    read_request   t request;
+    write_response t response
+      ~body:"0\r\n\r\n";
+    writer_yielded t;
+  ;;
+
   let test_multiple_get () =
     let t = create default_request_handler in
     read_request   t (Request.create `GET "/");
@@ -546,6 +573,8 @@ module Server_connection = struct
     ; "asynchronous response" , `Quick, test_asynchronous_response
     ; "echo POST"             , `Quick, test_echo_post
     ; "streaming response"    , `Quick, test_streaming_response
+    ; "empty fixed streaming response", `Quick, test_empty_fixed_streaming_response
+    ; "empty chunked streaming response", `Quick, test_empty_chunked_streaming_response
     ; "synchronous error, synchronous handling", `Quick, test_synchronous_error
     ; "synchronous error, asynchronous handling", `Quick, test_synchronous_error_asynchronous_handling
     ; "asynchronous error, synchronous handling", `Quick, test_asynchronous_error
