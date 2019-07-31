@@ -52,7 +52,7 @@ module CI = struct
     else
       let c1 = Char.code (String.unsafe_get x i) in
       let c2 = Char.code (String.unsafe_get y i) in
-      if lower c1 <> lower c2 then false else equal_aux x y len (i + 1)
+      lower c1 = lower c2 && equal_aux x y len (i + 1)
 
   let equal x y =
     let len = String.length x in
