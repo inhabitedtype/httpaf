@@ -44,19 +44,22 @@ let to_rev_list t = t
 let to_list t = List.rev (to_rev_list t)
 
 module CI = struct
-  let lower c =
+  let[@inline always] lower c =
     if c >= 0x41 && c <= 0x5a then c + 32 else c
-
-  let rec equal_aux x y len i =
-    if i = len then true
-    else
-      let c1 = Char.code (String.unsafe_get x i) in
-      let c2 = Char.code (String.unsafe_get y i) in
-      lower c1 = lower c2 && equal_aux x y len (i + 1)
 
   let equal x y =
     let len = String.length x in
-    len = String.length y && equal_aux x y len 0
+    len = String.length y && (
+      let equal_so_far = ref true in
+      let i            = ref 0 in
+      while !equal_so_far && !i < len do
+        let c1 = Char.code (String.unsafe_get x !i) in
+        let c2 = Char.code (String.unsafe_get y !i) in
+        equal_so_far := lower c1 = lower c2;
+        incr i
+      done;
+      !equal_so_far
+    )
 end
 
 let rec mem t name =
