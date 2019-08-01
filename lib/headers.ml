@@ -44,8 +44,20 @@ let to_rev_list t = t
 let to_list t = List.rev (to_rev_list t)
 
 module CI = struct
-  let[@inline always] lower c =
-    if c >= 0x41 && c <= 0x5a then c + 32 else c
+  (* Convert codes to upper case and compare them. This is a port of assembly
+     code from the page:
+
+      http://www.azillionmonkeys.com/qed/asmexample.html *)
+  let[@inline always] char_code_equal_ci x y =
+    let codes = (x lsl 8) lor y in
+    let temp  = codes land 0x7f7f in
+    let temp  = temp + 0x0505 in
+    let temp  = temp land 0x7f7f in
+    let temp  = temp + 0x1a1a in
+    let temp  = temp lsr 2 in
+    let temp  = temp land 0x2020 in
+    let upper = codes - temp in
+    upper lsr 8 = upper land 0xff
 
   let equal x y =
     let len = String.length x in
@@ -55,7 +67,7 @@ module CI = struct
       while !equal_so_far && !i < len do
         let c1 = Char.code (String.unsafe_get x !i) in
         let c2 = Char.code (String.unsafe_get y !i) in
-        equal_so_far := lower c1 = lower c2;
+        equal_so_far := char_code_equal_ci c1 c2;
         incr i
       done;
       !equal_so_far
