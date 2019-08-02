@@ -176,7 +176,9 @@ let transfer_to_writer_with_encoding t ~encoding writer =
       t.write_final_if_chunked <- false;
       Serialize.Writer.schedule_fixed writer iovecs
     | `Chunked ->
-      Serialize.Writer.schedule_chunk writer iovecs
+      match iovecs with
+      | [] -> ()
+      | iovecs -> Serialize.Writer.schedule_chunk writer iovecs
     end;
     Serialize.Writer.flush writer (fun () ->
       Faraday.shift faraday lengthv;
