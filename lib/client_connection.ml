@@ -49,7 +49,6 @@ module Oneshot = struct
   type t =
     { request          : Request.t
     ; request_body     : [ `write ] Body.t
-    ; response_handler : (Response.t -> [`read] Body.t -> unit)
     ; error_handler    : (error -> unit)
     ; reader : Reader.response
     ; writer : Writer.t
@@ -68,7 +67,6 @@ module Oneshot = struct
     let t =
       { request
       ; request_body
-      ; response_handler
       ; error_handler
       ; error_code = `Ok
       ; reader = Reader.response ~request_method handler
