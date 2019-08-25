@@ -537,6 +537,29 @@ module Server_connection = struct
       `Read (next_read_operation t);
   ;;
 
+  let test_blocked_write_on_chunked_encoding () =
+    let request_handler reqd =
+      let response =
+        Response.create `OK
+          ~headers:(Headers.of_list [ "Transfer-encoding", "chunked" ])
+      in
+      let resp_body = Reqd.respond_with_streaming reqd response in
+      Body.write_string resp_body "gets partially written";
+      (* Response body never gets closed but for the purposes of the test, that's 
+       * OK. *)
+    in
+    let t = create ~error_handler request_handler in
+    writer_yielded t;
+    read_request t (Request.create `GET "/");
+    let first_write = "HTTP/1.1 200 OK\r\nTransfer-encoding: chunked\r\n\r\n16\r\ngets partially written\r\n" in
+    Alcotest.(check (option string)) "first write"
+      (Some first_write)
+      (next_write_operation t |> Write_operation.to_write_as_string);
+    report_write_result t (`Ok 16);
+    Alcotest.(check (option string)) "second write"
+      (Some (String.sub first_write 16 (String.length first_write - 16)))
+      (next_write_operation t |> Write_operation.to_write_as_string);
+  ;;
 
   let tests =
     [ "initial reader state"  , `Quick, test_initial_reader_state
@@ -551,6 +574,7 @@ module Server_connection = struct
     ; "asynchronous error, synchronous handling", `Quick, test_asynchronous_error
     ; "asynchronous error, asynchronous handling", `Quick, test_asynchronous_error_asynchronous_handling
     ; "chunked encoding", `Quick, test_chunked_encoding
+    ; "blocked write on chunked encoding", `Quick, test_blocked_write_on_chunked_encoding
     ]
 end
 
