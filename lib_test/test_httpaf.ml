@@ -717,9 +717,34 @@ module Client_connection = struct
       !error_message
   ;;
 
+  let test_report_exn () =
+    let request' = Request.create `GET "/" in
+    let response = Response.create `OK in (* not actually writen to the channel *)
+
+    let error_message = ref None in
+    let body, t =
+      request
+        request'
+        ~response_handler:(default_response_handler response)
+        ~error_handler:(function
+          | `Exn (Failure msg) -> error_message := Some msg
+          | _ -> assert false)
+    in
+    Body.close_writer body;
+    write_request  t request';
+    writer_closed  t;
+    reader_ready t;
+    report_exn t (Failure "something went wrong");
+    connection_is_shutdown t;
+    Alcotest.(check (option string)) "something went wrong"
+      (Some "something went wrong")
+      !error_message
+  ;;
+
   let tests =
     [ "GET"         , `Quick, test_get
-    ; "Response EOF", `Quick, test_response_eof ]
+    ; "Response EOF", `Quick, test_response_eof 
+    ; "report_exn"  , `Quick, test_report_exn ]
 end
 
 let () =
@@ -727,6 +752,6 @@ let () =
     [ "version"          , Version.tests
     ; "method"           , Method.tests
     ; "iovec"            , IOVec.tests
-    ; "clien connection" , Client_connection.tests
+    ; "client connection", Client_connection.tests
     ; "server connection", Server_connection.tests
     ]
