@@ -206,14 +206,18 @@ module Server_connection = struct
     write_string ~msg t response_string
   ;;
 
+  let write_eof t =
+    report_write_result t `Closed;
+  ;;
+
   let writer_yielded t =
     Alcotest.check write_operation "Writer is in a yield state"
       `Yield (next_write_operation t);
   ;;
 
-  let writer_closed t =
+  let writer_closed ?(unread = 0) t =
     Alcotest.check write_operation "Writer is closed"
-      (`Close 0) (next_write_operation t);
+      (`Close unread) (next_write_operation t);
   ;;
 
   let connection_is_shutdown t =
@@ -561,6 +565,13 @@ module Server_connection = struct
       (next_write_operation t |> Write_operation.to_write_as_string);
   ;;
 
+  let test_unexpected_eof () =
+    let t = create default_request_handler in
+    read_request   t (Request.create `GET "/");
+    write_eof      t;
+    writer_closed  t;
+  ;;
+
   let tests =
     [ "initial reader state"  , `Quick, test_initial_reader_state
     ; "shutdown reader closed", `Quick, test_reader_is_closed_after_eof
@@ -575,6 +586,7 @@ module Server_connection = struct
     ; "asynchronous error, asynchronous handling", `Quick, test_asynchronous_error_asynchronous_handling
     ; "chunked encoding", `Quick, test_chunked_encoding
     ; "blocked write on chunked encoding", `Quick, test_blocked_write_on_chunked_encoding
+    ; "writer unexpected eof", `Quick, test_unexpected_eof
     ]
 end
 
