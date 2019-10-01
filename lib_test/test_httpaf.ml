@@ -569,7 +569,7 @@ module Server_connection = struct
     let t = create default_request_handler in
     read_request   t (Request.create `GET "/");
     write_eof      t;
-    writer_closed  t;
+    writer_closed  t ~unread:19;
   ;;
 
   let tests =
