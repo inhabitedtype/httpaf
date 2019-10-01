@@ -1,5 +1,6 @@
 (library
  (name httpaf_lwt_unix)
  (public_name httpaf-lwt-unix)
- (libraries faraday-lwt-unix httpaf lwt.unix)
- (flags (:standard -safe-string)))
+ (libraries faraday-lwt-unix httpaf httpaf-lwt lwt.unix)
+ (flags
+  (:standard -safe-string)))

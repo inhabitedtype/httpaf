@@ -7,7 +7,7 @@ script: bash -ex ./.travis-docker.sh
 env:
   global:
   - DISTRO="ubuntu"
-  - PINS="httpaf-async:. httpaf-lwt-unix:. httpaf:."
+  - PINS="httpaf-async:. httpaf-lwt:. httpaf:. httpaf-lwt-unix:. httpaf-mirage:."
   - PACKAGE="httpaf"
   - TESTS=true
   - POST_INSTALL_HOOK="opam install --with-test httpaf-async httpaf-lwt-unix && opam exec -- make examples"
