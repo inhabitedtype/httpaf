@@ -102,12 +102,14 @@ let replace t name value =
   with Local -> t
 
 let remove t name =
-  let rec loop s n seen =
+  let rec loop s needle seen =
     match s with
     | [] ->
       if not seen then raise Local else []
-    | (n',_ as nv')::s' ->
-      if CI.equal n n' then loop s' n true else nv'::(loop s' n false)
+    | (name,_ as nv')::s' ->
+      if CI.equal needle name
+      then (print_endline "seen: true"; loop s' needle true )
+      else (print_endline "seen: false"; nv'::(loop s' needle seen))
   in
   try loop t name false
   with Local -> t
