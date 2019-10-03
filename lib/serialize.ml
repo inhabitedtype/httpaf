@@ -142,6 +142,12 @@ module Writer = struct
   let flush t f =
     flush t.encoder f
 
+  let unyield t =
+    (* This would be better implemented by a function that just takes the
+       encoder out of a yielded state if it's in that state. Requires a change
+       to the faraday library. *)
+    flush t (fun () -> ())
+
   let yield t =
     Faraday.yield t.encoder
 

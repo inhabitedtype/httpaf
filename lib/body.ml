@@ -163,7 +163,8 @@ let transfer_to_writer_with_encoding t ~encoding writer =
       begin match encoding with
       | `Chunked                    -> Serialize.Writer.schedule_chunk writer []
       | `Fixed _ | `Close_delimited -> ()
-      end
+      end;
+    Serialize.Writer.unyield writer;
   | `Writev iovecs ->
     let buffered = t.buffered_bytes in
     begin match IOVec.shiftv iovecs !buffered with
