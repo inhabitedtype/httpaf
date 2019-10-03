@@ -111,6 +111,29 @@ module IOVec = struct
     ; "shiftv raises ", `Quick, test_shiftv_raises ]
 end
 
+module Headers = struct
+  include Headers
+
+  let test_remove () =
+    let check = Alcotest.(check (list (pair string string))) in
+    check "remove leading element"
+      ["c", "d"]
+      (Headers.remove
+        (Headers.of_list ["a", "b"; "c", "d"]) 
+        "a"
+      |> Headers.to_list);
+    check "remove trailing element"
+      ["c", "d"]
+      (Headers.remove
+        (Headers.of_list ["c", "d"; "a", "b"]) 
+        "a"
+      |> Headers.to_list);
+  ;;
+
+  let tests =
+    [ "remove", `Quick, test_remove ]
+end
+
 let maybe_serialize_body f body =
   match body with
   | None -> ()
@@ -793,6 +816,7 @@ let () =
     [ "version"          , Version.tests
     ; "method"           , Method.tests
     ; "iovec"            , IOVec.tests
+    ; "headers"          , Headers.tests
     ; "client connection", Client_connection.tests
     ; "server connection", Server_connection.tests
     ]
