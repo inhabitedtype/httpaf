@@ -108,8 +108,8 @@ let remove t name =
       if not seen then raise Local else []
     | (name,_ as nv')::s' ->
       if CI.equal needle name
-      then (print_endline "seen: true"; loop s' needle true )
-      else (print_endline "seen: false"; nv'::(loop s' needle seen))
+      then loop s' needle true
+      else nv'::(loop s' needle seen)
   in
   try loop t name false
   with Local -> t
