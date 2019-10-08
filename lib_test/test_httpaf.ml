@@ -199,16 +199,24 @@ let read_operation = Alcotest.of_pp Read_operation.pp_hum
 module Server_connection = struct
   open Server_connection
 
-  let read_string t str =
+  let feed_string t str =
     let len = String.length str in
     let input = Bigstringaf.of_string str ~off:0 ~len in
-    let c = read t input ~off:0 ~len in
-    Alcotest.(check int) "read consumes all input" len c;
+    read t input ~off:0 ~len
+
+  let read_string t str =
+    let c = feed_string t str in
+    Alcotest.(check int) "read consumes all input" (String.length str) c;
   ;;
 
   let read_request t r =
     let request_string = request_to_string r in
     read_string t request_string
+  ;;
+
+  let reader_ready t =
+    Alcotest.check read_operation "Reader is ready"
+      `Read (next_read_operation t);
   ;;
 
   let reader_yielded t =
@@ -622,6 +630,39 @@ module Server_connection = struct
     writer_closed  t ~unread:19;
   ;;
 
+  let test_input_shrunk () =
+    let continue_response = ref (fun () -> ()) in
+    let error_handler ?request:_ _ = assert false in
+    let request_handler reqd =
+      Alcotest.(check (list (pair string string)))
+        "got expected headers"
+        [ "Host"           , "example.com"
+        ; "Connection"     , "close"
+        ; "Accept"         , "application/json, text/plain, */*"
+        ; "Accept-Language", "en-US,en;q=0.5" ]
+        (Headers.to_rev_list (Reqd.request reqd).headers);
+      Body.close_reader (Reqd.request_body reqd);
+      continue_response := (fun () ->
+        Reqd.respond_with_string reqd (Response.create `OK) "");
+    in
+    let t = create ~error_handler request_handler in
+    reader_ready t;
+    writer_yielded t;
+    yield_writer t (fun () -> writer_yielded t);
+    let len = feed_string t "GET /v1/b HTTP/1.1\r\nH" in
+    Alcotest.(check int) "partial read" 20 len;
+    read_string t "Host: example.com\r\n\
+Connection: close\r\n\
+Accept: application/json, text/plain, */*\r\n\
+Accept-Language: en-US,en;q=0.5\r\n\r\n";
+    writer_yielded t;
+    Alcotest.check read_operation "reader closed"
+      `Close (next_read_operation t);
+    !continue_response ();
+    write_response t (Response.create `OK);
+    writer_closed t;
+	;;
+
   let tests =
     [ "initial reader state"  , `Quick, test_initial_reader_state
     ; "shutdown reader closed", `Quick, test_reader_is_closed_after_eof
@@ -639,6 +680,7 @@ module Server_connection = struct
     ; "chunked encoding", `Quick, test_chunked_encoding
     ; "blocked write on chunked encoding", `Quick, test_blocked_write_on_chunked_encoding
     ; "writer unexpected eof", `Quick, test_unexpected_eof
+    ; "input shrunk", `Quick, test_input_shrunk
     ]
 end
 
@@ -652,11 +694,14 @@ module Client_connection = struct
     let equal x y = x = y
   end
 
-  let read_string t str =
+  let feed_string t str =
     let len = String.length str in
     let input = Bigstringaf.of_string str ~off:0 ~len in
-    let c = read t input ~off:0 ~len in
-    Alcotest.(check int) "read consumes all input" len c;
+    read t input ~off:0 ~len
+
+  let read_string t str =
+    let c = feed_string t str in
+    Alcotest.(check int) "read consumes all input" (String.length str) c;
   ;;
 
   let read_response t r =
