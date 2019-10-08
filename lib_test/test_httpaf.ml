@@ -114,24 +114,42 @@ end
 module Headers = struct
   include Headers
 
-  let test_remove () =
-    let check = Alcotest.(check (list (pair string string))) in
-    check "remove leading element"
-      ["c", "d"]
-      (Headers.remove
-        (Headers.of_list ["a", "b"; "c", "d"]) 
-        "a"
-      |> Headers.to_list);
-    check "remove trailing element"
-      ["c", "d"]
-      (Headers.remove
+  let check msg ~expect actual = 
+    Alcotest.(check (list (pair string string))) msg expect (Headers.to_list actual)
+  ;;
+
+  let test_replace () =
+    check "replace trailing element"
+      ~expect:["c", "d"; "a", "d"]
+      (Headers.replace
         (Headers.of_list ["c", "d"; "a", "b"]) 
         "a"
-      |> Headers.to_list);
+        "d");
+
+    check "remove multiple trailing elements"
+      ~expect:["c", "d"; "a", "d"]
+      (Headers.replace 
+        (Headers.of_list [ "c", "d"; "a", "b"; "a", "c"])
+        "a" 
+        "d");
+  ;;
+
+  let test_remove () =
+    check "remove leading element"
+      ~expect:["c", "d"]
+      (Headers.remove
+        (Headers.of_list ["a", "b"; "c", "d"])
+        "a");
+    check "remove trailing element"
+      ~expect:["c", "d"]
+      (Headers.remove
+        (Headers.of_list ["c", "d"; "a", "b"]) 
+        "a");
   ;;
 
   let tests =
-    [ "remove", `Quick, test_remove ]
+    [ "remove" , `Quick, test_remove
+    ; "replace", `Quick, test_replace ]
 end
 
 let maybe_serialize_body f body =

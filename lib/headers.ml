@@ -87,16 +87,17 @@ let add_unless_exists t name value =
 exception Local
 
 let replace t name value =
-  let rec loop t n nv seen =
+  let rec loop t needle nv seen =
     match t with
     | [] ->
       if not seen then raise Local else []
-    | (n',_ as nv')::t ->
-      if CI.equal n n'
-      then if seen
-        then loop t n nv true
-        else nv::loop t n nv true
-      else nv'::loop t n nv false
+    | (name,_ as nv')::t ->
+      if CI.equal needle name
+      then (
+        if seen
+        then loop t name nv true
+        else nv::loop t name nv true)
+      else nv'::loop t name nv seen
   in
   try loop t name (name,value) false
   with Local -> t
