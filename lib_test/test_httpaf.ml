@@ -648,7 +648,9 @@ module Server_connection = struct
     let t = create ~error_handler request_handler in
     reader_ready t;
     writer_yielded t;
-    yield_writer t (fun () -> writer_yielded t);
+    yield_writer t (fun () ->
+      write_response t (Response.create `OK);
+    );
     let len = feed_string t "GET /v1/b HTTP/1.1\r\nH" in
     Alcotest.(check int) "partial read" 20 len;
     read_string t "Host: example.com\r\n\
@@ -659,7 +661,6 @@ Accept-Language: en-US,en;q=0.5\r\n\r\n";
     Alcotest.check read_operation "reader closed"
       `Close (next_read_operation t);
     !continue_response ();
-    write_response t (Response.create `OK);
     writer_closed t;
 	;;
 

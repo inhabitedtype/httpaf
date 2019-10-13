@@ -90,13 +90,22 @@ let on_wakeup_writer t k =
   then failwith "on_wakeup_writer on closed conn"
   else t.wakeup_writer := k::!(t.wakeup_writer)
 
-let _wakeup_writer callbacks =
-  let fs = !callbacks in
-  callbacks := [];
+let wakeup_writer t =
+  let fs = !(t.wakeup_writer) in
+  t.wakeup_writer := [];
   List.iter (fun f -> f ()) fs
 
-let wakeup_writer t =
-  _wakeup_writer t.wakeup_writer
+let rec _transfer_writer_callbacks fs reqd =
+  match fs with
+  | [] -> ()
+  | f :: fs ->
+    Reqd.on_more_output_available reqd f;
+    _transfer_writer_callbacks fs reqd
+
+let transfer_writer_callbacks t reqd =
+  let fs = !(t.wakeup_writer) in
+  t.wakeup_writer := [];
+  _transfer_writer_callbacks fs reqd
 
 let wakeup_reader t =
   let fs = !(t.wakeup_reader) in
@@ -123,17 +132,12 @@ let create ?(config=Config.default) ?(error_handler=default_error_handler) reque
   in
   let writer = Writer.create ~buffer_size:response_buffer_size () in
   let request_queue = Queue.create () in
-  let wakeup_writer = ref [] in
   let response_body_buffer = Bigstringaf.create response_body_buffer_size in
   let handler request request_body =
-    let handle_now = Queue.is_empty request_queue in
-    let reqd       =
-      Reqd.create error_handler request request_body writer response_body_buffer in
+    let reqd =
+      Reqd.create error_handler request request_body writer response_body_buffer
+    in
     Queue.push reqd request_queue;
-    if handle_now then begin
-      request_handler reqd;
-      _wakeup_writer wakeup_writer
-    end
   in
   { reader          = Reader.request handler
   ; writer
@@ -141,7 +145,7 @@ let create ?(config=Config.default) ?(error_handler=default_error_handler) reque
   ; request_handler = request_handler
   ; error_handler   = error_handler
   ; request_queue
-  ; wakeup_writer
+  ; wakeup_writer   = ref []
   ; wakeup_reader   = ref []
   }
 
@@ -233,9 +237,18 @@ let next_read_operation t =
   | (`Read | `Yield | `Close) as operation -> operation
 
 let read_with_more t bs ~off ~len more =
+  let call_handler = Queue.is_empty t.request_queue in
   let consumed = Reader.read_with_more t.reader bs ~off ~len more in
-  if is_active t then
-    Reqd.flush_request_body (current_reqd_exn t);
+  if is_active t
+  then (
+    let reqd = current_reqd_exn t in
+    if call_handler
+    then (
+      transfer_writer_callbacks t reqd;
+      t.request_handler reqd
+    );
+    Reqd.flush_request_body reqd;
+  );
   consumed
 ;;
 
