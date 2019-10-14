@@ -39,8 +39,16 @@ open Httpaf
    to [Lwt_io.establish_server_with_client_socket]. For an example, see
    [examples/lwt_echo_server.ml]. *)
 module Server : sig
+  module Upgrade : sig
+    type t =
+      | Ignore
+      | Raise
+      | Handle of (Lwt_unix.file_descr -> Httpaf.Request.t -> Httpaf.Response.t -> unit)
+  end
+
   val create_connection_handler
     :  ?config         : Config.t
+    -> upgrade_handler : Upgrade.t
     -> request_handler : (Unix.sockaddr -> Server_connection.request_handler)
     -> error_handler   : (Unix.sockaddr -> Server_connection.error_handler)
     -> Unix.sockaddr
