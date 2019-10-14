@@ -90,8 +90,30 @@ let read fd buffer =
 open Httpaf
 
 module Server = struct
-  let create_connection_handler ?(config=Config.default) ~request_handler ~error_handler =
+  module Upgrade = struct
+    type 'a t =
+      | Ignore
+      | Raise
+      | Handle of (([`Active], 'a) Socket.t -> Httpaf.Request.t -> Httpaf.Response.t -> unit)
+
+    let to_handler = function
+      | Ignore -> (fun socket _request _response -> 
+          don't_wait_for (Fd.close (Socket.fd socket)))
+      | Raise  -> 
+        (fun socket _request _response ->
+          don't_wait_for (Fd.close (Socket.fd socket));
+          failwith "Upgrades not supported by server")
+      | Handle handler -> handler
+  end
+
+  let create_connection_handler 
+    ?(config=Config.default) 
+    ~upgrade_handler
+    ~request_handler 
+    ~error_handler
+    =
     fun client_addr socket ->
+      let upgrade_handler = Upgrade.to_handler upgrade_handler in
       let fd     = Socket.fd socket in
       let writev = Faraday_async.writev_of_fd fd in
       let request_handler = request_handler client_addr in
@@ -101,6 +123,7 @@ module Server = struct
       let buffer = Buffer.create config.read_buffer_size in
       let rec reader_thread () =
         match Server_connection.next_read_operation conn with
+        | `Upgrade -> ()
         | `Read ->
           (* Log.Global.printf "read(%d)%!" (Fd.to_int_exn fd); *)
           read fd buffer
@@ -136,6 +159,8 @@ module Server = struct
         | `Yield ->
           (* Log.Global.printf "write_yield(%d)%!" (Fd.to_int_exn fd); *)
           Server_connection.yield_writer conn writer_thread;
+        | `Upgrade(request, response) -> 
+          upgrade_handler socket request response
         | `Close _ ->
           (* Log.Global.printf "write_close(%d)%!" (Fd.to_int_exn fd); *)
           Ivar.fill write_complete ();
