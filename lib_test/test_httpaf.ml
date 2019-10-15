@@ -345,6 +345,11 @@ module Server_connection = struct
       `Read (next_read_operation t);
   ;;
 
+  let read_upgrade t =
+    Alcotest.check read_operation "Reader is requesting an upgrade"
+      `Upgrade (next_read_operation t);
+  ;;
+
   let reader_yielded t =
     Alcotest.check read_operation "Reader is in a yield state"
       `Yield (next_read_operation t);
@@ -365,6 +370,12 @@ module Server_connection = struct
 
   let write_eof t =
     report_write_result t `Closed;
+  ;;
+
+  let write_upgrade ?(msg="upgrade written") t request response =
+    Alcotest.check write_operation msg
+      (`Upgrade(request, response))
+      (next_write_operation t);
   ;;
 
   let writer_yielded t =
@@ -795,6 +806,18 @@ Accept-Language: en-US,en;q=0.5\r\n\r\n";
     writer_closed t;
 	;;
 
+  let test_upgrade () =
+    let request_handler reqd =
+      Reqd.respond_with_upgrade reqd Headers.empty
+    in
+    let t = create ~error_handler request_handler in
+    let request = Request.create `GET "/" ~headers:(Headers.of_list [ "Connection", "upgrade" ]) in
+    let response = Response.create `Switching_protocols in
+    read_request t request;
+    write_upgrade t request response;
+    read_upgrade t;
+  ;;
+
   let tests =
     [ "initial reader state"  , `Quick, test_initial_reader_state
     ; "shutdown reader closed", `Quick, test_reader_is_closed_after_eof
@@ -813,6 +836,7 @@ Accept-Language: en-US,en;q=0.5\r\n\r\n";
     ; "blocked write on chunked encoding", `Quick, test_blocked_write_on_chunked_encoding
     ; "writer unexpected eof", `Quick, test_unexpected_eof
     ; "input shrunk", `Quick, test_input_shrunk
+    ; "upgrade", `Quick, test_upgrade
     ]
 end
 
