@@ -94,11 +94,10 @@ module Server = struct
     type 'a t =
       | Ignore
       | Raise
-      | Handle of (([`Active], 'a) Socket.t -> Httpaf.Request.t -> Httpaf.Response.t -> unit)
+      | Handle of (([`Active], 'a) Socket.t -> Httpaf.Request.t -> Httpaf.Response.t -> unit Deferred.t)
 
     let to_handler = function
-      | Ignore -> (fun socket _request _response -> 
-          don't_wait_for (Fd.close (Socket.fd socket)))
+      | Ignore -> (fun socket _request _response -> Fd.close (Socket.fd socket))
       | Raise  -> 
         (fun socket _request _response ->
           don't_wait_for (Fd.close (Socket.fd socket));
@@ -160,7 +159,7 @@ module Server = struct
           (* Log.Global.printf "write_yield(%d)%!" (Fd.to_int_exn fd); *)
           Server_connection.yield_writer conn writer_thread;
         | `Upgrade(request, response) -> 
-          upgrade_handler socket request response
+          upgrade_handler socket request response >>> Ivar.fill write_complete
         | `Close _ ->
           (* Log.Global.printf "write_close(%d)%!" (Fd.to_int_exn fd); *)
           Ivar.fill write_complete ();

@@ -6,7 +6,7 @@ module Server : sig
     type 'a t =
       | Ignore
       | Raise
-      | Handle of (([`Active], 'a) Socket.t -> Request.t -> Response.t -> unit)
+      | Handle of (([`Active], 'a) Socket.t -> Request.t -> Response.t -> unit Deferred.t)
   end
 
   val create_connection_handler
