@@ -43,7 +43,7 @@ module Server : sig
     type t =
       | Ignore
       | Raise
-      | Handle of (Lwt_unix.file_descr -> Httpaf.Request.t -> Httpaf.Response.t -> unit)
+      | Handle of (Lwt_unix.file_descr -> Httpaf.Request.t -> Httpaf.Response.t -> unit Lwt.t)
   end
 
   val create_connection_handler

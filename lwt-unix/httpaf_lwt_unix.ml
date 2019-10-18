@@ -109,10 +109,10 @@ module Server = struct
     type t =
       | Ignore
       | Raise
-      | Handle of (Lwt_unix.file_descr -> Httpaf.Request.t -> Httpaf.Response.t -> unit)
+      | Handle of (Lwt_unix.file_descr -> Httpaf.Request.t -> Httpaf.Response.t -> unit Lwt.t)
 
     let to_handler = function
-      | Ignore -> (fun socket _request _response -> Lwt.async (fun () -> Lwt_unix.close socket))
+      | Ignore -> (fun socket _request _response -> Lwt_unix.close socket)
       | Raise  -> 
         (fun socket _request _response ->
           Lwt.async (fun () -> Lwt_unix.close socket);
@@ -188,8 +188,7 @@ module Server = struct
             Server_connection.report_write_result connection result;
             write_loop_step ()
           | `Upgrade(request, response) ->
-            upgrade_handler socket request response;
-            Lwt.return_unit
+            upgrade_handler socket request response
           | `Yield ->
             Server_connection.yield_writer connection write_loop;
             Lwt.return_unit
