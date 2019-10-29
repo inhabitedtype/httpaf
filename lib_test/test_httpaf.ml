@@ -276,7 +276,7 @@ module Server_connection = struct
   ;;
 
   let request_handler_with_body body reqd =
-    Body.close_reader (Reqd.request_body reqd);
+    Body.Read.close (Reqd.request_body reqd);
     Reqd.respond_with_string reqd (Response.create `OK) body
   ;;
 
@@ -288,25 +288,25 @@ module Server_connection = struct
     let request_body  = Reqd.request_body reqd in
     let response_body = Reqd.respond_with_streaming reqd response in
     let rec on_read buffer ~off ~len =
-      Body.write_string response_body (Bigstringaf.substring ~off ~len buffer);
-      Body.flush response_body (fun () ->
-        Body.schedule_read request_body ~on_eof ~on_read)
-      and on_eof () = print_endline "got eof"; Body.close_writer response_body in
-    Body.schedule_read request_body ~on_eof ~on_read;
+      Body.Write.string response_body (Bigstringaf.substring ~off ~len buffer);
+      Body.Write.flush response_body (fun () ->
+        Body.Read.schedule request_body ~on_eof ~on_read)
+      and on_eof () = print_endline "got eof"; Body.Write.close response_body in
+    Body.Read.schedule request_body ~on_eof ~on_read;
   ;;
 
   let streaming_handler ?(flush=false) response writes reqd =
     let writes = ref writes in
     let request_body = Reqd.request_body reqd in
-    Body.close_reader request_body;
+    Body.Read.close request_body;
     let body = Reqd.respond_with_streaming ~flush_headers_immediately:flush reqd response in
     let rec write () =
       match !writes with
-      | [] -> Body.close_writer body
+      | [] -> Body.Write.close body
       | w :: ws ->
-        Body.write_string body w;
+        Body.Write.string body w;
         writes := ws;
-        Body.flush body write
+        Body.Write.flush body write
     in
     write ();
   ;;
@@ -317,8 +317,8 @@ module Server_connection = struct
 
   let error_handler ?request:_ _error start_response =
     let resp_body = start_response Headers.empty in
-    Body.write_string resp_body "got an error";
-    Body.close_writer resp_body
+    Body.Write.string resp_body "got an error";
+    Body.Write.close resp_body
   ;;
 
   let test_initial_reader_state () =
@@ -374,7 +374,7 @@ module Server_connection = struct
     let continue = ref (fun () -> ()) in
     let t = create (fun reqd ->
       continue := fun () ->
-        Body.close_reader (Reqd.request_body reqd);
+        Body.Read.close (Reqd.request_body reqd);
         let data = Bigstringaf.of_string ~off:0 ~len:response_body_length response_body in
         let size = Bigstringaf.length data in
         let response =
@@ -384,8 +384,8 @@ module Server_connection = struct
         in
         let response_body =
           Reqd.respond_with_streaming reqd response in
-        Body.write_bigstring response_body data;
-        Body.close_writer response_body)
+        Body.Write.bigstring response_body data;
+        Body.Write.close response_body)
      in
     read_request   t (Request.create `GET "/");
     reader_yielded t;
@@ -595,10 +595,10 @@ module Server_connection = struct
           ~headers:(Headers.of_list [ "Transfer-encoding", "chunked" ])
       in
       let resp_body = Reqd.respond_with_streaming reqd response in
-      Body.write_string resp_body "First chunk";
-      Body.flush resp_body (fun () ->
-        Body.write_string resp_body "Second chunk";
-        Body.close_writer resp_body);
+      Body.Write.string resp_body "First chunk";
+      Body.Write.flush resp_body (fun () ->
+        Body.Write.string resp_body "Second chunk";
+        Body.Write.close resp_body);
     in
     let t = create ~error_handler request_handler in
     writer_yielded t;
@@ -624,7 +624,7 @@ module Server_connection = struct
           ~headers:(Headers.of_list [ "Transfer-encoding", "chunked" ])
       in
       let resp_body = Reqd.respond_with_streaming reqd response in
-      Body.write_string resp_body "gets partially written";
+      Body.Write.string resp_body "gets partially written";
       (* Response body never gets closed but for the purposes of the test, that's 
        * OK. *)
     in
@@ -659,7 +659,7 @@ module Server_connection = struct
         ; "Accept"         , "application/json, text/plain, */*"
         ; "Accept-Language", "en-US,en;q=0.5" ]
         (Headers.to_rev_list (Reqd.request reqd).headers);
-      Body.close_reader (Reqd.request_body reqd);
+      Body.Read.close (Reqd.request_body reqd);
       continue_response := (fun () ->
         Reqd.respond_with_string reqd (Response.create `OK) "");
     in
@@ -766,7 +766,7 @@ module Client_connection = struct
     Alcotest.check (module Response) "expected response" expected_response response;
     let on_read _ ~off:_ ~len:_ = () in
     let on_eof () = () in
-    Body.schedule_read body ~on_read ~on_eof;
+    Body.Read.schedule body ~on_read ~on_eof;
   ;;
 
   let no_error_handler _ = assert false
@@ -782,7 +782,7 @@ module Client_connection = struct
         ~response_handler:(default_response_handler response)
         ~error_handler:no_error_handler
     in
-    Body.close_writer body;
+    Body.Write.close body;
     write_request  t request';
     writer_closed  t;
     read_response  t response;
@@ -797,7 +797,7 @@ module Client_connection = struct
         ~response_handler:(default_response_handler response)
         ~error_handler:no_error_handler
     in
-    Body.close_writer body;
+    Body.Write.close body;
     write_request  t request';
     read_response  t response;
     let c = read_eof t Bigstringaf.empty ~off:0 ~len:0 in
@@ -814,7 +814,7 @@ module Client_connection = struct
         ~response_handler:(default_response_handler response)
         ~error_handler:no_error_handler
     in
-    Body.close_writer body;
+    Body.Write.close body;
     write_request  t request';
     read_response  t response;
     read_string    t "d\r\nHello, world!\r\n0\r\n\r\n";
@@ -833,7 +833,7 @@ module Client_connection = struct
           | `Malformed_response msg -> error_message := Some msg
           | _ -> assert false)
     in
-    Body.close_writer body;
+    Body.Write.close body;
     write_request  t request';
     writer_closed  t;
     reader_ready t;
@@ -858,7 +858,7 @@ module Client_connection = struct
           | `Exn (Failure msg) -> error_message := Some msg
           | _ -> assert false)
     in
-    Body.close_writer body;
+    Body.Write.close body;
     write_request  t request';
     writer_closed  t;
     reader_ready t;

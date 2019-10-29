@@ -37,10 +37,10 @@ type error =
 type response_state =
   | Waiting   of (unit -> unit) ref
   | Complete  of Response.t
-  | Streaming of Response.t * [`write] Body.t
+  | Streaming of Response.t * Body.Write.t
 
 type error_handler =
-  ?request:Request.t -> error -> (Headers.t -> [`write] Body.t) -> unit
+  ?request:Request.t -> error -> (Headers.t -> Body.Write.t) -> unit
 
 module Writer = Serialize.Writer
 
@@ -69,7 +69,7 @@ module Writer = Serialize.Writer
  * *)
 type t =
   { request                 : Request.t
-  ; request_body            : [`read] Body.t
+  ; request_body            : Body.Read.t
   ; writer                  : Writer.t
   ; response_body_buffer    : Bigstringaf.t
   ; error_handler           : error_handler
@@ -168,7 +168,7 @@ let respond_with_streaming ?(flush_headers_immediately=false) t response =
 
 let report_error t error =
   t.persistent <- false;
-  Body.close_reader t.request_body;
+  Body.Read.close t.request_body;
   match t.response_state, t.error_code with
   | Waiting _, `Ok ->
     t.error_code <- (error :> [`Ok | error]);
@@ -185,9 +185,9 @@ let report_error t error =
      * has been reported as well. *)
     failwith "httpaf.Reqd.report_exn: NYI"
   | Streaming(_response, response_body), `Ok ->
-    Body.close_writer response_body
+    Body.Write.close response_body
   | Streaming(_response, response_body), `Exn _ ->
-    Body.close_writer response_body;
+    Body.Write.close response_body;
     Writer.close_and_drain t.writer
   | (Complete _ | Streaming _ | Waiting _) , _ ->
     (* XXX(seliopou): Once additional logging support is added, log the error
@@ -203,7 +203,7 @@ let try_with t f : (unit, exn) Result.result =
 (* Private API, not exposed to the user through httpaf.mli *)
 
 let close_request_body { request_body; _ } =
-  Body.close_reader request_body
+  Body.Read.close request_body
 
 let error_code t =
   match t.error_code with

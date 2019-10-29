@@ -53,7 +53,7 @@ type error =
   [ `Bad_gateway | `Bad_request | `Internal_server_error | `Exn of exn]
 
 type error_handler =
-  ?request:Request.t -> error -> (Headers.t -> [`write] Body.t) -> unit
+  ?request:Request.t -> error -> (Headers.t -> Body.Write.t) -> unit
 
 type t =
   { reader                 : Reader.request
@@ -119,8 +119,8 @@ let default_error_handler ?request:_ error handle =
     | (#Status.client_error | #Status.server_error) as error -> Status.to_string error
   in
   let body = handle Headers.empty in
-  Body.write_string body message;
-  Body.close_writer body
+  Body.Write.string body message;
+  Body.Write.close body
 ;;
 
 let create ?(config=Config.default) ?(error_handler=default_error_handler) request_handler =

@@ -65,34 +65,13 @@ let create_empty () =
 
 let empty = create_empty ()
 
-let write_char t c =
-  Faraday.write_char t.faraday c
-
-let write_string t ?off ?len s =
-  Faraday.write_string ?off ?len t.faraday s
-
-let write_bigstring t ?off ?len b =
-  Faraday.write_bigstring ?off ?len t.faraday b
-
-let schedule_bigstring t ?off ?len (b:Bigstringaf.t) =
-  Faraday.schedule_bigstring ?off ?len t.faraday b
-
 let ready_to_write t =
   let callback = t.when_ready_to_write in
   t.when_ready_to_write <- default_ready_to_write;
   callback ()
 
-let flush t kontinue =
-  Faraday.flush t.faraday kontinue;
-  ready_to_write t
-
 let is_closed t =
   Faraday.is_closed t.faraday
-
-let close_writer t =
-  Faraday.close t.faraday;
-  ready_to_write t;
-;;
 
 let unsafe_faraday t =
   t.faraday
@@ -139,11 +118,6 @@ let has_pending_output t =
   Faraday.has_pending_output t.faraday
   || (Faraday.is_closed t.faraday && t.write_final_if_chunked)
 
-let close_reader t =
-  Faraday.close t.faraday;
-  execute_read t
-;;
-
 let when_ready_to_write t callback =
   if not (t.when_ready_to_write == default_ready_to_write)
   then failwith "Body.when_ready_to_write: only one callback can be registered at a time"
@@ -186,3 +160,45 @@ let transfer_to_writer_with_encoding t ~encoding writer =
         buffered := !buffered - lengthv)
     end
   end
+;;
+
+module Read = struct
+  type nonrec t = [`read] t
+
+  let schedule = schedule_read
+
+  let close t =
+    Faraday.close t.faraday;
+    execute_read t
+  ;;
+
+  let is_closed = is_closed
+end
+
+module Write = struct
+  type nonrec t = [`write] t
+
+  let char t c =
+    Faraday.write_char t.faraday c
+
+  let string t ?off ?len s =
+    Faraday.write_string ?off ?len t.faraday s
+
+  let bigstring t ?off ?len b =
+    Faraday.write_bigstring ?off ?len t.faraday b
+
+  let schedule_bigstring t ?off ?len (b:Bigstringaf.t) =
+    Faraday.schedule_bigstring ?off ?len t.faraday b
+
+  let flush t kontinue =
+    Faraday.flush t.faraday kontinue;
+    ready_to_write t
+  ;;
+
+  let close t =
+    Faraday.close t.faraday;
+    ready_to_write t;
+  ;;
+
+  let is_closed = is_closed
+end

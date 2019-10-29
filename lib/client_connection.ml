@@ -38,17 +38,17 @@ module Oneshot = struct
   type error =
     [ `Malformed_response of string | `Invalid_response_body_length of Response.t | `Exn of exn ]
 
-  type response_handler = Response.t -> [`read] Body.t  -> unit
+  type response_handler = Response.t -> Body.Read.t  -> unit
   type error_handler = error -> unit
 
   type state =
     | Awaiting_response
-    | Received_response of Response.t * [`read] Body.t
+    | Received_response of Response.t * Body.Read.t
     | Closed
 
   type t =
     { request          : Request.t
-    ; request_body     : [ `write ] Body.t
+    ; request_body     : Body.Write.t
     ; error_handler    : (error -> unit)
     ; reader : Reader.response
     ; writer : Writer.t
@@ -104,7 +104,7 @@ module Oneshot = struct
     | Awaiting_response -> unexpected_eof t;
     | Closed -> ()
     | Received_response(_, response_body) ->
-      Body.close_reader response_body;
+      Body.Read.close response_body;
       Body.execute_read response_body;
     end;
   ;;
@@ -112,7 +112,7 @@ module Oneshot = struct
   let shutdown_writer t =
     flush_request_body t;
     Writer.close t.writer;
-    Body.close_writer t.request_body;
+    Body.Write.close t.request_body;
   ;;
 
   let shutdown t =
@@ -127,7 +127,7 @@ module Oneshot = struct
     | Awaiting_response ->
       set_error_and_handle_without_shutdown t error;
     | Received_response(_, response_body) ->
-      Body.close_reader response_body;
+      Body.Read.close response_body;
       Body.execute_read response_body;
       set_error_and_handle_without_shutdown t error;
     end

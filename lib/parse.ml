@@ -134,7 +134,7 @@ let response =
     (headers              <* eol)
 
 let finish writer =
-  Body.close_reader writer;
+  Body.Read.close writer;
   commit
 
 let schedule_size writer n =
