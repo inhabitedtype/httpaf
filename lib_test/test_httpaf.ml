@@ -291,7 +291,10 @@ module Server_connection = struct
       Body.Write.string response_body (Bigstringaf.substring ~off ~len buffer);
       Body.Write.flush response_body (fun () ->
         Body.Read.schedule request_body ~on_eof ~on_read)
-      and on_eof () = print_endline "got eof"; Body.Write.close response_body in
+      and on_eof = function
+      | Ok `Eof -> print_endline "got eof"; Body.Write.close response_body
+      | Error _ -> assert false
+    in
     Body.Read.schedule request_body ~on_eof ~on_read;
   ;;
 
@@ -765,7 +768,7 @@ module Client_connection = struct
   let default_response_handler expected_response response body =
     Alcotest.check (module Response) "expected response" expected_response response;
     let on_read _ ~off:_ ~len:_ = () in
-    let on_eof () = () in
+    let on_eof _ = () in
     Body.Read.schedule body ~on_read ~on_eof;
   ;;
 

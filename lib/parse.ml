@@ -227,13 +227,23 @@ module Reader = struct
 
   let ok = return (Ok ())
 
+  type client_error =
+    [ `Malformed_response of string | `Invalid_response_body_length of Response.t | `Exn of exn ]
+
+  let empty_client_body : client_error Body.Read.t = Body.create_empty ()
+
+  type server_error =
+    [ `Bad_request | `Bad_gateway | `Internal_server_error | `Exn of exn ]
+
+  let empty_server_body : server_error Body.Read.t = Body.create_empty ()
+
   let request handler =
     let parser =
       request <* commit >>= fun request ->
       match Request.body_length request with
       | `Error `Bad_request -> return (Error (`Bad_request request))
       | `Fixed 0L  ->
-        handler request Body.empty;
+        handler request empty_server_body;
         ok
       | `Fixed _ | `Chunked | `Close_delimited as encoding ->
         let request_body = Body.create Bigstringaf.empty in
@@ -250,7 +260,7 @@ module Reader = struct
       | `Error `Bad_gateway           -> assert (not proxy); assert false
       | `Error `Internal_server_error -> return (Error (`Invalid_response_body_length response))
       | `Fixed 0L ->
-        handler response Body.empty;
+        handler response empty_client_body;
         ok
       | `Fixed _ | `Chunked | `Close_delimited as encoding ->
         let response_body = Body.create Bigstringaf.empty in

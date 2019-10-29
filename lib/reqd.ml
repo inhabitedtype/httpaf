@@ -69,7 +69,7 @@ module Writer = Serialize.Writer
  * *)
 type t =
   { request                 : Request.t
-  ; request_body            : Body.Read.t
+  ; request_body            : error Body.Read.t
   ; writer                  : Writer.t
   ; response_body_buffer    : Bigstringaf.t
   ; error_handler           : error_handler

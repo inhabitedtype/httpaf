@@ -38,12 +38,12 @@ module Oneshot = struct
   type error =
     [ `Malformed_response of string | `Invalid_response_body_length of Response.t | `Exn of exn ]
 
-  type response_handler = Response.t -> Body.Read.t  -> unit
+  type response_handler = Response.t -> error Body.Read.t  -> unit
   type error_handler = error -> unit
 
   type state =
     | Awaiting_response
-    | Received_response of Response.t * Body.Read.t
+    | Received_response of Response.t * error Body.Read.t
     | Closed
 
   type t =

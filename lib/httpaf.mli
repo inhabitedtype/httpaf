@@ -449,11 +449,11 @@ end
 module Body : sig
 
   module Read : sig
-    type t
+    type 'error t
 
     val schedule
-      :  t
-      -> on_eof  : (unit -> unit)
+      :  'error t
+      -> on_eof  : (([`Eof], 'error) Result.result -> unit)
       -> on_read : (Bigstringaf.t -> off:int -> len:int -> unit)
       -> unit
     (** [schedule_read t ~on_eof ~on_read] will setup [on_read] and [on_eof] as
@@ -465,11 +465,11 @@ module Body : sig
         The application is responsible for scheduling subsequent reads, either 
         within the [on_read] callback or by some other mechanism. *)
 
-    val close : t -> unit
+    val close : _ t -> unit
     (** [close_reader t] closes [t], indicating that any subsequent input
         received should be discarded. *)
 
-    val is_closed : t -> bool
+    val is_closed : _ t -> bool
     (** [is_closed t] is [true] if {!close} has been called on [t] and [false]
         otherwise. A closed [t] may still have pending output. *)
   end
@@ -627,8 +627,11 @@ end
 module Reqd : sig
   type t
 
+  type error =
+    [ `Bad_request | `Bad_gateway | `Internal_server_error | `Exn of exn ]
+
   val request : t -> Request.t
-  val request_body : t -> Body.Read.t
+  val request_body : t -> error Body.Read.t
 
   val response : t -> Response.t option
   val response_exn : t -> Response.t
@@ -672,8 +675,7 @@ end
 module Server_connection : sig
   type t
 
-  type error =
-    [ `Bad_request | `Bad_gateway | `Internal_server_error | `Exn of exn ]
+  type error = Reqd.error
 
   type request_handler = Reqd.t -> unit
 
@@ -766,7 +768,7 @@ module Client_connection : sig
   type error =
     [ `Malformed_response of string | `Invalid_response_body_length of Response.t | `Exn of exn ]
 
-  type response_handler = Response.t -> Body.Read.t  -> unit
+  type response_handler = Response.t -> error Body.Read.t -> unit
 
   type error_handler = error -> unit
 

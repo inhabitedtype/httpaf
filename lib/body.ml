@@ -31,17 +31,16 @@
     POSSIBILITY OF SUCH DAMAGE.
   ----------------------------------------------------------------------------*)
 
-type _ t =
+type (_, 'error) t =
   { faraday                        : Faraday.t
   ; mutable read_scheduled         : bool
   ; mutable write_final_if_chunked : bool
-  ; mutable on_eof                 : unit -> unit
+  ; mutable on_eof                 : ([`Eof], 'error) Result.result -> unit
   ; mutable on_read                : Bigstringaf.t -> off:int -> len:int -> unit
   ; mutable when_ready_to_write    : unit -> unit
   ; buffered_bytes                 : int ref
   }
 
-let default_on_eof         = Sys.opaque_identity (fun () -> ())
 let default_on_read        = Sys.opaque_identity (fun _ ~off:_ ~len:_ -> ())
 let default_ready_to_write = Sys.opaque_identity (fun () -> ())
 
@@ -49,7 +48,7 @@ let of_faraday faraday =
   { faraday
   ; read_scheduled         = false
   ; write_final_if_chunked = true
-  ; on_eof                 = default_on_eof
+  ; on_eof                 = (fun _ -> ())
   ; on_read                = default_on_read
   ; when_ready_to_write    = default_ready_to_write
   ; buffered_bytes         = ref 0
@@ -62,8 +61,6 @@ let create_empty () =
   let t = create Bigstringaf.empty in
   Faraday.close t.faraday;
   t
-
-let empty = create_empty ()
 
 let ready_to_write t =
   let callback = t.when_ready_to_write in
@@ -81,13 +78,13 @@ let rec do_execute_read t on_eof on_read =
   | `Yield           -> ()
   | `Close           ->
     t.read_scheduled <- false;
-    t.on_eof         <- default_on_eof;
+    t.on_eof         <- (fun _ -> ());
     t.on_read        <- default_on_read;
-    on_eof ()
+    on_eof (Ok `Eof)
   | `Writev []       -> assert false
   | `Writev (iovec::_) ->
     t.read_scheduled <- false;
-    t.on_eof         <- default_on_eof;
+    t.on_eof         <- (fun _ -> ());
     t.on_read        <- default_on_read;
     let { IOVec.buffer; off; len } = iovec in
     Faraday.shift t.faraday len;
@@ -163,7 +160,7 @@ let transfer_to_writer_with_encoding t ~encoding writer =
 ;;
 
 module Read = struct
-  type nonrec t = [`read] t
+  type nonrec 'error t = ([`read], 'error) t
 
   let schedule = schedule_read
 
@@ -176,7 +173,9 @@ module Read = struct
 end
 
 module Write = struct
-  type nonrec t = [`write] t
+  type nonrec t = ([`write], unit) t
+
+  let (empty : t) = create_empty ()
 
   let char t c =
     Faraday.write_char t.faraday c
