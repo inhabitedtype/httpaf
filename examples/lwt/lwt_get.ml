@@ -25,7 +25,7 @@ let main port host =
       socket
       (Request.create ~headers `GET "/")
   in
-  Body.close_writer request_body;
+  Body.Write.close request_body;
   finished
 ;;
 

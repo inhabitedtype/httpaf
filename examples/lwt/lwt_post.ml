@@ -33,8 +33,8 @@ let main port host =
       socket
       (Request.create ~headers `POST "/")
   in
-  Body.write_string request_body body;
-  Body.close_writer request_body;
+  Body.Write.string request_body body;
+  Body.Write.close request_body;
   finished
 ;;
 
