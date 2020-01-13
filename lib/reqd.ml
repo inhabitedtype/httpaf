@@ -243,15 +243,6 @@ let output_state t : Output_state.t =
   | Waiting -> Waiting
 ;;
 
-let is_complete t =
-  match input_state t with
-  | Ready    -> false
-  | Complete ->
-    (match output_state t with
-     | Waiting | Ready -> false
-     | Complete -> true)
-;;
-
 let flush_request_body t =
   let request_body = request_body t in
   if Body.has_pending_output request_body
