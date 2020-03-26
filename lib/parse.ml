@@ -125,7 +125,13 @@ let request =
     (headers              <* eol)
 
 let response =
-  let status = take_while P.is_digit >>| Status.of_string in
+  let status = 
+    take_while P.is_digit 
+    >>= fun str ->
+      if String.length str > 3
+      then fail (Printf.sprintf "status-code too long: %S" str)
+      else return (Status.of_string str)
+  in
   lift4 (fun version status reason headers ->
     Response.create ~reason ~version ~headers status)
     (version              <* char ' ')
