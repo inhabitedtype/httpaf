@@ -114,7 +114,7 @@ end
 module Headers = struct
   include Headers
 
-  let check msg ~expect actual = 
+  let check msg ~expect actual =
     Alcotest.(check (list (pair string string))) msg expect (Headers.to_list actual)
   ;;
 
@@ -122,15 +122,15 @@ module Headers = struct
     check "replace trailing element"
       ~expect:["c", "d"; "a", "d"]
       (Headers.replace
-        (Headers.of_list ["c", "d"; "a", "b"]) 
+        (Headers.of_list ["c", "d"; "a", "b"])
         "a"
         "d");
 
     check "remove multiple trailing elements"
       ~expect:["c", "d"; "a", "d"]
-      (Headers.replace 
+      (Headers.replace
         (Headers.of_list [ "c", "d"; "a", "b"; "a", "c"])
-        "a" 
+        "a"
         "d");
   ;;
 
@@ -143,13 +143,65 @@ module Headers = struct
     check "remove trailing element"
       ~expect:["c", "d"]
       (Headers.remove
-        (Headers.of_list ["c", "d"; "a", "b"]) 
+        (Headers.of_list ["c", "d"; "a", "b"])
         "a");
   ;;
 
   let tests =
     [ "remove" , `Quick, test_remove
     ; "replace", `Quick, test_replace ]
+end
+
+module Request = struct
+  include Request
+
+  let check =
+    let alco =
+      Alcotest.result
+        (Alcotest.of_pp pp_hum)
+        Alcotest.string
+    in
+    fun message ~expect input ->
+      let actual =
+        Angstrom.parse_string Httpaf_private.Parse.request input
+      in
+      Alcotest.check alco message expect actual
+  ;;
+
+  let test_parse_valid () =
+    check
+      "valid GET without headers"
+      ~expect:(Ok (Request.create `GET "/"))
+      "GET / HTTP/1.1\r\n\r\n";
+    check
+      "valid non-standard method without headers"
+      ~expect:(Ok (Request.create (`Other "some-other-verb") "/"))
+      "some-other-verb / HTTP/1.1\r\n\r\n";
+    check
+      "valid GET with headers"
+      ~expect:(Ok (Request.create ~headers:(Headers.of_list [ "Link", "/path/to/some/website"]) `GET "/"))
+      "GET / HTTP/1.1\r\nLink: /path/to/some/website\r\n\r\n";
+  ;;
+
+  let test_parse_invalid_errors () =
+    check
+      "doesn't end"
+      ~expect:(Error ": not enough input")
+      "GET / HTTP/1.1\r\n";
+    check
+      "invalid version"
+      ~expect:(Error "eol: string")
+      "GET / HTTP/1.22\r\n\r\n";
+    check
+      "malformed header"
+      ~expect:(Error "header: char ':'")
+      "GET / HTTP/1.1\r\nLink : /path/to/some/website\r\n\r\n";
+  ;;
+
+  let tests =
+    [ "parse valid"         , `Quick, test_parse_valid
+    ; "parse invalid errors", `Quick, test_parse_invalid_errors
+    ]
 end
 
 let maybe_serialize_body f body =
@@ -625,7 +677,7 @@ module Server_connection = struct
       in
       let resp_body = Reqd.respond_with_streaming reqd response in
       Body.write_string resp_body "gets partially written";
-      (* Response body never gets closed but for the purposes of the test, that's 
+      (* Response body never gets closed but for the purposes of the test, that's
        * OK. *)
     in
     let t = create ~error_handler request_handler in
@@ -871,7 +923,7 @@ module Client_connection = struct
 
   let tests =
     [ "GET"         , `Quick, test_get
-    ; "Response EOF", `Quick, test_response_eof 
+    ; "Response EOF", `Quick, test_response_eof
     ; "report_exn"  , `Quick, test_report_exn ]
 end
 
@@ -881,6 +933,7 @@ let () =
     ; "method"           , Method.tests
     ; "iovec"            , IOVec.tests
     ; "headers"          , Headers.tests
+    ; "request"          , Request.tests
     ; "client connection", Client_connection.tests
     ; "server connection", Server_connection.tests
     ]
