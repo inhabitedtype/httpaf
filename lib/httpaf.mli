@@ -826,6 +826,11 @@ end
 (**/**)
 
 module Httpaf_private : sig
+  module Parse : sig
+    val request : Request.t Angstrom.t
+    val response : Response.t Angstrom.t
+  end
+
   module Serialize : sig
     val write_request  : Faraday.t -> Request.t  -> unit
     val write_response : Faraday.t -> Response.t -> unit
