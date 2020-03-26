@@ -128,9 +128,12 @@ let response =
   let status =
     take_while P.is_digit
     >>= fun str ->
-      if String.length str > 3
-      then fail (Printf.sprintf "status-code too long: %S" str)
-      else return (Status.of_string str)
+      if String.length str = 0
+      then fail "status-code empty"
+      else (
+        if String.length str > 3
+        then fail (Printf.sprintf "status-code too long: %S" str)
+        else return (Status.of_string str))
   in
   lift4 (fun version status reason headers ->
     Response.create ~reason ~version ~headers status)
@@ -322,6 +325,6 @@ module Reader = struct
       if t.closed
       then `Close
       else `Read
-    | Fail    _ -> `Close
+    | Fail _ -> `Close
     | Partial _ -> `Read
 end
