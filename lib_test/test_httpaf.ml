@@ -232,7 +232,10 @@ module Response = struct
       "OK response without a status message"
       ~expect:(Error ": char ' '")
       "HTTP/1.1 200\r\n\r\n";
-    ()
+    check
+      "OK response without a status message"
+      ~expect:(Error ": char ' '")
+      "HTTP/1.1 999999937377999999999200\r\n\r\n";
   ;;
 
   let tests =
