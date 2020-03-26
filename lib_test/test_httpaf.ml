@@ -204,6 +204,42 @@ module Request = struct
     ]
 end
 
+module Response = struct
+  include Response
+
+  let check =
+    let alco =
+      Alcotest.result
+        (Alcotest.of_pp pp_hum)
+        Alcotest.string
+    in
+    fun message ~expect input ->
+      let actual =
+        Angstrom.parse_string Httpaf_private.Parse.response input
+      in
+      Alcotest.check alco message expect actual
+  ;;
+
+  let test_parse_valid () =
+    check
+      "OK response without headers"
+      ~expect:(Ok (Response.create `OK))
+      "HTTP/1.1 200 OK\r\n\r\n";
+  ;;
+
+  let test_parse_invalid_error () =
+    check
+      "OK response without a status message"
+      ~expect:(Error ": char ' '")
+      "HTTP/1.1 200\r\n\r\n";
+    ()
+  ;;
+
+  let tests =
+    [ "parse valid"        , `Quick, test_parse_valid
+    ; "parse invalid error", `Quick, test_parse_invalid_error ]
+end
+
 let maybe_serialize_body f body =
   match body with
   | None -> ()
@@ -934,6 +970,7 @@ let () =
     ; "iovec"            , IOVec.tests
     ; "headers"          , Headers.tests
     ; "request"          , Request.tests
+    ; "response"         , Response.tests
     ; "client connection", Client_connection.tests
     ; "server connection", Server_connection.tests
     ]
