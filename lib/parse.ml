@@ -316,15 +316,17 @@ module Reader = struct
   ;;
 
   let force_close t =
-    ignore (read_with_more t Bigstringaf.empty ~off:0 ~len:0 Complete : int);
+    t.closed <- true;
   ;;
 
   let next t =
-    match t.parse_state with
-    | Done ->
-      if t.closed
-      then `Close
-      else `Read
-    | Fail _ -> `Close
-    | Partial _ -> `Read
+    if t.closed
+    then `Close
+    else (
+      match t.parse_state with
+      | Fail _    -> `Close
+      | Done      -> `Read
+      | Partial _ -> `Read
+    )
+  ;;
 end
