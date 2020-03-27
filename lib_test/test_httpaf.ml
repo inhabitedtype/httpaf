@@ -964,10 +964,39 @@ module Client_connection = struct
       !error_message
   ;;
 
+  let test_input_shrunk () =
+    let request' = Request.create `GET "/" in
+    let response = Response.create `OK in (* not actually writen to the channel *)
+
+    let error_message = ref None in
+    let body, t =
+      request
+        request'
+        ~response_handler:(default_response_handler response)
+        ~error_handler:(function
+          | `Exn (Failure msg) -> error_message := Some msg
+          | _ -> assert false)
+    in
+    Body.close_writer body;
+    write_request  t request';
+    writer_closed  t;
+    reader_ready t;
+    let c = feed_string  t "HTTP/1.1 200 OK\r\nDate" in
+    Alcotest.(check int) "read the status line" c 17;
+    report_exn t (Failure "something went wrong");
+    connection_is_shutdown t;
+    Alcotest.(check (option string)) "something went wrong"
+      (Some "something went wrong")
+      !error_message
+  ;;
+
+
   let tests =
     [ "GET"         , `Quick, test_get
     ; "Response EOF", `Quick, test_response_eof
-    ; "report_exn"  , `Quick, test_report_exn ]
+    ; "report_exn"  , `Quick, test_report_exn 
+    ; "input_shrunk", `Quick, test_input_shrunk
+    ]
 end
 
 let () =
