@@ -95,9 +95,9 @@ let replace t name value =
       if CI.equal needle name
       then (
         if seen
-        then loop t name nv true
-        else nv::loop t name nv true)
-      else nv'::loop t name nv seen
+        then loop t needle nv true
+        else nv::loop t needle nv true)
+      else nv'::loop t needle nv seen
   in
   try loop t name (name,value) false
   with Local -> t
