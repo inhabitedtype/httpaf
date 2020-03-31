@@ -126,6 +126,13 @@ module Headers = struct
         "a"
         "d");
 
+    check "replace middle element"
+      ~expect:["e", "f"; "c", "z"; "a", "b"]
+      (Headers.replace
+         (Headers.of_list ["e", "f"; "c", "d"; "a", "b"])
+         "c"
+         "z");
+
     check "remove multiple trailing elements"
       ~expect:["c", "d"; "a", "d"]
       (Headers.replace
@@ -994,7 +1001,7 @@ module Client_connection = struct
   let tests =
     [ "GET"         , `Quick, test_get
     ; "Response EOF", `Quick, test_response_eof
-    ; "report_exn"  , `Quick, test_report_exn 
+    ; "report_exn"  , `Quick, test_report_exn
     ; "input_shrunk", `Quick, test_input_shrunk
     ]
 end
