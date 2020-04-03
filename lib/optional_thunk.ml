@@ -8,4 +8,5 @@ let some f =
 
 let is_none t = t == none
 let is_some t = not (is_none t)
+let call_if_some t = t ()
 let unchecked_value t = t

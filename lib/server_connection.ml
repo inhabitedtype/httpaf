@@ -91,7 +91,7 @@ let yield_reader t k =
 let wakeup_reader t =
   let f = t.wakeup_reader in
   t.wakeup_reader <- Optional_thunk.none;
-  Optional_thunk.unchecked_value f ()
+  Optional_thunk.call_if_some f
 ;;
 
 let on_wakeup_writer t k =
@@ -105,7 +105,7 @@ let on_wakeup_writer t k =
 let wakeup_writer t =
   let f = t.wakeup_writer in
   t.wakeup_writer <- Optional_thunk.none;
-  Optional_thunk.unchecked_value f ()
+  Optional_thunk.call_if_some f
 ;;
 
 let transfer_writer_callback t reqd =

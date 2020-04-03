@@ -92,7 +92,7 @@ let create error_handler request request_body writer response_body_buffer =
 let done_waiting when_done_waiting =
   let f = !when_done_waiting in
   when_done_waiting := Optional_thunk.none;
-  Optional_thunk.unchecked_value f ()
+  Optional_thunk.call_if_some f
 
 let request { request; _ } = request
 let request_body { request_body; _ } = request_body
