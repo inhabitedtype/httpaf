@@ -35,7 +35,7 @@ type error =
   [ `Bad_request | `Bad_gateway | `Internal_server_error | `Exn of exn ]
 
 type response_state =
-  | Waiting   of (unit -> unit) ref
+  | Waiting   of Optional_thunk.t ref
   | Complete  of Response.t
   | Streaming of Response.t * [`write] Body.t
 
@@ -78,8 +78,6 @@ type t =
   ; mutable error_code      : [`Ok | error ]
   }
 
-let default_waiting = Sys.opaque_identity (fun () -> ())
-
 let create error_handler request request_body writer response_body_buffer =
   { request
   ; request_body
@@ -87,14 +85,14 @@ let create error_handler request request_body writer response_body_buffer =
   ; response_body_buffer
   ; error_handler
   ; persistent              = Request.persistent_connection request
-  ; response_state          = Waiting (ref default_waiting)
+  ; response_state          = Waiting (ref Optional_thunk.none)
   ; error_code              = `Ok
   }
 
 let done_waiting when_done_waiting =
   let f = !when_done_waiting in
-  when_done_waiting := default_waiting;
-  f ()
+  when_done_waiting := Optional_thunk.none;
+  Optional_thunk.unchecked_value f ()
 
 let request { request; _ } = request
 let request_body { request_body; _ } = request_body
@@ -213,9 +211,9 @@ let error_code t =
 let on_more_output_available t f =
   match t.response_state with
   | Waiting when_done_waiting ->
-    if not (!when_done_waiting == default_waiting) then
-      failwith "httpaf.Reqd.on_more_output_available: only one callback can be registered at a time";
-    when_done_waiting := f
+    if Optional_thunk.is_some !when_done_waiting
+    then failwith "httpaf.Reqd.on_more_output_available: only one callback can be registered at a time";
+    when_done_waiting := Optional_thunk.some f
   | Streaming(_, response_body) ->
     Body.when_ready_to_write response_body f
   | Complete _ ->
