@@ -79,7 +79,7 @@ let schedule_bigstring t ?off ?len (b:Bigstringaf.t) =
 let ready_to_write t =
   let callback = t.when_ready_to_write in
   t.when_ready_to_write <- Optional_thunk.none;
-  Optional_thunk.unchecked_value callback ()
+  Optional_thunk.call_if_some callback
 
 let flush t kontinue =
   Faraday.flush t.faraday kontinue;
