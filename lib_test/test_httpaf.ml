@@ -272,46 +272,52 @@ let response_to_string ?body r =
   Faraday.serialize_to_string f
 
 module Read_operation = struct
-  type t = [ `Read | `Yield | `Close ]
+  type t = [ `Read | `Yield | `Close | `Upgrade ]
 
-  let pp_hum fmt t =
-    let str =
+    let pp_hum fmt (t:t) =
+      let str =
+        match t with
+        | `Read -> "Read"
+        | `Yield -> "Yield"
+        | `Close -> "Close"
+        | `Upgrade -> "Upgrade"
+      in
+      Format.pp_print_string fmt str
+    ;;
+  end
+
+  module Write_operation = struct
+    type t =
+      [ `Write of Bigstringaf.t IOVec.t list
+      | `Upgrade of Request.t * Response.t
+      | `Yield
+      | `Close of int ]
+
+    let iovecs_to_string iovecs =
+      let len = IOVec.lengthv iovecs in
+      let bytes = Bytes.create len in
+      let dst_off = ref 0 in
+      List.iter (fun { IOVec.buffer; off = src_off; len } ->
+        Bigstringaf.unsafe_blit_to_bytes buffer ~src_off bytes ~dst_off:!dst_off ~len;
+        dst_off := !dst_off + len)
+      iovecs;
+      Bytes.unsafe_to_string bytes
+    ;;
+
+    let pp_hum fmt t =
       match t with
-      | `Read -> "Read"
-      | `Yield -> "Yield"
-      | `Close -> "Close"
-    in
-    Format.pp_print_string fmt str
-  ;;
-end
+      | `Write iovecs -> Format.fprintf fmt "Write %S" (iovecs_to_string iovecs)
+      | `Yield -> Format.pp_print_string fmt "Yield"
+      | `Close len -> Format.fprintf fmt "Close %i" len
+      | `Upgrade _ -> Format.pp_print_string fmt "Upgrade"
+    ;;
 
-module Write_operation = struct
-  type t = [ `Write of Bigstringaf.t IOVec.t list | `Yield | `Close of int ]
-
-  let iovecs_to_string iovecs =
-    let len = IOVec.lengthv iovecs in
-    let bytes = Bytes.create len in
-    let dst_off = ref 0 in
-    List.iter (fun { IOVec.buffer; off = src_off; len } ->
-      Bigstringaf.unsafe_blit_to_bytes buffer ~src_off bytes ~dst_off:!dst_off ~len;
-      dst_off := !dst_off + len)
-    iovecs;
-    Bytes.unsafe_to_string bytes
-  ;;
-
-  let pp_hum fmt t =
-    match t with
-    | `Write iovecs -> Format.fprintf fmt "Write %S" (iovecs_to_string iovecs)
-    | `Yield -> Format.pp_print_string fmt "Yield"
-    | `Close len -> Format.fprintf fmt "Close %i" len
-  ;;
-
-  let to_write_as_string t =
-    match t with
-    | `Write iovecs -> Some (iovecs_to_string iovecs)
-    | `Close _ | `Yield -> None
-  ;;
-end
+    let to_write_as_string t =
+      match t with
+      | `Write iovecs -> Some (iovecs_to_string iovecs)
+      | `Close _ | `Yield | `Upgrade _ -> None
+    ;;
+  end
 
 let write_operation = Alcotest.of_pp Write_operation.pp_hum
 let read_operation = Alcotest.of_pp Read_operation.pp_hum
@@ -339,6 +345,11 @@ module Server_connection = struct
       `Read (next_read_operation t);
   ;;
 
+  let read_upgrade t =
+    Alcotest.check read_operation "Reader is requesting an upgrade"
+      `Upgrade (next_read_operation t);
+  ;;
+
   let reader_yielded t =
     Alcotest.check read_operation "Reader is in a yield state"
       `Yield (next_read_operation t);
@@ -359,6 +370,12 @@ module Server_connection = struct
 
   let write_eof t =
     report_write_result t `Closed;
+  ;;
+
+  let write_upgrade ?(msg="upgrade written") t request response =
+    Alcotest.check write_operation msg
+      (`Upgrade(request, response))
+      (next_write_operation t);
   ;;
 
   let writer_yielded t =
@@ -423,6 +440,13 @@ module Server_connection = struct
     Body.close_writer resp_body
   ;;
 
+  let read_eof_empty t =
+    let c = read_eof t Bigstringaf.empty ~off:0 ~len:0 in
+    Alcotest.(check int) "read_eof with no input returns 0" 0 c;
+    Alcotest.check read_operation "Shutting down a reader closes it"
+      `Close (next_read_operation t);
+  ;;
+
   let test_initial_reader_state () =
     let t = create default_request_handler in
     Alcotest.check read_operation "A new reader wants input"
@@ -431,15 +455,13 @@ module Server_connection = struct
 
   let test_reader_is_closed_after_eof () =
     let t = create default_request_handler in
-    let c = read_eof t Bigstringaf.empty ~off:0 ~len:0 in
-    Alcotest.(check int) "read_eof with no input returns 0" 0 c;
+    read_eof_empty t;
     connection_is_shutdown t;
 
     let t = create default_request_handler in
     let c = read t Bigstringaf.empty ~off:0 ~len:0 in
     Alcotest.(check int) "read with no input returns 0" 0 c;
-    let c = read_eof t Bigstringaf.empty ~off:0 ~len:0; in
-    Alcotest.(check int) "read_eof with no input returns 0" 0 c;
+    read_eof_empty t;
     connection_is_shutdown t;
   ;;
 
@@ -784,6 +806,18 @@ Accept-Language: en-US,en;q=0.5\r\n\r\n";
     writer_closed t;
 	;;
 
+  let test_upgrade () =
+    let request_handler reqd =
+      Reqd.respond_with_upgrade reqd Headers.empty
+    in
+    let t = create ~error_handler request_handler in
+    let request = Request.create `GET "/" ~headers:(Headers.of_list [ "Connection", "upgrade" ]) in
+    let response = Response.create `Switching_protocols in
+    read_request t request;
+    write_upgrade t request response;
+    read_upgrade t;
+  ;;
+
   let tests =
     [ "initial reader state"  , `Quick, test_initial_reader_state
     ; "shutdown reader closed", `Quick, test_reader_is_closed_after_eof
@@ -802,6 +836,7 @@ Accept-Language: en-US,en;q=0.5\r\n\r\n";
     ; "blocked write on chunked encoding", `Quick, test_blocked_write_on_chunked_encoding
     ; "writer unexpected eof", `Quick, test_unexpected_eof
     ; "input shrunk", `Quick, test_input_shrunk
+    ; "upgrade", `Quick, test_upgrade
     ]
 end
 
@@ -832,7 +867,7 @@ module Client_connection = struct
 
   let reader_ready t =
     Alcotest.check read_operation "Reader is ready"
-      `Read (next_read_operation t :> [`Close | `Read | `Yield]);
+      `Read (next_read_operation t :> Read_operation.t);
   ;;
 
   let write_string ?(msg="output written") t str =
@@ -850,17 +885,17 @@ module Client_connection = struct
 
   let writer_yielded t =
     Alcotest.check write_operation "Writer is in a yield state"
-      `Yield (next_write_operation t);
+      `Yield (next_write_operation t :> Write_operation.t);
   ;;
 
   let writer_closed t =
     Alcotest.check write_operation "Writer is closed"
-      (`Close 0) (next_write_operation t);
+      (`Close 0) (next_write_operation t :> Write_operation.t);
   ;;
 
   let connection_is_shutdown t =
     Alcotest.check read_operation "Reader is closed"
-      `Close (next_read_operation t :> [`Close | `Read | `Yield]);
+      `Close (next_read_operation t :> Read_operation.t);
     writer_closed t;
   ;;
 

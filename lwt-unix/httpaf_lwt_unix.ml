@@ -34,6 +34,7 @@
 
 open Lwt.Infix
 
+(* Based on the Buffer module in httpaf_async.ml. *)
 module Buffer : sig
   type t
 
@@ -103,10 +104,29 @@ let shutdown socket command =
   try Lwt_unix.shutdown socket command
   with Unix.Unix_error (Unix.ENOTCONN, _, _) -> ()
 
-module Config = Httpaf.Config
-
 module Server = struct
-  let create_connection_handler ?(config=Config.default) ~request_handler ~error_handler =
+  module Upgrade = struct
+    type t =
+      | Ignore
+      | Raise
+      | Handle of (Lwt_unix.file_descr -> Httpaf.Request.t -> Httpaf.Response.t -> unit Lwt.t)
+
+    let to_handler = function
+      | Ignore -> (fun socket _request _response -> Lwt_unix.close socket)
+      | Raise  -> 
+        (fun socket _request _response ->
+          Lwt.async (fun () -> Lwt_unix.close socket);
+          failwith "Upgrades not supported by server")
+      | Handle handler -> handler
+  end
+
+  let create_connection_handler 
+    ?(config=Httpaf.Config.default) 
+    ~upgrade_handler
+    ~request_handler 
+    ~error_handler
+    =
+    let upgrade_handler = Upgrade.to_handler upgrade_handler in
     fun client_addr socket ->
       let module Server_connection = Httpaf.Server_connection in
       let connection =
@@ -139,7 +159,7 @@ module Server = struct
           | `Yield ->
             Server_connection.yield_reader connection read_loop;
             Lwt.return_unit
-
+          | `Upgrade -> Lwt.return_unit
           | `Close ->
             Lwt.wakeup_later notify_read_loop_exited ();
             if not (Lwt_unix.state socket = Lwt_unix.Closed) then begin
@@ -167,11 +187,11 @@ module Server = struct
             writev io_vectors >>= fun result ->
             Server_connection.report_write_result connection result;
             write_loop_step ()
-
+          | `Upgrade(request, response) ->
+            upgrade_handler socket request response
           | `Yield ->
             Server_connection.yield_writer connection write_loop;
             Lwt.return_unit
-
           | `Close _ ->
             Lwt.wakeup_later notify_write_loop_exited ();
             if not (Lwt_unix.state socket = Lwt_unix.Closed) then begin
@@ -201,10 +221,8 @@ module Server = struct
         Lwt.return_unit
 end
 
-
-
 module Client = struct
-  let request ?(config=Config.default) socket request ~error_handler ~response_handler =
+  let request ?(config=Httpaf.Config.default) socket request ~error_handler ~response_handler =
     let module Client_connection = Httpaf.Client_connection in
     let request_body, connection =
       Client_connection.request ~config request ~error_handler ~response_handler in
