@@ -215,24 +215,32 @@ let advance_request_queue_if_necessary t =
       wakeup_writer t;
       if Reqd.is_complete reqd
       then shutdown t
-      else if not (Reqd.requires_input reqd)
-      then shutdown_reader t
+      else (
+        match Reqd.input_state reqd with
+        | Provide  -> ()
+        | Complete -> shutdown_reader t)
     end
-  end else if Reader.is_closed t.reader
-  then shutdown t
+  end else
+    if Reader.is_closed t.reader
+    then shutdown t
+;;
 
 let _next_read_operation t =
   advance_request_queue_if_necessary t;
-  if is_active t then begin
+  if is_active t
+  then (
     let reqd = current_reqd_exn t in
-    if      Reqd.requires_input        reqd then Reader.next t.reader
-    else if Reqd.persistent_connection reqd then `Yield
-    else begin
-      shutdown_reader t;
-      Reader.next t.reader
-    end
-  end else
-    Reader.next t.reader
+    match Reqd.input_state reqd with
+    | Provide  -> Reader.next t.reader
+    | Complete ->
+      if Reqd.persistent_connection reqd
+      then `Yield
+      else (
+        shutdown_reader t;
+        Reader.next t.reader)
+  )
+  else Reader.next t.reader
+;;
 
 let next_read_operation t =
   match _next_read_operation t with
@@ -277,13 +285,25 @@ let report_write_result t result =
   Writer.report_result t.writer result
 
 let yield_writer t k =
-  if is_active t then begin
+  if is_active t
+  then (
     let reqd = current_reqd_exn t in
-    if Reqd.requires_output reqd
-    then Reqd.on_more_output_available reqd k
-    else if Reqd.persistent_connection reqd
-    then on_wakeup_writer t k
-    else begin shutdown t; k () end
-  end else if Writer.is_closed t.writer then k () else begin
-    on_wakeup_writer t k
-  end
+    match Reqd.output_state reqd with
+    | Complete ->
+      if Reqd.persistent_connection reqd
+      then on_wakeup_writer t k
+      else (
+        shutdown t;
+        k ())
+    | Wait    -> Reqd.on_more_output_available reqd k
+    | Consume ->
+      (* State machine violation. If there is something to consume then the
+         caller should not be trying to register a callback. *)
+      assert false;
+  )
+  else (
+    if Writer.is_closed t.writer
+    then k ()
+    else on_wakeup_writer t k
+  )
+;;
