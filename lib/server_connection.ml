@@ -215,24 +215,30 @@ let advance_request_queue_if_necessary t =
       wakeup_writer t;
       if Reqd.is_complete reqd
       then shutdown t
-      else if not (Reqd.requires_input reqd)
-      then shutdown_reader t
+      else
+        match Reqd.input_state reqd with
+        | Ready -> ()
+        | Complete -> shutdown_reader t
     end
   end else if Reader.is_closed t.reader
   then shutdown t
 
 let _next_read_operation t =
   advance_request_queue_if_necessary t;
-  if is_active t then begin
+  if is_active t
+  then (
     let reqd = current_reqd_exn t in
-    if      Reqd.requires_input        reqd then Reader.next t.reader
-    else if Reqd.persistent_connection reqd then `Yield
-    else begin
-      shutdown_reader t;
-      Reader.next t.reader
-    end
-  end else
-    Reader.next t.reader
+    match Reqd.input_state reqd with
+    | Ready    -> Reader.next t.reader
+    | Complete ->
+      if Reqd.persistent_connection reqd
+      then `Yield
+      else (
+        shutdown_reader t;
+        Reader.next t.reader)
+  )
+  else Reader.next t.reader
+;;
 
 let next_read_operation t =
   match _next_read_operation t with
