@@ -34,10 +34,12 @@
 type error =
   [ `Bad_request | `Bad_gateway | `Internal_server_error | `Exn of exn ]
 
-type response_state =
-  | Waiting   of Optional_thunk.t ref
-  | Complete  of Response.t
-  | Streaming of Response.t * [`write] Body.t
+module Response_state = struct
+  type t =
+    | Waiting   of Optional_thunk.t ref
+    | Complete  of Response.t
+    | Streaming of Response.t * [`write] Body.t
+end
 
 type error_handler =
   ?request:Request.t -> error -> (Headers.t -> [`write] Body.t) -> unit
@@ -74,7 +76,7 @@ type t =
   ; response_body_buffer    : Bigstringaf.t
   ; error_handler           : error_handler
   ; mutable persistent      : bool
-  ; mutable response_state  : response_state
+  ; mutable response_state  : Response_state.t
   ; mutable error_code      : [`Ok | error ]
   }
 
