@@ -170,7 +170,7 @@ module Request = struct
     in
     fun message ~expect input ->
       let actual =
-        Angstrom.parse_string Httpaf_private.Parse.request input
+        Angstrom.parse_string ~consume:All Httpaf_private.Parse.request input
       in
       Alcotest.check alco message expect actual
   ;;
@@ -222,7 +222,7 @@ module Response = struct
     in
     fun message ~expect input ->
       let actual =
-        Angstrom.parse_string Httpaf_private.Parse.response input
+        Angstrom.parse_string ~consume:All Httpaf_private.Parse.response input
       in
       Alcotest.check alco message expect actual
   ;;
