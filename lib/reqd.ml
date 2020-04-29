@@ -41,6 +41,12 @@ module Response_state = struct
     | Streaming of Response.t * [`write] Body.t
 end
 
+module Input_state = struct
+  type t =
+    | Ready
+    | Complete
+end
+
 type error_handler =
   ?request:Request.t -> error -> (Headers.t -> [`write] Body.t) -> unit
 
@@ -224,8 +230,11 @@ let on_more_output_available t f =
 let persistent_connection t =
   t.persistent
 
-let requires_input { request_body; _ } =
-  not (Body.is_closed request_body)
+let input_state t : Input_state.t =
+  if Body.is_closed t.request_body
+  then Complete
+  else Ready
+;;
 
 let requires_output { response_state; _ } =
   match response_state with
@@ -236,7 +245,10 @@ let requires_output { response_state; _ } =
   | Waiting _ -> true
 
 let is_complete t =
-  not (requires_input t || requires_output t)
+  match input_state t with
+  | Complete -> not (requires_output t)
+  | Ready    -> false
+;;
 
 let flush_request_body t =
   let request_body = request_body t in
