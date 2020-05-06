@@ -187,13 +187,6 @@ module Oneshot = struct
     bytes_read
   ;;
 
-  let next_write_operation t =
-    flush_request_body t;
-    if Body.is_closed t.request_body
-    then Writer.close t.writer;
-    Writer.next t.writer
-  ;;
-
   let yield_writer t k =
     if Body.is_closed t.request_body
     then begin
@@ -201,6 +194,16 @@ module Oneshot = struct
       k ()
     end else
       Body.when_ready_to_write t.request_body k
+  ;;
+
+  let next_write_operation t ~k =
+    flush_request_body t;
+    if Body.is_closed t.request_body
+    then Writer.close t.writer;
+    match Writer.next t.writer with
+    | (`Close _ | `Write _) as operation -> operation
+    | `Yield -> yield_writer t k; `Yielded
+  ;;
 
   let report_write_result t result =
     Writer.report_result t.writer result

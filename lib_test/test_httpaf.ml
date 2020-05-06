@@ -272,13 +272,13 @@ let response_to_string ?body r =
   Faraday.serialize_to_string f
 
 module Read_operation = struct
-  type t = [ `Read | `Yield | `Close ]
+  type t = [ `Read | `Yielded | `Close ]
 
   let pp_hum fmt t =
     let str =
       match t with
       | `Read -> "Read"
-      | `Yield -> "Yield"
+      | `Yielded -> "Yielded"
       | `Close -> "Close"
     in
     Format.pp_print_string fmt str
@@ -286,7 +286,7 @@ module Read_operation = struct
 end
 
 module Write_operation = struct
-  type t = [ `Write of Bigstringaf.t IOVec.t list | `Yield | `Close of int ]
+  type t = [ `Write of Bigstringaf.t IOVec.t list | `Yielded | `Close of int ]
 
   let iovecs_to_string iovecs =
     let len = IOVec.lengthv iovecs in
@@ -302,14 +302,14 @@ module Write_operation = struct
   let pp_hum fmt t =
     match t with
     | `Write iovecs -> Format.fprintf fmt "Write %S" (iovecs_to_string iovecs)
-    | `Yield -> Format.pp_print_string fmt "Yield"
+    | `Yielded -> Format.pp_print_string fmt "Yielded"
     | `Close len -> Format.fprintf fmt "Close %i" len
   ;;
 
   let to_write_as_string t =
     match t with
     | `Write iovecs -> Some (iovecs_to_string iovecs)
-    | `Close _ | `Yield -> None
+    | `Close _ | `Yielded -> None
   ;;
 end
 
@@ -336,19 +336,25 @@ module Server_connection = struct
 
   let reader_ready t =
     Alcotest.check read_operation "Reader is ready"
-      `Read (next_read_operation t);
+      `Read (next_read_operation t ~k:ignore)
   ;;
 
-  let reader_yielded t =
+  let reader_yielded ?(k = ignore) t =
     Alcotest.check read_operation "Reader is in a yield state"
-      `Yield (next_read_operation t);
+      `Yielded (next_read_operation t ~k);
   ;;
+
+  let reader_closed t =
+    Alcotest.check read_operation "Reader is closed"
+      `Close (next_read_operation t ~k:ignore)
+
 
   let write_string ?(msg="output written") t str =
     let len = String.length str in
     Alcotest.(check (option string)) msg
       (Some str)
-      (next_write_operation t |> Write_operation.to_write_as_string);
+      (next_write_operation t ~k:(fun () -> failwith "should not have yielded")
+      |> Write_operation.to_write_as_string);
     report_write_result t (`Ok len);
   ;;
 
@@ -361,19 +367,19 @@ module Server_connection = struct
     report_write_result t `Closed;
   ;;
 
-  let writer_yielded t =
+  let writer_yielded ?(k = ignore) t =
     Alcotest.check write_operation "Writer is in a yield state"
-      `Yield (next_write_operation t);
+      `Yielded (next_write_operation t ~k);
   ;;
 
   let writer_closed ?(unread = 0) t =
     Alcotest.check write_operation "Writer is closed"
-      (`Close unread) (next_write_operation t);
+      (`Close unread) (next_write_operation t ~k:ignore)
   ;;
 
   let connection_is_shutdown t =
     Alcotest.check read_operation "Reader is closed"
-      `Close (next_read_operation t);
+      `Close (next_read_operation t ~k:ignore);
     writer_closed  t;
   ;;
 
@@ -426,7 +432,7 @@ module Server_connection = struct
   let test_initial_reader_state () =
     let t = create default_request_handler in
     Alcotest.check read_operation "A new reader wants input"
-      `Read (next_read_operation t);
+      `Read (next_read_operation t ~k:ignore)
   ;;
 
   let test_reader_is_closed_after_eof () =
@@ -601,10 +607,10 @@ module Server_connection = struct
   let test_synchronous_error () =
     let writer_woken_up = ref false in
     let t = create ~error_handler synchronous_raise in
-    yield_writer t (fun () -> writer_woken_up := true);
+    writer_yielded t ~k:(fun () -> writer_woken_up := true);
     read_request t (Request.create `GET "/");
     Alcotest.check read_operation "Error shuts down the reader"
-      `Close (next_read_operation t);
+      `Close (next_read_operation t ~k:ignore);
     Alcotest.(check bool) "Writer woken up"
       true !writer_woken_up;
     write_response t
@@ -621,12 +627,12 @@ module Server_connection = struct
         error_handler ?request error start_response)
     in
     let t = create ~error_handler synchronous_raise in
-    writer_yielded t;
-    yield_writer t (fun () -> writer_woken_up := true);
+    writer_yielded t ~k:(fun () -> writer_woken_up := true);
     read_request t (Request.create `GET "/");
     Alcotest.check read_operation "Error shuts down the reader"
-      `Close (next_read_operation t);
-    writer_yielded t;
+      `Close (next_read_operation t ~k:ignore);
+    Alcotest.(check bool) "Writer woken up"
+      false !writer_woken_up;
     !continue ();
     Alcotest.(check bool) "Writer woken up"
       true !writer_woken_up;
@@ -644,14 +650,14 @@ module Server_connection = struct
     in
     let writer_woken_up = ref false in
     let t = create ~error_handler asynchronous_raise in
-    writer_yielded t;
-    yield_writer t (fun () -> writer_woken_up := true);
+    writer_yielded t ~k:(fun () -> writer_woken_up := true);
     read_request t (Request.create `GET "/");
-    writer_yielded t;
+    Alcotest.(check bool) "Writer woken up"
+      false !writer_woken_up;
     reader_yielded t;
     !continue ();
     Alcotest.check read_operation "Error shuts down the reader"
-      `Close (next_read_operation t);
+      `Close (next_read_operation t ~k:ignore);
     Alcotest.(check bool) "Writer woken up"
       true !writer_woken_up;
     write_response t
@@ -672,16 +678,17 @@ module Server_connection = struct
     in
     let writer_woken_up = ref false in
     let t = create ~error_handler asynchronous_raise in
-    writer_yielded t;
-    yield_writer   t (fun () -> writer_woken_up := true);
+    writer_yielded t ~k:(fun () -> writer_woken_up := true);
     read_request   t (Request.create `GET "/");
-    writer_yielded t;
+    Alcotest.(check bool) "Writer woken up"
+      false !writer_woken_up;
     reader_yielded t;
     !continue_request ();
-    writer_yielded t;
+    Alcotest.(check bool) "Writer woken up"
+      false !writer_woken_up;
     !continue_error ();
     Alcotest.check read_operation "Error shuts down the reader"
-      `Close (next_read_operation t);
+      `Close (next_read_operation t ~k:ignore);
     Alcotest.(check bool) "Writer woken up"
       true !writer_woken_up;
     write_response t
@@ -716,7 +723,7 @@ module Server_connection = struct
       ~msg:"Final chunk written"
       "0\r\n\r\n";
     Alcotest.check read_operation "Keep-alive"
-      `Read (next_read_operation t);
+      `Read (next_read_operation t ~k:ignore);
   ;;
 
   let test_blocked_write_on_chunked_encoding () =
@@ -736,11 +743,13 @@ module Server_connection = struct
     let first_write = "HTTP/1.1 200 OK\r\nTransfer-encoding: chunked\r\n\r\n16\r\ngets partially written\r\n" in
     Alcotest.(check (option string)) "first write"
       (Some first_write)
-      (next_write_operation t |> Write_operation.to_write_as_string);
+      (next_write_operation t ~k:ignore
+      |> Write_operation.to_write_as_string);
     report_write_result t (`Ok 16);
     Alcotest.(check (option string)) "second write"
       (Some (String.sub first_write 16 (String.length first_write - 16)))
-      (next_write_operation t |> Write_operation.to_write_as_string);
+      (next_write_operation t ~k:ignore
+      |> Write_operation.to_write_as_string);
   ;;
 
   let test_unexpected_eof () =
@@ -767,8 +776,9 @@ module Server_connection = struct
     in
     let t = create ~error_handler request_handler in
     reader_ready t;
-    writer_yielded t;
-    yield_writer t (fun () ->
+    let writer_woken_up = ref false in
+    writer_yielded t ~k:(fun () ->
+      writer_woken_up := true;
       write_response t (Response.create `OK);
     );
     let len = feed_string t "GET /v1/b HTTP/1.1\r\nH" in
@@ -777,9 +787,10 @@ module Server_connection = struct
 Connection: close\r\n\
 Accept: application/json, text/plain, */*\r\n\
 Accept-Language: en-US,en;q=0.5\r\n\r\n";
-    writer_yielded t;
+    Alcotest.(check bool) "Writer still yielded"
+      false !writer_woken_up;
     Alcotest.check read_operation "reader closed"
-      `Close (next_read_operation t);
+      `Close (next_read_operation t ~k:ignore);
     !continue_response ();
     writer_closed t;
 	;;
@@ -832,14 +843,14 @@ module Client_connection = struct
 
   let reader_ready t =
     Alcotest.check read_operation "Reader is ready"
-      `Read (next_read_operation t :> [`Close | `Read | `Yield]);
+      `Read (next_read_operation t :> [`Close | `Read | `Yielded]);
   ;;
 
   let write_string ?(msg="output written") t str =
     let len = String.length str in
     Alcotest.(check (option string)) msg
       (Some str)
-      (next_write_operation t |> Write_operation.to_write_as_string);
+      (next_write_operation t ~k:ignore |> Write_operation.to_write_as_string);
     report_write_result t (`Ok len);
   ;;
 
@@ -848,19 +859,19 @@ module Client_connection = struct
     write_string ~msg t request_string
   ;;
 
-  let writer_yielded t =
+  let writer_yielded ?(k = ignore) t  =
     Alcotest.check write_operation "Writer is in a yield state"
-      `Yield (next_write_operation t);
+      `Yielded (next_write_operation t ~k);
   ;;
 
   let writer_closed t =
     Alcotest.check write_operation "Writer is closed"
-      (`Close 0) (next_write_operation t);
+      (`Close 0) (next_write_operation t ~k:ignore);
   ;;
 
   let connection_is_shutdown t =
     Alcotest.check read_operation "Reader is closed"
-      `Close (next_read_operation t :> [`Close | `Read | `Yield]);
+      `Close (next_read_operation t :> [`Close | `Read | `Yielded]);
     writer_closed t;
   ;;
 

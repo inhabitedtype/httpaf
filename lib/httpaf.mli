@@ -459,8 +459,8 @@ module Body : sig
       consume, or when the input channel has been closed and no further bytes
       will be received by the application.
 
-      Once either of these callbacks have been called, they become inactive. 
-      The application is responsible for scheduling subsequent reads, either 
+      Once either of these callbacks have been called, they become inactive.
+      The application is responsible for scheduling subsequent reads, either
       within the [on_read] callback or by some other mechanism. *)
 
   val write_char : [`write] t -> char -> unit
@@ -481,7 +481,7 @@ module Body : sig
   val schedule_bigstring : [`write] t -> ?off:int -> ?len:int -> Bigstringaf.t -> unit
   (** [schedule_bigstring w ?off ?len bs] schedules [bs] to be transmitted at
       the next opportunity without performing a copy. [bs] should not be
-      modified until a subsequent call to {!flush} has successfully 
+      modified until a subsequent call to {!flush} has successfully
       completed. *)
 
   val flush : [`write] t -> (unit -> unit) -> unit
@@ -721,11 +721,6 @@ module Server_connection : sig
         {- [`Closed] indicates that the output destination will no longer
         accept bytes from the write processor. }} *)
 
-  val yield_writer : t -> (unit -> unit) -> unit
-  (** [yield_writer t continue] registers with the connection to call
-      [continue] when writing should resume. {!yield_writer} should be called
-      after {next_write_operation} returns a [`Yield] value. *)
-
   val report_exn : t -> exn -> unit
   (** [report_exn t exn] reports that an error [exn] has been caught and
       that it has been attributed to [t]. Calling this function will switch [t]
@@ -779,17 +774,19 @@ module Client_connection : sig
       connection to consume. *)
 
   val read_eof : t -> Bigstringaf.t -> off:int -> len:int -> int
-  (** [read_eof t bigstring ~off ~len] reads bytes of input from the provided 
+  (** [read_eof t bigstring ~off ~len] reads bytes of input from the provided
       range of [bigstring] and returns the number of bytes consumed by the
       connection.  {!read_eof} should be called after {!next_read_operation}
       returns a [`Read] and an EOF has been received from the communication
       channel. The connection will attempt to consume any buffered input and
       then shutdown the HTTP parser for the connection. *)
 
-  val next_write_operation : t -> [
-    | `Write of Bigstringaf.t IOVec.t list
-    | `Yield
-    | `Close of int ]
+  val next_write_operation
+    :  t
+    -> k:(unit -> unit)
+    -> [ `Write of Bigstringaf.t IOVec.t list
+       | `Yielded
+       | `Close of int ]
   (** [next_write_operation t] returns a value describing the next operation
       that the caller should conduct on behalf of the connection. *)
 
