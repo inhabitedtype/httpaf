@@ -100,7 +100,7 @@ module Server = struct
       let read_complete = Ivar.create () in
       let buffer = Buffer.create config.read_buffer_size in
       let rec reader_thread () =
-        match Server_connection.next_read_operation conn with
+        match Server_connection.next_read_operation conn ~k:reader_thread with
         | `Read ->
           (* Log.Global.printf "read(%d)%!" (Fd.to_int_exn fd); *)
           read fd buffer
@@ -116,9 +116,7 @@ module Server = struct
               |> ignore;
               reader_thread ()
           end
-        | `Yield  ->
-          (* Log.Global.printf "read_yield(%d)%!" (Fd.to_int_exn fd); *)
-          Server_connection.yield_reader conn reader_thread
+        | `Yielded -> ()
         | `Close ->
           (* Log.Global.printf "read_close(%d)%!" (Fd.to_int_exn fd); *)
           Ivar.fill read_complete ();
@@ -127,15 +125,13 @@ module Server = struct
       in
       let write_complete = Ivar.create () in
       let rec writer_thread () =
-        match Server_connection.next_write_operation conn with
+        match Server_connection.next_write_operation conn ~k:writer_thread with
         | `Write iovecs ->
           (* Log.Global.printf "write(%d)%!" (Fd.to_int_exn fd); *)
           writev iovecs >>> fun result ->
             Server_connection.report_write_result conn result;
             writer_thread ()
-        | `Yield ->
-          (* Log.Global.printf "write_yield(%d)%!" (Fd.to_int_exn fd); *)
-          Server_connection.yield_writer conn writer_thread;
+        | `Yielded -> ()
         | `Close _ ->
           (* Log.Global.printf "write_close(%d)%!" (Fd.to_int_exn fd); *)
           Ivar.fill write_complete ();

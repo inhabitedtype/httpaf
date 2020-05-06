@@ -121,7 +121,7 @@ module Server = struct
 
       let rec read_loop () =
         let rec read_loop_step () =
-          match Server_connection.next_read_operation connection with
+          match Server_connection.next_read_operation connection ~k:read_loop with
           | `Read ->
             read socket read_buffer >>= begin function
             | `Eof ->
@@ -136,10 +136,7 @@ module Server = struct
               read_loop_step ()
             end
 
-          | `Yield ->
-            Server_connection.yield_reader connection read_loop;
-            Lwt.return_unit
-
+          | `Yielded -> Lwt.return_unit
           | `Close ->
             Lwt.wakeup_later notify_read_loop_exited ();
             if not (Lwt_unix.state socket = Lwt_unix.Closed) then begin
@@ -162,16 +159,13 @@ module Server = struct
 
       let rec write_loop () =
         let rec write_loop_step () =
-          match Server_connection.next_write_operation connection with
+          match Server_connection.next_write_operation connection ~k:write_loop with
           | `Write io_vectors ->
             writev io_vectors >>= fun result ->
             Server_connection.report_write_result connection result;
             write_loop_step ()
 
-          | `Yield ->
-            Server_connection.yield_writer connection write_loop;
-            Lwt.return_unit
-
+          | `Yielded -> Lwt.return_unit
           | `Close _ ->
             Lwt.wakeup_later notify_write_loop_exited ();
             if not (Lwt_unix.state socket = Lwt_unix.Closed) then begin

@@ -240,11 +240,12 @@ let _next_read_operation t =
   else Reader.next t.reader
 ;;
 
-let next_read_operation t =
+let next_read_operation t ~k =
   match _next_read_operation t with
   | `Error (`Parse _)             -> set_error_and_handle          t `Bad_request; `Close
   | `Error (`Bad_request request) -> set_error_and_handle ~request t `Bad_request; `Close
-  | (`Read | `Yield | `Close) as operation -> operation
+  | `Yield -> yield_reader t k; `Yielded
+  | (`Read | `Close) as operation -> operation
 
 let read_with_more t bs ~off ~len more =
   let call_handler = Queue.is_empty t.request_queue in
@@ -274,14 +275,6 @@ let flush_response_body t =
     Reqd.flush_response_body reqd
 ;;
 
-let next_write_operation t =
-  advance_request_queue_if_necessary t;
-  flush_response_body t;
-  Writer.next t.writer
-
-let report_write_result t result =
-  Writer.report_result t.writer result
-
 let yield_writer t k =
   if is_active t then begin
     let reqd = current_reqd_exn t in
@@ -293,3 +286,17 @@ let yield_writer t k =
   end else if Writer.is_closed t.writer then k () else begin
     on_wakeup_writer t k
   end
+;;
+
+let _next_write_operation t =
+  advance_request_queue_if_necessary t;
+  flush_response_body t;
+  Writer.next t.writer
+
+let next_write_operation t ~k =
+  match _next_write_operation t with
+  | (`Close _ | `Write _) as operation -> operation
+  | `Yield -> yield_writer t k; `Yielded
+
+let report_write_result t result =
+  Writer.report_result t.writer result
