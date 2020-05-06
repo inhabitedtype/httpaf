@@ -37,15 +37,19 @@ type error =
 module Response_state = struct
   type t =
     | Waiting
-    | Complete  of Response.t
-    (* XXX(dpatti): The name [Complete] makes me think that [Streaming] ends up
-       in [Complete] eventually, but it really means the request was written in
-       one shot with [write_string] or [write_bigstring]. *)
+    | Fixed     of Response.t
     | Streaming of Response.t * [`write] Body.t
 end
 
 module Input_state = struct
   type t =
+    | Ready
+    | Complete
+end
+
+module Output_state = struct
+  type t =
+    | Waiting
     | Ready
     | Complete
 end
@@ -106,14 +110,14 @@ let request_body { request_body; _ } = request_body
 let response { response_state; _ } =
   match response_state with
   | Waiting -> None
-  | Streaming(response, _)
-  | Complete (response) -> Some response
+  | Streaming (response, _)
+  | Fixed response -> Some response
 
 let response_exn { response_state; _ } =
   match response_state with
   | Waiting -> failwith "httpaf.Reqd.response_exn: response has not started"
-  | Streaming(response, _)
-  | Complete (response) -> response
+  | Streaming (response, _)
+  | Fixed response -> response
 
 let respond_with_string t response str =
   if t.error_code <> `Ok then
@@ -121,15 +125,15 @@ let respond_with_string t response str =
   match t.response_state with
   | Waiting ->
     (* XXX(seliopou): check response body length *)
-    Writer.write_response  t.writer response;
+    Writer.write_response t.writer response;
     Writer.write_string t.writer str;
     if t.persistent then
       t.persistent <- Response.persistent_connection response;
-    t.response_state <- Complete response;
+    t.response_state <- Fixed response;
     Writer.wakeup t.writer;
   | Streaming _ ->
     failwith "httpaf.Reqd.respond_with_string: response already started"
-  | Complete _ ->
+  | Fixed _ ->
     failwith "httpaf.Reqd.respond_with_string: response already complete"
 
 let respond_with_bigstring t response (bstr:Bigstringaf.t) =
@@ -142,11 +146,11 @@ let respond_with_bigstring t response (bstr:Bigstringaf.t) =
     Writer.schedule_bigstring t.writer bstr;
     if t.persistent then
       t.persistent <- Response.persistent_connection response;
-    t.response_state <- Complete response;
+    t.response_state <- Fixed response;
     Writer.wakeup t.writer;
   | Streaming _ ->
     failwith "httpaf.Reqd.respond_with_bigstring: response already started"
-  | Complete _ ->
+  | Fixed _ ->
     failwith "httpaf.Reqd.respond_with_bigstring: response already complete"
 
 let unsafe_respond_with_streaming ~flush_headers_immediately t response =
@@ -159,14 +163,14 @@ let unsafe_respond_with_streaming ~flush_headers_immediately t response =
     Writer.write_response t.writer response;
     if t.persistent then
       t.persistent <- Response.persistent_connection response;
-    t.response_state <- Streaming(response, response_body);
+    t.response_state <- Streaming (response, response_body);
     if flush_headers_immediately
     then Writer.wakeup t.writer
     else Writer.yield t.writer;
     response_body
   | Streaming _ ->
     failwith "httpaf.Reqd.respond_with_streaming: response already started"
-  | Complete _ ->
+  | Fixed _ ->
     failwith "httpaf.Reqd.respond_with_streaming: response already complete"
 
 let respond_with_streaming ?(flush_headers_immediately=false) t response =
@@ -192,12 +196,12 @@ let report_error t error =
      * outstanding call to the [error_handler], but an intervening exception
      * has been reported as well. *)
     failwith "httpaf.Reqd.report_exn: NYI"
-  | Streaming(_response, response_body), `Ok ->
+  | Streaming (_response, response_body), `Ok ->
     Body.close_writer response_body
-  | Streaming(_response, response_body), `Exn _ ->
+  | Streaming (_response, response_body), `Exn _ ->
     Body.close_writer response_body;
     Writer.close_and_drain t.writer
-  | (Complete _ | Streaming _ | Waiting) , _ ->
+  | (Fixed _ | Streaming _ | Waiting) , _ ->
     (* XXX(seliopou): Once additional logging support is added, log the error
      * in case it is not spurious. *)
     ()
@@ -227,18 +231,25 @@ let input_state t : Input_state.t =
   else Ready
 ;;
 
-let requires_output { response_state; _ } =
-  match response_state with
-  | Complete _ -> false
+let output_state t : Output_state.t =
+  match t.response_state with
+  | Fixed _ -> Complete
   | Streaming (_, response_body) ->
-    not (Body.is_closed response_body)
-    || Body.has_pending_output response_body
-  | Waiting -> true
+    if Body.has_pending_output response_body
+    then Ready
+    else if Body.is_closed response_body
+    then Complete
+    else Waiting
+  | Waiting -> Waiting
+;;
 
 let is_complete t =
   match input_state t with
-  | Complete -> not (requires_output t)
   | Ready    -> false
+  | Complete ->
+    (match output_state t with
+     | Waiting | Ready -> false
+     | Complete -> true)
 ;;
 
 let flush_request_body t =
