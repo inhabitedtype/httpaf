@@ -182,15 +182,13 @@ module Client = struct
     in
     let write_complete = Ivar.create () in
     let rec writer_thread () =
-      match Client_connection.next_write_operation conn with
+      match Client_connection.next_write_operation conn ~k:writer_thread with
       | `Write iovecs ->
         (* Log.Global.printf "write(%d)%!" (Fd.to_int_exn fd); *)
         writev iovecs >>> fun result ->
           Client_connection.report_write_result conn result;
           writer_thread ()
-      | `Yield ->
-        (* Log.Global.printf "write_yield(%d)%!" (Fd.to_int_exn fd); *)
-        Client_connection.yield_writer conn writer_thread;
+      | `Yielded -> ()
       | `Close _ ->
         (* Log.Global.printf "write_close(%d)%!" (Fd.to_int_exn fd); *)
         Ivar.fill write_complete ();

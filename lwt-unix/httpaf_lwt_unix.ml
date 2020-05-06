@@ -246,16 +246,13 @@ module Client = struct
 
     let rec write_loop () =
       let rec write_loop_step () =
-        match Client_connection.next_write_operation connection with
+        match Client_connection.next_write_operation connection ~k:write_loop with
         | `Write io_vectors ->
           writev io_vectors >>= fun result ->
           Client_connection.report_write_result connection result;
           write_loop_step ()
 
-        | `Yield ->
-          Client_connection.yield_writer connection write_loop;
-          Lwt.return_unit
-
+        | `Yielded -> Lwt.return_unit
         | `Close _ ->
           Lwt.wakeup_later notify_write_loop_exited ();
           Lwt.return_unit
