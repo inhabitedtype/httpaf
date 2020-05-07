@@ -98,6 +98,9 @@ module Writer = struct
       (* The number of bytes that were not written due to the output stream
        * being closed before all buffered output could be written. Useful for
        * detecting error cases. *)
+    ; mutable wakeup        : Optional_thunk.t
+      (* The callback from the runtime to be invoked when output is ready to be
+       * flushed. *)
     }
 
   let create ?(buffer_size=0x800) () =
@@ -106,6 +109,7 @@ module Writer = struct
     { buffer
     ; encoder
     ; drained_bytes = 0
+    ; wakeup = Optional_thunk.none
     }
 
   let faraday t = t.encoder
@@ -139,6 +143,20 @@ module Writer = struct
     schedule_fixed t iovecs;
     write_crlf     t.encoder
 
+  let on_wakeup t k =
+    if Faraday.is_closed t.encoder
+    then failwith "on_wakeup on closed writer"
+    else if Optional_thunk.is_some t.wakeup
+    then failwith "on_wakeup: only one callback can be registered at a time"
+    else t.wakeup <- Optional_thunk.some k
+  ;;
+
+  let wakeup t =
+    let f = t.wakeup in
+    t.wakeup <- Optional_thunk.none;
+    Optional_thunk.call_if_some f
+  ;;
+
   let flush t f =
     flush t.encoder f
 
@@ -157,7 +175,8 @@ module Writer = struct
   let close_and_drain t =
     Faraday.close t.encoder;
     let drained = Faraday.drain t.encoder in
-    t.drained_bytes <- t.drained_bytes + drained
+    t.drained_bytes <- t.drained_bytes + drained;
+    wakeup t
 
   let is_closed t =
     Faraday.is_closed t.encoder
@@ -171,6 +190,7 @@ module Writer = struct
     | `Ok len -> shift t.encoder len
 
   let next t =
+    assert (Optional_thunk.is_none t.wakeup);
     match Faraday.operation t.encoder with
     | `Close         -> `Close (drained_bytes t)
     | `Yield         -> `Yield
