@@ -268,15 +268,12 @@ let read t bs ~off ~len =
 let read_eof t bs ~off ~len =
   read_with_more t bs ~off ~len Complete
 
-let flush_response_body t =
-  if is_active t then
-    let reqd = current_reqd_exn t in
-    Reqd.flush_response_body reqd
-;;
-
 let next_write_operation t =
   advance_request_queue_if_necessary t;
-  flush_response_body t;
+  if is_active t
+  then (
+    let reqd = current_reqd_exn t in
+    Reqd.flush_response_body reqd);
   Writer.next t.writer
 
 let report_write_result t result =
