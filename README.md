@@ -9,7 +9,7 @@ the parsing and serialization layers of the HTTP standard, hence the name.
 
 [angstrom]: https://github.com/inhabitedtype/angstrom
 [faraday]: https://github.com/inhabitedtype/faraday
-[![Build Status](https://travis-ci.org/inhabitedtype/httpaf.svg?branch=master)](https://travis-ci.org/inhabitedtype/httpaf)
+[![Build Status](https://travis-ci.com/inhabitedtype/httpaf.svg?branch=master)](https://travis-ci.com/inhabitedtype/httpaf)
 
 ## Installation
 
