@@ -146,23 +146,25 @@ let close_reader t =
 let when_ready_to_write t callback =
   if is_closed t
   then callback ()
-  else if Optional_thunk.is_some t.when_ready_to_write 
+  else if Optional_thunk.is_some t.when_ready_to_write
   then failwith "Body.when_ready_to_write: only one callback can be registered at a time"
   else t.when_ready_to_write <- Optional_thunk.some callback
 
 let transfer_to_writer_with_encoding t ~encoding writer =
   let faraday = t.faraday in
+  (* Play nicely with [has_pending_output] in the case of a fixed or
+     close-delimited encoding. *)
+  begin match encoding with
+  | `Fixed _ | `Close_delimited -> t.write_final_if_chunked <- false;
+  | `Chunked -> ()
+  end;
   begin match Faraday.operation faraday with
   | `Yield -> ()
   | `Close ->
     let must_write_the_final_chunk = t.write_final_if_chunked in
     t.write_final_if_chunked <- false;
-    if must_write_the_final_chunk
-    then
-      begin match encoding with
-      | `Chunked                    -> Serialize.Writer.schedule_chunk writer []
-      | `Fixed _ | `Close_delimited -> ()
-      end;
+    if must_write_the_final_chunk then
+      Serialize.Writer.schedule_chunk writer [];
     Serialize.Writer.unyield writer;
   | `Writev iovecs ->
     let buffered = t.buffered_bytes in
@@ -172,13 +174,8 @@ let transfer_to_writer_with_encoding t ~encoding writer =
       let lengthv  = IOVec.lengthv iovecs in
       buffered := !buffered + lengthv;
       begin match encoding with
-      | `Fixed _ | `Close_delimited ->
-        (* Play nicely with [has_pending_output] in the case of a fixed or
-           close-delimited encoding. *)
-        t.write_final_if_chunked <- false;
-        Serialize.Writer.schedule_fixed writer iovecs
-      | `Chunked ->
-        Serialize.Writer.schedule_chunk writer iovecs
+      | `Fixed _ | `Close_delimited -> Serialize.Writer.schedule_fixed writer iovecs
+      | `Chunked                    -> Serialize.Writer.schedule_chunk writer iovecs
       end;
       Serialize.Writer.flush writer (fun () ->
         Faraday.shift faraday lengthv;

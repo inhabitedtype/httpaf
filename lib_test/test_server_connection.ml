@@ -246,6 +246,95 @@ let test_streaming_response () =
   writer_yielded t;
 ;;
 
+let test_asynchronous_streaming_response () =
+  let request  = Request.create `GET "/" ~headers:(Headers.of_list ["connection", "close"]) in
+  let response = Response.create `OK in
+
+  let body = ref None in
+  let t = create (fun reqd ->
+    body := Some (Reqd.respond_with_streaming reqd response))
+  in
+
+  let writer_woken_up = ref false in
+  writer_yielded t;
+  yield_writer t (fun () ->
+    writer_woken_up := true;
+    writer_yielded t);
+  Alcotest.(check bool) "Writer not woken up"
+    false !writer_woken_up;
+
+  read_request t request;
+  let body =
+    match !body with
+    | None -> failwith "no body found"
+    | Some body -> body
+  in
+  (* XXX(dpatti): This is an observation of a current behavior where the writer
+     is awoken only to find that it was asked to yield again. It is cleaned up
+     in another branch where we move the continuation off of the reqd/body. *)
+  Alcotest.(check bool) "Writer woken up"
+    true !writer_woken_up;
+  let writer_woken_up = ref false in
+  yield_writer t (fun () ->
+    writer_woken_up := true;
+    write_response t ~body:"Hello " response);
+
+  Body.write_string body "Hello ";
+  Alcotest.(check bool) "Writer not woken up"
+    false !writer_woken_up;
+  Body.flush body ignore;
+  Alcotest.(check bool) "Writer woken up"
+    true !writer_woken_up;
+
+  let writer_woken_up = ref false in
+  writer_yielded t;
+  yield_writer t (fun () ->
+    writer_woken_up := true;
+    write_string t "world!";
+    writer_closed t);
+  Body.write_string body "world!";
+  Alcotest.(check bool) "Writer not woken up"
+    false !writer_woken_up;
+  Body.close_writer body;
+  Alcotest.(check bool) "Writer woken up"
+    true !writer_woken_up
+;;
+
+let test_asynchronous_streaming_response_with_immediate_flush () =
+  let request  = Request.create `GET "/" ~headers:(Headers.of_list ["connection", "close"]) in
+  let response = Response.create `OK in
+
+  let body = ref None in
+  let t = create (fun reqd ->
+    body := Some (Reqd.respond_with_streaming reqd response ~flush_headers_immediately:true))
+  in
+  let writer_woken_up = ref false in
+  writer_yielded t;
+  yield_writer t (fun () ->
+    writer_woken_up := true;
+    write_response t response);
+  Alcotest.(check bool) "Writer not woken up"
+    false !writer_woken_up;
+
+  read_request t request;
+  let body =
+    match !body with
+    | None -> failwith "no body found"
+    | Some body -> body
+  in
+  Alcotest.(check bool) "Writer woken up"
+    true !writer_woken_up;
+
+  let writer_woken_up = ref false in
+  writer_yielded t;
+  yield_writer t (fun () ->
+    writer_woken_up := true;
+    writer_closed t);
+  Body.close_writer body;
+  Alcotest.(check bool) "Writer woken up"
+    true !writer_woken_up
+;;
+
 let test_empty_fixed_streaming_response () =
   let request  = Request.create `GET "/" in
   let response =
@@ -475,6 +564,8 @@ let tests =
   ; "asynchronous response" , `Quick, test_asynchronous_response
   ; "echo POST"             , `Quick, test_echo_post
   ; "streaming response"    , `Quick, test_streaming_response
+  ; "asynchronous streaming response", `Quick, test_asynchronous_streaming_response
+  ; "asynchronous streaming response, immediate flush", `Quick, test_asynchronous_streaming_response_with_immediate_flush
   ; "empty fixed streaming response", `Quick, test_empty_fixed_streaming_response
   ; "empty chunked streaming response", `Quick, test_empty_chunked_streaming_response
   ; "synchronous error, synchronous handling", `Quick, test_synchronous_error
