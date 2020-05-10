@@ -1,6 +1,16 @@
 (executables
  (libraries bigstringaf httpaf alcotest)
- (modules test_httpaf)
+ (modules
+   helpers
+   test_client_connection
+   test_headers
+   test_httpaf
+   test_iovec
+   test_method
+   test_request
+   test_response
+   test_server_connection
+   test_version)
  (names   test_httpaf))
 
 (alias
