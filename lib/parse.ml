@@ -114,6 +114,7 @@ let headers =
     >>= function
       | '\r' -> _emp
       | _    -> _rec)
+  >>| Headers.of_list
 
 let request =
   let meth = take_till P.is_space >>| Method.of_string in

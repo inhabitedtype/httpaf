@@ -443,7 +443,7 @@ let test_input_shrunk () =
       ; "Connection"     , "close"
       ; "Accept"         , "application/json, text/plain, */*"
       ; "Accept-Language", "en-US,en;q=0.5" ]
-      (Headers.to_rev_list (Reqd.request reqd).headers);
+      (Headers.to_list (Reqd.request reqd).headers);
     Body.close_reader (Reqd.request_body reqd);
     continue_response := (fun () ->
       Reqd.respond_with_string reqd (Response.create `OK) "");
