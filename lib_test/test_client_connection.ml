@@ -20,8 +20,8 @@ let read_string t str =
 ;;
 
 let read_response t r =
-  let request_string = response_to_string r in
-  read_string t request_string
+  let response_string = response_to_string r in
+  read_string t response_string
 ;;
 
 let reader_ready t =
@@ -83,7 +83,7 @@ let test_get () =
   writer_closed  t;
   read_response  t response;
 
-  (* Single GET, reponse closes connection *)
+  (* Single GET, response closes connection *)
   let response =
     Response.create `OK ~headers:(Headers.of_list [ "connection", "close" ])
   in
@@ -141,6 +141,33 @@ let test_response_eof () =
     !error_message
 ;;
 
+let test_response_header_order () =
+  let request' = Request.create `GET "/" in
+  let headers =
+    [ "a", "1"
+    ; "b", "2"
+    ; "c", "3"
+    ]
+  in
+  let response = Response.create `OK ~headers:(Headers.of_list headers) in
+  let received = ref None in
+  let body, t =
+    request
+      request'
+      ~response_handler:(fun response _ -> received := Some response)
+      ~error_handler:no_error_handler
+  in
+  Body.close_writer body;
+  write_request t request';
+  writer_closed t;
+  read_response t response;
+  match !received with
+  | None -> assert false
+  | Some received ->
+    Alcotest.(check (list (pair string string))) "headers are equal"
+      headers (Headers.to_list received.headers);
+;;
+
 let test_report_exn () =
   let request' = Request.create `GET "/" in
   let response = Response.create `OK in (* not actually writen to the channel *)
@@ -191,10 +218,10 @@ let test_input_shrunk () =
     !error_message
 ;;
 
-
 let tests =
   [ "GET"         , `Quick, test_get
   ; "Response EOF", `Quick, test_response_eof
+  ; "Response header order preserved", `Quick, test_response_header_order
   ; "report_exn"  , `Quick, test_report_exn
   ; "input_shrunk", `Quick, test_input_shrunk
   ]
