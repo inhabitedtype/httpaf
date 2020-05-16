@@ -63,14 +63,19 @@ module Oneshot = struct
       state := Received_response(response, body);
       response_handler response body
     in
-    let request_body = Body.create (Bigstringaf.create config.request_body_buffer_size) in
+    let writer = Writer.create () in
+    let request_body =
+      Body.create_writer (Bigstringaf.create config.request_body_buffer_size)
+        ~when_ready_to_write:(fun () ->
+          Writer.wakeup writer)
+    in
     let t =
       { request
       ; request_body
       ; error_handler
       ; error_code = `Ok
       ; reader = Reader.response ~request_method handler
-      ; writer = Writer.create ()
+      ; writer
       ; state }
     in
     Writer.write_request t.writer request;
@@ -200,7 +205,7 @@ module Oneshot = struct
       Writer.close t.writer;
       k ()
     end else
-      Body.when_ready_to_write t.request_body k
+      Writer.on_wakeup t.writer k
 
   let report_write_result t result =
     Writer.report_result t.writer result

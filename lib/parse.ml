@@ -246,7 +246,7 @@ module Reader = struct
         handler request Body.empty;
         ok
       | `Fixed _ | `Chunked | `Close_delimited as encoding ->
-        let request_body = Body.create Bigstringaf.empty in
+        let request_body = Body.create_reader Bigstringaf.empty in
         handler request request_body;
         body ~encoding request_body *> ok
     in
@@ -263,7 +263,7 @@ module Reader = struct
         handler response Body.empty;
         ok
       | `Fixed _ | `Chunked | `Close_delimited as encoding ->
-        let response_body = Body.create Bigstringaf.empty in
+        let response_body = Body.create_reader Bigstringaf.empty in
         handler response response_body;
         body ~encoding response_body *> ok
     in

@@ -64,7 +64,6 @@ type t =
   ; request_queue          : Reqd.t Queue.t
     (* invariant: If [request_queue] is not empty, then the head of the queue
        has already had [request_handler] called on it. *)
-  ; mutable wakeup_writer  : Optional_thunk.t
   ; mutable wakeup_reader  : Optional_thunk.t
   }
 
@@ -94,27 +93,13 @@ let wakeup_reader t =
   Optional_thunk.call_if_some f
 ;;
 
-let on_wakeup_writer t k =
-  if is_closed t
-  then failwith "on_wakeup_writer on closed conn"
-  else if Optional_thunk.is_some t.wakeup_writer
-  then failwith "yield_writer: only one callback can be registered at a time"
-  else t.wakeup_writer <- Optional_thunk.some k
+let yield_writer t k =
+ if Writer.is_closed t.writer
+ then k ()
+ else Writer.on_wakeup t.writer k
 ;;
 
-let wakeup_writer t =
-  let f = t.wakeup_writer in
-  t.wakeup_writer <- Optional_thunk.none;
-  Optional_thunk.call_if_some f
-;;
-
-let transfer_writer_callback t reqd =
-  if Optional_thunk.is_some t.wakeup_writer
-  then (
-    let f = t.wakeup_writer in
-    t.wakeup_writer <- Optional_thunk.none;
-    Reqd.on_more_output_available reqd (Optional_thunk.unchecked_value f))
-;;
+let wakeup_writer t = Writer.wakeup t.writer
 
 let default_error_handler ?request:_ error handle =
   let message =
@@ -149,7 +134,6 @@ let create ?(config=Config.default) ?(error_handler=default_error_handler) reque
   ; request_handler = request_handler
   ; error_handler   = error_handler
   ; request_queue
-  ; wakeup_writer   = Optional_thunk.none
   ; wakeup_reader   = Optional_thunk.none
   }
 
@@ -191,7 +175,7 @@ let set_error_and_handle ?request t error =
     let writer = t.writer in
     t.error_handler ?request error (fun headers ->
       Writer.write_response writer (Response.create ~headers status);
-      Body.of_faraday (Writer.faraday writer));
+      Body.reader_of_faraday (Writer.faraday writer));
   end
 
 let report_exn t exn =
@@ -208,11 +192,13 @@ let advance_request_queue_if_necessary t =
         wakeup_reader t;
       end
     end else begin
+      (* Take the head of the queue, close the remaining request bodies, clear
+       * the queue, and push the head back on. We do not plan on processing any
+       * more requests after the current one. *)
       ignore (Queue.take t.request_queue);
       Queue.iter Reqd.close_request_body t.request_queue;
       Queue.clear t.request_queue;
       Queue.push reqd t.request_queue;
-      wakeup_writer t;
       if Reqd.is_complete reqd
       then shutdown t
       else
@@ -253,10 +239,7 @@ let read_with_more t bs ~off ~len more =
   then (
     let reqd = current_reqd_exn t in
     if call_handler
-    then (
-      transfer_writer_callback t reqd;
-      t.request_handler reqd
-    );
+    then t.request_handler reqd;
     Reqd.flush_request_body reqd;
   );
   consumed
@@ -278,15 +261,3 @@ let next_write_operation t =
 
 let report_write_result t result =
   Writer.report_result t.writer result
-
-let yield_writer t k =
-  if is_active t then begin
-    let reqd = current_reqd_exn t in
-    if Reqd.requires_output reqd
-    then Reqd.on_more_output_available reqd k
-    else if Reqd.persistent_connection reqd
-    then on_wakeup_writer t k
-    else begin shutdown t; k () end
-  end else if Writer.is_closed t.writer then k () else begin
-    on_wakeup_writer t k
-  end

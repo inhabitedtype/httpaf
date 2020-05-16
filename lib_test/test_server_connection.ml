@@ -259,9 +259,7 @@ let test_asynchronous_streaming_response () =
   writer_yielded t;
   yield_writer t (fun () ->
     writer_woken_up := true;
-    writer_yielded t);
-  Alcotest.(check bool) "Writer not woken up"
-    false !writer_woken_up;
+    write_response t ~body:"Hello " response);
 
   read_request t request;
   let body =
@@ -269,16 +267,6 @@ let test_asynchronous_streaming_response () =
     | None -> failwith "no body found"
     | Some body -> body
   in
-  (* XXX(dpatti): This is an observation of a current behavior where the writer
-     is awoken only to find that it was asked to yield again. It is cleaned up
-     in another branch where we move the continuation off of the reqd/body. *)
-  Alcotest.(check bool) "Writer woken up"
-    true !writer_woken_up;
-  let writer_woken_up = ref false in
-  yield_writer t (fun () ->
-    writer_woken_up := true;
-    write_response t ~body:"Hello " response);
-
   Body.write_string body "Hello ";
   Alcotest.(check bool) "Writer not woken up"
     false !writer_woken_up;
@@ -398,7 +386,8 @@ let test_synchronous_error_asynchronous_handling () =
   read_request t (Request.create `GET "/");
   Alcotest.check read_operation "Error shuts down the reader"
     `Close (next_read_operation t);
-  writer_yielded t;
+  Alcotest.(check bool) "Writer not woken up"
+    false !writer_woken_up;
   !continue ();
   Alcotest.(check bool) "Writer woken up"
     true !writer_woken_up;
@@ -419,7 +408,8 @@ let test_asynchronous_error () =
   writer_yielded t;
   yield_writer t (fun () -> writer_woken_up := true);
   read_request t (Request.create `GET "/");
-  writer_yielded t;
+  Alcotest.(check bool) "Writer not woken up"
+    false !writer_woken_up;
   reader_yielded t;
   !continue ();
   Alcotest.check read_operation "Error shuts down the reader"
@@ -447,10 +437,12 @@ let test_asynchronous_error_asynchronous_handling () =
   writer_yielded t;
   yield_writer   t (fun () -> writer_woken_up := true);
   read_request   t (Request.create `GET "/");
-  writer_yielded t;
+  Alcotest.(check bool) "Writer not woken up"
+    false !writer_woken_up;
   reader_yielded t;
   !continue_request ();
-  writer_yielded t;
+  Alcotest.(check bool) "Writer not woken up"
+    false !writer_woken_up;
   !continue_error ();
   Alcotest.check read_operation "Error shuts down the reader"
     `Close (next_read_operation t);
@@ -539,8 +531,10 @@ let test_input_shrunk () =
   in
   let t = create ~error_handler request_handler in
   reader_ready t;
+  let writer_woken_up = ref false in
   writer_yielded t;
   yield_writer t (fun () ->
+    writer_woken_up := true;
     write_response t (Response.create `OK);
   );
   let len = feed_string t "GET /v1/b HTTP/1.1\r\nH" in
@@ -549,10 +543,13 @@ let test_input_shrunk () =
 Connection: close\r\n\
 Accept: application/json, text/plain, */*\r\n\
 Accept-Language: en-US,en;q=0.5\r\n\r\n";
-  writer_yielded t;
+  Alcotest.(check bool) "Writer not woken up"
+    false !writer_woken_up;
   Alcotest.check read_operation "reader closed"
     `Close (next_read_operation t);
   !continue_response ();
+  Alcotest.(check bool) "Writer woken up"
+    true !writer_woken_up;
   writer_closed t;
 ;;
 
