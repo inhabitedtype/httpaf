@@ -2,6 +2,23 @@ open Httpaf
 open Helpers
 open Server_connection
 
+let request_error_pp_hum fmt = function
+  | `Bad_request           -> Format.fprintf fmt "Bad_request"
+  | `Bad_gateway           -> Format.fprintf fmt "Bad_gateway"
+  | `Internal_server_error -> Format.fprintf fmt "Internal_server_error"
+  | `Exn exn               -> Format.fprintf fmt "Exn (%s)" (Printexc.to_string exn)
+;;
+
+module Alcotest = struct
+  include Alcotest
+
+  let request_error = Alcotest.of_pp request_error_pp_hum
+
+  let request = Alcotest.of_pp (fun fmt req ->
+    Format.fprintf fmt "%s" (request_to_string req))
+  ;;
+end
+
 let feed_string t str =
   let len = String.length str in
   let input = Bigstringaf.of_string str ~off:0 ~len in
@@ -567,7 +584,15 @@ Accept-Language: en-US,en;q=0.5\r\n\r\n";
 ;;
 
 let test_failed_request_parse () =
-  let error_handler ?request:_ _ = assert false in
+  let error_handler_fired = ref false in
+  let error_handler ?request error start_response =
+    error_handler_fired := true;
+    Alcotest.(check (option request)) "No parsed request"
+      None request;
+    Alcotest.(check request_error) "Request error"
+      `Bad_request error;
+    start_response Headers.empty |> Body.close_writer;
+  in
   let request_handler _reqd = assert false in
   let t = create ~error_handler request_handler in
   reader_ready t;
@@ -582,10 +607,11 @@ let test_failed_request_parse () =
     false !writer_woken_up;
   Alcotest.check read_operation "reader closed"
     `Close (next_read_operation t);
-  (* XXX(dpatti): This is a condition where the write loop gets stuck. We would
-     expect the writer to have been awoken and closed. *)
-  Alcotest.(check bool) "Writer still not woken up"
-    false !writer_woken_up;
+  Alcotest.(check bool) "Error handler fired"
+    true !error_handler_fired;
+  Alcotest.(check bool) "Writer woken up"
+    true !writer_woken_up;
+  write_response t (Response.create `Bad_request);
 ;;
 
 let test_bad_request () =
@@ -595,7 +621,15 @@ let test_bad_request () =
     Request.create `GET "/"
       ~headers:(Headers.of_list ["content-length", "-1"])
   in
-  let error_handler ?request:_ _ = assert false in
+  let error_handler_fired = ref false in
+  let error_handler ?request:request' error start_response =
+    error_handler_fired := true;
+    Alcotest.(check (option request)) "Parsed request"
+      (Some request) request';
+    Alcotest.(check request_error) "Request error"
+      `Bad_request error;
+    start_response Headers.empty |> Body.close_writer;
+  in
   let request_handler _reqd = assert false in
   let t = create ~error_handler request_handler in
   reader_ready t;
@@ -608,10 +642,11 @@ let test_bad_request () =
     false !writer_woken_up;
   Alcotest.check read_operation "reader closed"
     `Close (next_read_operation t);
-  (* XXX(dpatti): This is a condition where the write loop gets stuck. We would
-     expect the writer to have been awoken and closed. *)
-  Alcotest.(check bool) "Writer still not woken up"
-    false !writer_woken_up;
+  Alcotest.(check bool) "Error handler fired"
+    true !error_handler_fired;
+  Alcotest.(check bool) "Writer woken up"
+    true !writer_woken_up;
+  write_response t (Response.create `Bad_request);
 ;;
 
 let tests =

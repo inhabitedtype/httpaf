@@ -236,7 +236,7 @@ let test_input_shrunk () =
 let test_failed_response_parse () =
   let request' = Request.create `GET "/" in
 
-  let test response bytes_read =
+  let test response bytes_read expected_error =
     let error = ref None in
     let body, t =
       request
@@ -251,17 +251,16 @@ let test_failed_response_parse () =
     let len = feed_string t response in
     Alcotest.(check int) "bytes read" len bytes_read;
     connection_is_shutdown t;
-    (* XXX(dpatti): The error handler should fire in this case but it does not *)
     Alcotest.(check (option response_error)) "Response error"
-      None !error;
+      (Some expected_error) !error;
   in
 
-  test "HTTP/1.1 200\r\n\r\n" 12;
+  test "HTTP/1.1 200\r\n\r\n" 12 (`Malformed_response ": char ' '");
 
   let response =
     Response.create `OK ~headers:(Headers.of_list ["Content-length", "-1"])
   in
-  test (response_to_string response) 39;
+  test (response_to_string response) 39 (`Invalid_response_body_length response);
 ;;
 
 let tests =
