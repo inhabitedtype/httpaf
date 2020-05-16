@@ -566,6 +566,54 @@ Accept-Language: en-US,en;q=0.5\r\n\r\n";
   writer_closed t;
 ;;
 
+let test_failed_request_parse () =
+  let error_handler ?request:_ _ = assert false in
+  let request_handler _reqd = assert false in
+  let t = create ~error_handler request_handler in
+  reader_ready t;
+  let writer_woken_up = ref false in
+  writer_yielded t;
+  yield_writer t (fun () ->
+    writer_woken_up := true);
+  let len = feed_string t "GET /v1/b HTTP/1.1\r\nHost : example.com\r\n\r\n" in
+  (* Reads through the end of "Host" *)
+  Alcotest.(check int) "partial read" 24 len;
+  Alcotest.(check bool) "Writer not woken up"
+    false !writer_woken_up;
+  Alcotest.check read_operation "reader closed"
+    `Close (next_read_operation t);
+  (* XXX(dpatti): This is a condition where the write loop gets stuck. We would
+     expect the writer to have been awoken and closed. *)
+  Alcotest.(check bool) "Writer still not woken up"
+    false !writer_woken_up;
+;;
+
+let test_bad_request () =
+  (* A `Bad_request is returned in a number of cases surrounding
+     transfer-encoding or content-length headers. *)
+  let request =
+    Request.create `GET "/"
+      ~headers:(Headers.of_list ["content-length", "-1"])
+  in
+  let error_handler ?request:_ _ = assert false in
+  let request_handler _reqd = assert false in
+  let t = create ~error_handler request_handler in
+  reader_ready t;
+  let writer_woken_up = ref false in
+  writer_yielded t;
+  yield_writer t (fun () ->
+    writer_woken_up := true);
+  read_request t request;
+  Alcotest.(check bool) "Writer not woken up"
+    false !writer_woken_up;
+  Alcotest.check read_operation "reader closed"
+    `Close (next_read_operation t);
+  (* XXX(dpatti): This is a condition where the write loop gets stuck. We would
+     expect the writer to have been awoken and closed. *)
+  Alcotest.(check bool) "Writer still not woken up"
+    false !writer_woken_up;
+;;
+
 let tests =
   [ "initial reader state"  , `Quick, test_initial_reader_state
   ; "shutdown reader closed", `Quick, test_reader_is_closed_after_eof
@@ -587,4 +635,6 @@ let tests =
   ; "blocked write on chunked encoding", `Quick, test_blocked_write_on_chunked_encoding
   ; "writer unexpected eof", `Quick, test_unexpected_eof
   ; "input shrunk", `Quick, test_input_shrunk
+  ; "failed request parse", `Quick, test_failed_request_parse
+  ; "bad request", `Quick, test_bad_request
   ]
