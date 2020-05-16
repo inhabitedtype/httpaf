@@ -18,7 +18,7 @@ module Client = struct
       | `Invalid_response_body_length _ -> "Invalid body length"
       | `Exn exn -> Format.sprintf "Exn raised: %s" (Exn.to_string exn)
     in
-    Format.eprintf "Error parsing request: %s\n%!" error;
+    Format.eprintf "Error handling response: %s\n%!" error;
   ;;
 
   let print ~on_eof response response_body =
