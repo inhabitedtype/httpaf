@@ -202,20 +202,16 @@ let rec _next_read_operation t =
   )
 
 and _final_read_operation_for t reqd =
-  let next =
-    if not (Reqd.persistent_connection reqd) then (
-      shutdown_reader t;
-      Reader.next t.reader;
-    ) else (
-      match Reqd.output_state reqd with
-      | Waiting | Ready -> `Yield
-      | Complete     ->
-        advance_request_queue t;
-        _next_read_operation t;
-    )
-  in
-  wakeup_writer t;
-  next
+  if not (Reqd.persistent_connection reqd) then (
+    shutdown_reader t;
+    Reader.next t.reader;
+  ) else (
+    match Reqd.output_state reqd with
+    | Waiting | Ready -> `Yield
+    | Complete ->
+      advance_request_queue t;
+      _next_read_operation t;
+  )
 ;;
 
 let next_read_operation t =
@@ -259,7 +255,12 @@ let rec _next_write_operation t =
   ) else (
     let reqd = current_reqd_exn t in
     match Reqd.output_state reqd with
-    | Waiting -> `Yield
+    | Waiting ->
+      (* XXX(dpatti): I don't think we should need to call this, but it is
+         necessary in the case of a streaming, non-chunked body so that you can
+         set the appropriate flag. *)
+      Reqd.flush_response_body reqd;
+      Writer.next t.writer
     | Ready ->
       Reqd.flush_response_body reqd;
       Writer.next t.writer
