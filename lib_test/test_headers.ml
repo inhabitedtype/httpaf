@@ -43,9 +43,14 @@ let test_remove () =
 let test_ci_equal () =
   let ascii = List.init (0x7f + 1) Char.chr in
   let string_of_char x = String.init 1 (fun _ -> x) in
+  let pairs xs =
+    List.concat_map (fun x ->
+      List.map (fun y ->
+        (x, y)) xs) xs
+  in
   (* Ensure that the branch free case-insensitive equality check is consistent
    * with a naive implementation. *)
-  List.iter2 (fun x y ->
+  List.iter (fun (x, y) ->
     let char_ci_equal =
       Char.compare (Char.lowercase_ascii x) (Char.lowercase_ascii y) = 0
     in
@@ -54,11 +59,10 @@ let test_ci_equal () =
       Headers.mem headers (string_of_char x)
     in
     Alcotest.(check bool)
-      (Printf.sprintf "CI: %c = %c" x y)
+      (Printf.sprintf "CI: %C = %C" x y)
       char_ci_equal
       headers_equal)
-  ascii
-  ascii
+  (pairs ascii);
 ;;
 
 
