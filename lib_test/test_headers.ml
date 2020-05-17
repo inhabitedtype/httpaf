@@ -43,7 +43,7 @@ let test_remove () =
 
 let test_ci_equal () =
   let string_of_char x = String.init 1 (fun _ -> x) in
-  let ascii = List.init ~len:(0x7f + 1) ~f:Char.chr in
+  let ascii = List.init ~len:(0xff + 1) ~f:Char.chr in
   let ascii_pairs =
     List.map ascii ~f:(fun x ->
       List.map ascii ~f:(fun y -> x, y))
