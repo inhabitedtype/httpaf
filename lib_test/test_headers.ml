@@ -1,4 +1,5 @@
 open Httpaf
+module List = ListLabels
 
 let check msg ~expect actual =
   Alcotest.(check (list (pair string string))) msg expect (Headers.to_list actual)
@@ -41,16 +42,16 @@ let test_remove () =
 ;;
 
 let test_ci_equal () =
-  let ascii = List.init (0x7f + 1) Char.chr in
   let string_of_char x = String.init 1 (fun _ -> x) in
-  let pairs xs =
-    List.concat_map (fun x ->
-      List.map (fun y ->
-        (x, y)) xs) xs
+  let ascii = List.init ~len:(0x7f + 1) ~f:Char.chr in
+  let ascii_pairs =
+    List.map ascii ~f:(fun x ->
+      List.map ascii ~f:(fun y -> x, y))
+    |> List.concat
   in
   (* Ensure that the branch free case-insensitive equality check is consistent
    * with a naive implementation. *)
-  List.iter (fun (x, y) ->
+  List.iter ascii_pairs ~f:(fun (x, y) ->
     let char_ci_equal =
       Char.compare (Char.lowercase_ascii x) (Char.lowercase_ascii y) = 0
     in
@@ -62,7 +63,6 @@ let test_ci_equal () =
       (Printf.sprintf "CI: %C = %C" x y)
       char_ci_equal
       headers_equal)
-  (pairs ascii);
 ;;
 
 
