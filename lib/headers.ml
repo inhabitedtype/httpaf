@@ -50,13 +50,11 @@ module CI = struct
       http://www.azillionmonkeys.com/qed/asmexample.html *)
   let[@inline always] char_code_equal_ci x y =
     let codes = (x lsl 8) lor y in
-    let temp  = codes land 0x7f7f in
-    let temp  = temp + 0x0505 in
-    let temp  = temp land 0x7f7f in
-    let temp  = temp + 0x1a1a in
-    let temp  = temp lsr 2 in
-    let temp  = temp land 0x2020 in
-    let upper = codes - temp in
+    let b = 0x8080 lor codes in
+    let c = b - 0x6161 in
+    let d = lnot (b - 0x7b7b) in
+    let e = (c land d) land (lnot codes land 0x8080) in
+    let upper = codes - (e lsr 2) in
     upper lsr 8 = upper land 0xff
 
   let equal x y =
