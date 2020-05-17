@@ -175,7 +175,8 @@ let set_error_and_handle ?request t error =
     let writer = t.writer in
     t.error_handler ?request error (fun headers ->
       Writer.write_response writer (Response.create ~headers status);
-      Body.reader_of_faraday (Writer.faraday writer));
+      Body.writer_of_faraday (Writer.faraday writer)
+        ~when_ready_to_write:(fun () -> Writer.wakeup writer));
   end
 
 let report_exn t exn =

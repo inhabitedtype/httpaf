@@ -358,6 +358,19 @@ let test_multiple_get () =
   write_response t (Response.create `OK);
 ;;
 
+let test_connection_error () =
+  let writer_woken_up = ref false in
+  let t = create ~error_handler (fun _ -> assert false) in
+  yield_writer t (fun () -> writer_woken_up := true);
+  Server_connection.report_exn t (Failure "connection failure");
+  Alcotest.(check bool) "Writer woken up"
+    true !writer_woken_up;
+  write_response t
+    ~msg:"Error response written"
+    (Response.create `Internal_server_error)
+    ~body:"got an error"
+;;
+
 let test_synchronous_error () =
   let writer_woken_up = ref false in
   let t = create ~error_handler synchronous_raise in
@@ -565,6 +578,7 @@ let tests =
   ; "asynchronous streaming response, immediate flush", `Quick, test_asynchronous_streaming_response_with_immediate_flush
   ; "empty fixed streaming response", `Quick, test_empty_fixed_streaming_response
   ; "empty chunked streaming response", `Quick, test_empty_chunked_streaming_response
+  ; "connection error", `Quick, test_connection_error
   ; "synchronous error, synchronous handling", `Quick, test_synchronous_error
   ; "synchronous error, asynchronous handling", `Quick, test_synchronous_error_asynchronous_handling
   ; "asynchronous error, synchronous handling", `Quick, test_asynchronous_error
