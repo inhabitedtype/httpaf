@@ -4,8 +4,6 @@ open Async
 open Httpaf
 open Httpaf_async
 
-let error_handler _ = assert false
-
 let main port host () =
   let where_to_connect = Tcp.Where_to_connect.of_host_and_port { host; port } in
   Tcp.connect_sock where_to_connect
@@ -21,7 +19,7 @@ let main port host () =
     in
     let request_body =
       Client.request
-        ~error_handler
+        ~error_handler:Httpaf_examples.Client.error_handler
         ~response_handler
         socket
         (Request.create ~headers `POST "/")

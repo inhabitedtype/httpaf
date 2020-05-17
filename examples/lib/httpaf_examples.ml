@@ -9,6 +9,18 @@ let text = "CHAPTER I. Down the Rabbit-Hole  Alice was beginning to get very tir
 let text = Bigstringaf.of_string ~off:0 ~len:(String.length text) text
 
 module Client = struct
+ exception Response_error
+
+  let error_handler error =
+    let error =
+      match error with
+      | `Malformed_response err -> Format.sprintf "Malformed response: %s" err
+      | `Invalid_response_body_length _ -> "Invalid body length"
+      | `Exn exn -> Format.sprintf "Exn raised: %s" (Exn.to_string exn)
+    in
+    Format.eprintf "Error handling response: %s\n%!" error;
+  ;;
+
   let print ~on_eof response response_body =
     match response with
     | { Response.status = `OK; _ } as response ->

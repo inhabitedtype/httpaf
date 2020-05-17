@@ -2,11 +2,26 @@ open Httpaf
 open Helpers
 open Client_connection
 
+let response_error_pp_hum fmt = function
+  | `Malformed_response str ->
+    Format.fprintf fmt "Malformed_response: %s" str
+  | `Invalid_response_body_length resp ->
+    Format.fprintf fmt "Invalid_response_body_length: %s" (response_to_string resp)
+  | `Exn exn ->
+    Format.fprintf fmt "Exn (%s)" (Printexc.to_string exn)
+;;
+
 module Response = struct
   include Response
 
   let pp = pp_hum
   let equal x y = x = y
+end
+
+module Alcotest = struct
+  include Alcotest
+
+  let response_error = of_pp response_error_pp_hum
 end
 
 let feed_string t str =
@@ -218,10 +233,41 @@ let test_input_shrunk () =
     !error_message
 ;;
 
+let test_failed_response_parse () =
+  let request' = Request.create `GET "/" in
+
+  let test response bytes_read expected_error =
+    let error = ref None in
+    let body, t =
+      request
+        request'
+        ~response_handler:(fun _ _ -> assert false)
+        ~error_handler:(fun e -> error := Some e)
+    in
+    Body.close_writer body;
+    write_request t request';
+    writer_closed t;
+    reader_ready t;
+    let len = feed_string t response in
+    Alcotest.(check int) "bytes read" len bytes_read;
+    connection_is_shutdown t;
+    Alcotest.(check (option response_error)) "Response error"
+      (Some expected_error) !error;
+  in
+
+  test "HTTP/1.1 200\r\n\r\n" 12 (`Malformed_response ": char ' '");
+
+  let response =
+    Response.create `OK ~headers:(Headers.of_list ["Content-length", "-1"])
+  in
+  test (response_to_string response) 39 (`Invalid_response_body_length response);
+;;
+
 let tests =
   [ "GET"         , `Quick, test_get
   ; "Response EOF", `Quick, test_response_eof
   ; "Response header order preserved", `Quick, test_response_header_order
   ; "report_exn"  , `Quick, test_report_exn
   ; "input_shrunk", `Quick, test_input_shrunk
+  ; "failed response parse", `Quick, test_failed_response_parse
   ]

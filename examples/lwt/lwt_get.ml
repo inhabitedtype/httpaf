@@ -5,8 +5,6 @@ module Arg = Caml.Arg
 open Httpaf
 open Httpaf_lwt_unix
 
-let error_handler _ = assert false
-
 let main port host =
   Lwt_unix.getaddrinfo host (Int.to_string port) [Unix.(AI_FAMILY PF_INET)]
   >>= fun addresses ->
@@ -20,7 +18,7 @@ let main port host =
   let headers = Headers.of_list [ "host", host ] in
   let request_body =
     Client.request
-      ~error_handler
+      ~error_handler:Httpaf_examples.Client.error_handler
       ~response_handler
       socket
       (Request.create ~headers `GET "/")

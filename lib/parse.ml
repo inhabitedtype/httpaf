@@ -325,7 +325,7 @@ module Reader = struct
     then `Close
     else (
       match t.parse_state with
-      | Fail _    -> `Close
+      | Fail err  -> `Error err
       | Done      -> `Read
       | Partial _ -> `Read
     )
