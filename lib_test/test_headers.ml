@@ -1,4 +1,5 @@
 open Httpaf
+module Array = ArrayLabels
 module List = ListLabels
 
 let check msg ~expect actual =
@@ -43,7 +44,10 @@ let test_remove () =
 
 let test_ci_equal () =
   let string_of_char x = String.init 1 (fun _ -> x) in
-  let ascii = List.init ~len:(0xff + 1) ~f:Char.chr in
+  let ascii =
+    Array.init (0xff + 1) ~f:Char.chr
+    |> Array.to_list
+  in
   let ascii_pairs =
     List.map ascii ~f:(fun x ->
       List.map ascii ~f:(fun y -> x, y))
