@@ -77,12 +77,12 @@ let read fd buffer =
           (fun file_descr ->
             Buffer.put buffer ~f:(fun bigstring ~off ~len ->
               Unix.Syscall_result.Int.ok_or_unix_error_exn ~syscall_name:"read"
-                (Bigstring.read_assume_fd_is_nonblocking file_descr bigstring ~pos:off ~len))))
+                (Bigstring_unix.read_assume_fd_is_nonblocking file_descr bigstring ~pos:off ~len))))
     else
       Fd.syscall_in_thread fd ~name:"read"
         (fun file_descr ->
           Buffer.put buffer ~f:(fun bigstring ~off ~len ->
-            Bigstring.read file_descr bigstring ~pos:off ~len))
+            Bigstring_unix.read file_descr bigstring ~pos:off ~len))
       >>= fun result -> finish fd buffer result
   in
   go fd buffer
