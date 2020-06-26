@@ -12,10 +12,10 @@ build: [
   ["dune" "runtest" "-p" name] {with-test}
 ]
 depends: [
-  "ocaml" {>= "4.03.0"}
+  "ocaml" {>= "4.08.0"}
   "dune" {>= "1.5.0"}
-  "faraday-async"
-  "async"
-  "httpaf" {>= "0.6.0"}
+  "faraday-async" {>= "0.7.2"}
+  "async" {>= "v0.14.0"}
+  "httpaf" {= version}
 ]
 synopsis: "Async support for http/af"
