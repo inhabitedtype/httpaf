@@ -132,9 +132,9 @@ module Oneshot = struct
     | Awaiting_response ->
       set_error_and_handle_without_shutdown t error;
     | Received_response(_, response_body) ->
+      set_error_and_handle_without_shutdown t error;
       Body.close_reader response_body;
       Body.execute_read response_body;
-      set_error_and_handle_without_shutdown t error;
     end
   ;;
 
