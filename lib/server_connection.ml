@@ -233,7 +233,7 @@ let next_read_operation t =
   | `Error (`Bad_request request) -> set_error_and_handle ~request t `Bad_request; `Close
   | (`Read | `Yield | `Close) as operation -> operation
 
-let read_with_more t bs ~off ~len more =
+let rec read_with_more t bs ~off ~len more =
   let call_handler = Queue.is_empty t.request_queue in
   let consumed = Reader.read_with_more t.reader bs ~off ~len more in
   if is_active t
@@ -243,7 +243,14 @@ let read_with_more t bs ~off ~len more =
     then t.request_handler reqd;
     Reqd.flush_request_body reqd;
   );
-  consumed
+  let off = off + consumed
+  and len = len - consumed in
+  (* Keep consuming input as long as progress is made and data is
+     available, in case multiple requests were received at once. *)
+  if consumed > 0 && len > 0 then
+    consumed + read_with_more t bs ~off ~len more
+  else
+    consumed
 ;;
 
 let read t bs ~off ~len =
