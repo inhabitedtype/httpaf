@@ -243,11 +243,11 @@ let rec read_with_more t bs ~off ~len more =
     then t.request_handler reqd;
     Reqd.flush_request_body reqd;
   );
-  let off = off + consumed
-  and len = len - consumed in
   (* Keep consuming input as long as progress is made and data is
      available, in case multiple requests were received at once. *)
-  if consumed > 0 && len > 0 then
+  if consumed > 0 && consumed < len then
+    let off = off + consumed
+    and len = len - consumed in
     consumed + read_with_more t bs ~off ~len more
   else
     consumed

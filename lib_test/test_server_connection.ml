@@ -649,6 +649,48 @@ let test_bad_request () =
   write_response t (Response.create `Bad_request);
 ;;
 
+let test_multiple_requests_in_single_read () =
+  let reqs_handled = ref 0 in
+  let t =
+    create (fun reqd ->
+      reqs_handled := !reqs_handled + 1;
+      Reqd.respond_with_string reqd (Response.create `OK) "")
+  in
+  let reqs =
+    request_to_string (Request.create `GET "/") ^
+    request_to_string (Request.create `GET "/")
+  in
+  read_string t reqs;
+  reader_yielded t;
+  Alcotest.(check int) "fired handler of both requests" 2 !reqs_handled
+;;
+
+let test_multiple_async_requests_in_single_read () =
+  let response = Response.create `OK in
+  let reqs_handled = ref 0 in
+  let finish_handler = ref (fun () -> assert false) in
+  let t =
+    create (fun reqd ->
+      reqs_handled := !reqs_handled + 1;
+      finish_handler := (fun () ->
+        Reqd.respond_with_string reqd response ""))
+  in
+  let reqs =
+    request_to_string (Request.create `GET "/") ^
+    request_to_string (Request.create `GET "/")
+  in
+  read_string t reqs;
+  reader_yielded t;
+  writer_yielded t;
+  Alcotest.(check int) "fired handler once" 1 !reqs_handled;
+  !finish_handler ();
+  write_response t response;
+  Alcotest.(check int) "fired handler again" 2 !reqs_handled;
+  !finish_handler ();
+  write_response t response;
+  reader_ready t;
+;;
+
 let tests =
   [ "initial reader state"  , `Quick, test_initial_reader_state
   ; "shutdown reader closed", `Quick, test_reader_is_closed_after_eof
@@ -672,4 +714,6 @@ let tests =
   ; "input shrunk", `Quick, test_input_shrunk
   ; "failed request parse", `Quick, test_failed_request_parse
   ; "bad request", `Quick, test_bad_request
+  ; "multiple requests in single read", `Quick, test_multiple_requests_in_single_read
+  ; "multiple async requests in single read", `Quick, test_multiple_async_requests_in_single_read
   ]
