@@ -276,8 +276,7 @@ module Reader = struct
 
   let transition t state =
     match state with
-    | AU.Done(consumed, Ok ())
-    | AU.Fail(0 as consumed, _, _) ->
+    | AU.Done(consumed, Ok ()) ->
       t.parse_state <- Done;
       consumed
     | AU.Done(consumed, Error error) ->

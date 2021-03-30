@@ -44,6 +44,11 @@ let reader_yielded t =
     `Yield (next_read_operation t);
 ;;
 
+let reader_closed t =
+  Alcotest.check read_operation "Reader is closed"
+    `Close (next_read_operation t);
+;;
+
 let write_string ?(msg="output written") t str =
   let len = String.length str in
   Alcotest.(check (option string)) msg
@@ -72,8 +77,7 @@ let writer_closed ?(unread = 0) t =
 ;;
 
 let connection_is_shutdown t =
-  Alcotest.check read_operation "Reader is closed"
-    `Close (next_read_operation t);
+  reader_closed t;
   writer_closed  t;
 ;;
 
@@ -575,8 +579,7 @@ Accept: application/json, text/plain, */*\r\n\
 Accept-Language: en-US,en;q=0.5\r\n\r\n";
   Alcotest.(check bool) "Writer not woken up"
     false !writer_woken_up;
-  Alcotest.check read_operation "reader closed"
-    `Close (next_read_operation t);
+  reader_closed t;
   !continue_response ();
   Alcotest.(check bool) "Writer woken up"
     true !writer_woken_up;
@@ -605,8 +608,7 @@ let test_failed_request_parse () =
   Alcotest.(check int) "partial read" 24 len;
   Alcotest.(check bool) "Writer not woken up"
     false !writer_woken_up;
-  Alcotest.check read_operation "reader closed"
-    `Close (next_read_operation t);
+  reader_closed t;
   Alcotest.(check bool) "Error handler fired"
     true !error_handler_fired;
   Alcotest.(check bool) "Writer woken up"
@@ -640,8 +642,7 @@ let test_bad_request () =
   read_request t request;
   Alcotest.(check bool) "Writer not woken up"
     false !writer_woken_up;
-  Alcotest.check read_operation "reader closed"
-    `Close (next_read_operation t);
+  reader_closed t;
   Alcotest.(check bool) "Error handler fired"
     true !error_handler_fired;
   Alcotest.(check bool) "Writer woken up"
@@ -691,6 +692,24 @@ let test_multiple_async_requests_in_single_read () =
   reader_ready t;
 ;;
 
+let test_parse_failure_after_checkpoint () =
+  let error_queue = ref None in
+  let error_handler ?request:_ error _start_response =
+    Alcotest.(check (option reject)) "Error queue is empty" !error_queue None;
+    error_queue := Some error
+  in
+  let request_handler _reqd = assert false in
+  let t = create ~error_handler request_handler in
+  reader_ready t;
+  read_string t "GET index.html HTTP/1.1\r\n";
+  let result = feed_string t " index.html HTTP/1.1\r\n\r\n" in
+  Alcotest.(check int) "Bad header not consumed" result 0;
+  reader_closed t;
+  match !error_queue with
+  | None -> Alcotest.fail "Expected error"
+  | Some error -> Alcotest.(check request_error) "Error" error `Bad_request
+;;
+
 let tests =
   [ "initial reader state"  , `Quick, test_initial_reader_state
   ; "shutdown reader closed", `Quick, test_reader_is_closed_after_eof
@@ -716,4 +735,5 @@ let tests =
   ; "bad request", `Quick, test_bad_request
   ; "multiple requests in single read", `Quick, test_multiple_requests_in_single_read
   ; "multiple async requests in single read", `Quick, test_multiple_async_requests_in_single_read
+  ; "parse failure after checkpoint", `Quick, test_parse_failure_after_checkpoint
   ]
