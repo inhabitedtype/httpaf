@@ -245,7 +245,7 @@ module Reader = struct
       | `Fixed 0L  ->
         handler request Body.empty;
         ok
-      | `Fixed _ | `Chunked | `Close_delimited as encoding ->
+      | `Fixed _ | `Chunked as encoding ->
         let request_body = Body.create_reader Bigstringaf.empty in
         handler request request_body;
         body ~encoding request_body *> ok
