@@ -61,3 +61,13 @@ end
 
 let write_operation = Alcotest.of_pp Write_operation.pp_hum
 let read_operation = Alcotest.of_pp Read_operation.pp_hum
+
+module Headers = struct
+  include Headers
+
+  let (@) a b = Headers.add_list a (Headers.to_list b)
+
+  let connection_close = Headers.of_list ["connection", "close"]
+  let encoding_chunked = Headers.of_list ["transfer-encoding", "chunked"]
+  let encoding_fixed n = Headers.of_list ["content-length", string_of_int n]
+end
