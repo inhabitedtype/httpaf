@@ -836,6 +836,20 @@ let test_multiple_async_requests_in_single_read () =
   reader_ready t;
 ;;
 
+let test_multiple_requests_in_single_read_with_close () =
+  let response = Response.create `OK ~headers:Headers.connection_close in
+  let t =
+    create (fun reqd -> Reqd.respond_with_string reqd response "")
+  in
+  let reqs =
+    request_to_string (Request.create `GET "/") ^
+    request_to_string (Request.create `GET "/")
+  in
+  read_string t reqs;
+  write_response t response;
+  connection_is_shutdown t;
+;;
+
 let test_parse_failure_after_checkpoint () =
   let error_queue = ref None in
   let error_handler ?request:_ error _start_response =
@@ -905,6 +919,7 @@ let tests =
   ; "bad request", `Quick, test_bad_request
   ; "multiple requests in single read", `Quick, test_multiple_requests_in_single_read
   ; "multiple async requests in single read", `Quick, test_multiple_async_requests_in_single_read
+  ; "multiple requests with connection close", `Quick, test_multiple_requests_in_single_read_with_close
   ; "parse failure after checkpoint", `Quick, test_parse_failure_after_checkpoint
   ; "response finished before body read", `Quick, test_response_finished_before_body_read
   ]
