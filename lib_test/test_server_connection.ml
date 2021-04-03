@@ -856,17 +856,22 @@ let test_parse_failure_after_checkpoint () =
 
 let test_response_finished_before_body_read () =
   let response = Response.create `OK ~headers:(Headers.encoding_fixed 4) in
-  let body = ref None in
+  let rev_body_chunks = ref [] in
   let request_handler reqd =
-    body := Some (Reqd.request_body reqd);
+    Body.schedule_read
+      (Reqd.request_body reqd)
+      ~on_read:(fun buf ~off ~len ->
+        rev_body_chunks := Bigstringaf.substring buf ~off ~len :: !rev_body_chunks)
+      ~on_eof:ignore;
     Reqd.respond_with_string reqd response "done"
   in
   let t = create request_handler in
-  read_request t (Request.create `GET "/" ~headers:(Headers.encoding_fixed 5));
+  read_request t (Request.create `GET "/" ~headers:(Headers.encoding_fixed 12));
   write_response t response ~body:"done";
-  Body.close_reader (Option.get !body);
   (* Finish the request and send another *)
-  read_string t "hello";
+  read_string t "hello, ";
+  read_string t "world";
+  Alcotest.(check (list string)) "received body" ["world"; "hello, "] !rev_body_chunks;
   read_request t (Request.create `GET "/");
   write_response t response ~body:"done";
 ;;
