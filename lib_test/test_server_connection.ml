@@ -855,20 +855,20 @@ let test_parse_failure_after_checkpoint () =
 ;;
 
 let test_response_finished_before_body_read () =
-  let response = Response.create `OK in
+  let response = Response.create `OK ~headers:(Headers.encoding_fixed 4) in
   let body = ref None in
   let request_handler reqd =
     body := Some (Reqd.request_body reqd);
-    Reqd.respond_with_string reqd response ""
+    Reqd.respond_with_string reqd response "done"
   in
   let t = create request_handler in
   read_request t (Request.create `GET "/" ~headers:(Headers.encoding_fixed 5));
-  write_response t response;
+  write_response t response ~body:"done";
   Body.close_reader (Option.get !body);
   (* Finish the request and send another *)
   read_string t "hello";
   read_request t (Request.create `GET "/");
-  write_response t response;
+  write_response t response ~body:"done";
 ;;
 
 let tests =
