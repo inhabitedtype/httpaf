@@ -858,11 +858,15 @@ let test_response_finished_before_body_read () =
   let response = Response.create `OK ~headers:(Headers.encoding_fixed 4) in
   let rev_body_chunks = ref [] in
   let request_handler reqd =
-    Body.schedule_read
-      (Reqd.request_body reqd)
-      ~on_read:(fun buf ~off ~len ->
-        rev_body_chunks := Bigstringaf.substring buf ~off ~len :: !rev_body_chunks)
-      ~on_eof:ignore;
+    let rec read_body () =
+      Body.schedule_read
+        (Reqd.request_body reqd)
+        ~on_read:(fun buf ~off ~len ->
+          rev_body_chunks := Bigstringaf.substring buf ~off ~len :: !rev_body_chunks;
+          read_body ())
+        ~on_eof:ignore;
+    in
+    read_body ();
     Reqd.respond_with_string reqd response "done"
   in
   let t = create request_handler in
