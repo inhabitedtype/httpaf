@@ -201,21 +201,26 @@ let reader_closed t =
     `Close (current_read_operation t);
 ;;
 
-(* If [partial] is set, [expected] is only matched against the prefix of what is
-   in the write queue. This can simulate backpressure from an external
-   connection *)
-let write_string ?(msg="output written") ?(partial=false) t expected =
+(* Checks that the [len] prefixes of expected and the write match, and returns
+   the rest. *)
+let write_partial_string ?(msg="output written") t expected len =
+  do_write t (fun conn bufs ->
+    let actual =
+      String.sub (Write_operation.iovecs_to_string bufs) 0 len
+    in
+    Alcotest.(check string) msg (String.sub expected 0 len) actual;
+    Server_connection.report_write_result conn (`Ok len);
+    String.sub expected len (String.length expected - len));
+;;
+
+let write_string ?(msg="output written") t expected =
   do_write t (fun conn bufs ->
     let len = String.length expected in
-    let actual =
-      let str = Write_operation.iovecs_to_string bufs in
-      if partial && len <= String.length str
-      then String.sub str 0 len
-      else str
-    in
+    let actual = Write_operation.iovecs_to_string bufs in
     Alcotest.(check string) msg expected actual;
     Server_connection.report_write_result conn (`Ok len));
 ;;
+
 
 let write_response ?(msg="response written") ?body t r =
   let response_string = response_to_string ?body r in
@@ -696,10 +701,12 @@ let test_blocked_write_on_chunked_encoding () =
   let t = create ~error_handler request_handler in
   writer_yielded t;
   read_request t (Request.create `GET "/");
-  let first_write, second_write =
-    split 16 "HTTP/1.1 200 OK\r\nTransfer-encoding: chunked\r\n\r\n16\r\ngets partially written\r\n"
+  let response_bytes =
+    "HTTP/1.1 200 OK\r\nTransfer-encoding: chunked\r\n\r\n16\r\ngets partially written\r\n"
   in
-  write_string t ~msg:"first write" first_write ~partial:true;
+  let second_write =
+    write_partial_string t ~msg:"first write" response_bytes 16
+  in
   write_string t ~msg:"second write" second_write
 ;;
 
