@@ -61,3 +61,9 @@ end
 
 let write_operation = Alcotest.of_pp Write_operation.pp_hum
 let read_operation = Alcotest.of_pp Read_operation.pp_hum
+
+let split n str =
+  assert (n <= String.length str);
+  String.sub str 0 n,
+  String.sub str n (String.length str - n)
+;;
