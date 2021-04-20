@@ -115,6 +115,7 @@ let rec do_execute_read t on_eof on_read =
     t.on_eof         <- default_on_eof;
     t.on_read        <- default_on_read;
     on_eof ()
+  (* [Faraday.operation] never returns an empty list of iovecs *)
   | `Writev []       -> assert false
   | `Writev (iovec::_) ->
     t.read_scheduled <- false;
