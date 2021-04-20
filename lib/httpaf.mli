@@ -528,11 +528,17 @@ module Request : sig
     -> string
     -> t
 
-  val body_length : t -> [
-    | `Fixed of Int64.t
-    | `Chunked
-    | `Error of [`Bad_request]
-  ]
+  module Body_length : sig
+    type t = [
+      | `Fixed of Int64.t
+      | `Chunked
+      | `Error of [`Bad_request]
+    ]
+
+    val pp_hum : Format.formatter -> t -> unit
+  end
+
+  val body_length : t -> Body_length.t
   (** [body_length t] is the length of the message body accompanying [t]. It is
       an error to generate a request with a close-delimited message body.
 
@@ -571,12 +577,18 @@ module Response : sig
       the given parameters. For typical use cases, it's sufficient to provide
       values for [headers] and [status]. *)
 
-  val body_length : ?proxy:bool -> request_method:Method.standard -> t -> [
-    | `Fixed of Int64.t
-    | `Chunked
-    | `Close_delimited
-    | `Error of [ `Bad_gateway | `Internal_server_error ]
-  ]
+  module Body_length : sig
+    type t = [
+      | `Fixed of Int64.t
+      | `Chunked
+      | `Close_delimited
+      | `Error of [ `Bad_gateway | `Internal_server_error ]
+    ]
+
+    val pp_hum : Format.formatter -> t -> unit
+  end
+
+  val body_length : ?proxy:bool -> request_method:Method.standard -> t -> Body_length.t
   (** [body_length ?proxy ~request_method t] is the length of the message body
       accompanying [t] assuming it is a response to a request whose method was
       [request_method]. If the calling code is acting as a proxy, it should

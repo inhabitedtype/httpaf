@@ -54,16 +54,39 @@ let persistent_connection ?proxy { version; headers; _ } =
 
 let proxy_error  = `Error `Bad_gateway
 let server_error = `Error `Internal_server_error
-let body_length ?(proxy=false) ~request_method { status; headers; _ } =
+
+module Body_length = struct
+  type t = [
+    | `Fixed of Int64.t
+    | `Chunked
+    | `Close_delimited
+    | `Error of [ `Bad_gateway | `Internal_server_error ]
+  ]
+
+  let pp_hum fmt (len : t) =
+    match len with
+    | `Fixed n -> Format.fprintf fmt "Fixed %Li" n
+    | `Chunked -> Format.pp_print_string fmt "Chunked"
+    | `Close_delimited -> Format.pp_print_string fmt "Close delimited"
+    | `Error `Bad_gateway -> Format.pp_print_string fmt "Error: Bad gateway"
+    | `Error `Internal_server_error ->
+        Format.pp_print_string fmt "Error: Internal server error"
+  ;;
+end
+
+let body_length ?(proxy=false) ~request_method { status; headers; _ } : Body_length.t =
   match status, request_method with
+  | _, `HEAD                                   -> `Fixed 0L
   | (`No_content | `Not_modified), _           -> `Fixed 0L
   | s, _        when Status.is_informational s -> `Fixed 0L
   | s, `CONNECT when Status.is_successful s    -> `Close_delimited
   | _, _                                       ->
-    begin match Headers.get_multi headers "transfer-encoding" with
-    | "chunked"::_                             -> `Chunked
-    | _        ::es when List.mem "chunked" es -> `Close_delimited
-    | [] | _                                   ->
+    (* The last entry in transfer-encoding is the correct entry. We only handle
+       chunked transfer-encodings. *)
+    begin match List.rev (Headers.get_multi headers "transfer-encoding") with
+    | value::_ when Headers.ci_equal value "chunked" -> `Chunked
+    | _    ::_ -> `Close_delimited
+    | [] ->
       begin match Message.unique_content_length_values headers with
       | []      -> `Close_delimited
       | [ len ] ->

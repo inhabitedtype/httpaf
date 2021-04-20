@@ -3,6 +3,9 @@ type t
 type name = string
 type value = string
 
+(** Case-insensitive equality for testing header names or values *)
+val ci_equal : string -> string -> bool
+
 val empty : t
 
 val of_list     : (name * value) list -> t
