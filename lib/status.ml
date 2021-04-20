@@ -37,7 +37,7 @@ type informational = [
   | `Switching_protocols
   ]
 
-type successful = [ 
+type successful = [
   | `OK
   | `Created
   | `Accepted
@@ -205,53 +205,53 @@ let to_code = function
 
 let really_unsafe_of_code = function
  (* Informational *)
-  | 100 -> `Continue 
-  | 101 -> `Switching_protocols 
+  | 100 -> `Continue
+  | 101 -> `Switching_protocols
  (* Successful *)
-  | 200 -> `OK 
-  | 201 -> `Created 
-  | 202 -> `Accepted 
-  | 203 -> `Non_authoritative_information 
-  | 204 -> `No_content 
-  | 205 -> `Reset_content 
-  | 206 -> `Partial_content 
+  | 200 -> `OK
+  | 201 -> `Created
+  | 202 -> `Accepted
+  | 203 -> `Non_authoritative_information
+  | 204 -> `No_content
+  | 205 -> `Reset_content
+  | 206 -> `Partial_content
  (* Redirection *)
-  | 300 -> `Multiple_choices 
-  | 301 -> `Moved_permanently 
-  | 302 -> `Found 
-  | 303 -> `See_other 
-  | 304 -> `Not_modified 
-  | 305 -> `Use_proxy 
-  | 307 -> `Temporary_redirect 
+  | 300 -> `Multiple_choices
+  | 301 -> `Moved_permanently
+  | 302 -> `Found
+  | 303 -> `See_other
+  | 304 -> `Not_modified
+  | 305 -> `Use_proxy
+  | 307 -> `Temporary_redirect
  (* Client error *)
-  | 400 -> `Bad_request 
-  | 401 -> `Unauthorized 
-  | 402 -> `Payment_required 
-  | 403 -> `Forbidden 
-  | 404 -> `Not_found 
-  | 405 -> `Method_not_allowed 
+  | 400 -> `Bad_request
+  | 401 -> `Unauthorized
+  | 402 -> `Payment_required
+  | 403 -> `Forbidden
+  | 404 -> `Not_found
+  | 405 -> `Method_not_allowed
   | 406 -> `Not_acceptable
-  | 407 -> `Proxy_authentication_required 
-  | 408 -> `Request_timeout 
-  | 409 -> `Conflict 
-  | 410 -> `Gone 
-  | 411 -> `Length_required 
-  | 412 -> `Precondition_failed 
-  | 413 -> `Payload_too_large 
-  | 414 -> `Uri_too_long 
-  | 415 -> `Unsupported_media_type 
-  | 416 -> `Range_not_satisfiable 
-  | 417 -> `Expectation_failed 
-  | 418 -> `I_m_a_teapot 
-  | 420 -> `Enhance_your_calm 
+  | 407 -> `Proxy_authentication_required
+  | 408 -> `Request_timeout
+  | 409 -> `Conflict
+  | 410 -> `Gone
+  | 411 -> `Length_required
+  | 412 -> `Precondition_failed
+  | 413 -> `Payload_too_large
+  | 414 -> `Uri_too_long
+  | 415 -> `Unsupported_media_type
+  | 416 -> `Range_not_satisfiable
+  | 417 -> `Expectation_failed
+  | 418 -> `I_m_a_teapot
+  | 420 -> `Enhance_your_calm
   | 426 -> `Upgrade_required
  (* Server error *)
-  | 500 -> `Internal_server_error 
-  | 501 -> `Not_implemented 
-  | 502 -> `Bad_gateway 
+  | 500 -> `Internal_server_error
+  | 501 -> `Not_implemented
+  | 502 -> `Bad_gateway
   | 503 -> `Service_unavailable
-  | 504 -> `Gateway_timeout 
-  | 505 -> `Http_version_not_supported 
+  | 504 -> `Gateway_timeout
+  | 505 -> `Http_version_not_supported
   | c   -> `Code c
 
 let unsafe_of_code c =

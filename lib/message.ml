@@ -38,7 +38,8 @@
 
 let persistent_connection ?(proxy=false) version headers =
   let _ = proxy in
-  (* XXX(seliopou): use proxy argument in the case of HTTP/1.0 *)
+  (* XXX(seliopou): use proxy argument in the case of HTTP/1.0 as per
+     https://tools.ietf.org/html/rfc7230#section-6.3 *)
   match Headers.get headers "connection" with
   | Some "close"      -> false
   | Some "keep-alive" -> Version.(compare version v1_0) >= 0
