@@ -72,6 +72,8 @@ module CI = struct
     )
 end
 
+let ci_equal = CI.equal
+
 let rec mem t name =
   match t with
   | (name', _)::t' -> CI.equal name name' || mem t' name
