@@ -246,9 +246,12 @@ let test_failed_response_parse () =
     reader_ready t;
     let len = feed_string t response in
     Alcotest.(check int) "bytes read" len bytes_read;
-    connection_is_shutdown t;
+    (* A previous version of httpaf required one to call [next_read_operation] in order to
+       get the error handler to be called. This test now demonstrates that this is no
+       longer the case: [!error] is already [Some _]. *)
     Alcotest.(check (option response_error)) "Response error"
       (Some expected_error) !error;
+    connection_is_shutdown t;
   in
 
   test "HTTP/1.1 200\r\n\r\n" 12 (`Malformed_response ": char ' '");
