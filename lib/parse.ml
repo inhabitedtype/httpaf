@@ -192,7 +192,7 @@ let body ~encoding writer =
       _hex >>= fun size ->
       if size = 0L
       then eol *> finish writer
-      else fixed size ~unexpected:"expected more from body chunk" *> eol *> commit *> p)
+      else fixed size ~unexpected:"expected more from body chunk" *> eol *> p)
   | `Close_delimited ->
     fix (fun p ->
       let _rec = (available >>= fun n -> schedule_size writer n) *> p in
