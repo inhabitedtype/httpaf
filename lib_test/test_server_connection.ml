@@ -72,6 +72,9 @@ end = struct
     | `Close ->
       trace "reader: Close";
       t.read_operation <- `Close
+    | `Upgrade ->
+      trace "reader: Upgrade";
+      t.read_operation <- `Upgrade
   ;;
 
   let rec write_step t =
@@ -91,6 +94,9 @@ end = struct
     | `Close n ->
       trace "writer: Close";
       t.write_operation <- `Close n
+    | `Upgrade ->
+      trace "writer: Upgrade";
+      t.write_operation <- `Upgrade
   ;;
 
   let create ?config ?error_handler request_handler =
@@ -114,13 +120,13 @@ end = struct
   let current_read_operation t =
     match t.read_operation with
     | `Initial -> assert false
-    | `Read | `Yield | `Close as op -> op
+    | `Read | `Yield | `Close | `Upgrade as op -> op
   ;;
 
   let current_write_operation t =
     match t.write_operation with
     | `Initial -> assert false
-    | `Write _ | `Yield | `Close _ as op -> op
+    | `Write _ | `Yield | `Close _ | `Upgrade as op -> op
   ;;
 
   let do_read t f =
@@ -129,7 +135,7 @@ end = struct
       let res = f t.server_connection in
       t.read_loop ();
       res
-    | `Yield | `Close as op ->
+    | `Yield | `Close | `Upgrade as op ->
         Alcotest.failf "Read attempted during operation: %a"
           Read_operation.pp_hum op
   ;;
@@ -140,7 +146,7 @@ end = struct
         let res = f t.server_connection bufs in
         t.write_loop ();
         res
-    | `Yield | `Close _ as op ->
+    | `Yield | `Close _ | `Upgrade as op ->
         Alcotest.failf "Write attempted during operation: %a"
           Write_operation.pp_hum op
   ;;
@@ -943,6 +949,22 @@ let test_shutdown_during_asynchronous_request () =
   writer_closed t
 ;;
 
+let test_upgrade () =
+  let upgrade_headers =["Connection", "Upgrade" ; "Upgrade", "foo"] in
+  let request_handler reqd =
+    Reqd.respond_with_upgrade reqd
+      (Headers.of_list upgrade_headers)
+  in
+  let t = create request_handler in
+  read_request t
+    (Request.create `GET "/"
+       ~headers:(Headers.of_list (("Content-Length", "0") :: upgrade_headers)));
+  Alcotest.check read_operation "Reader is `Upgrade" `Upgrade (current_read_operation t);
+  write_response t
+    (Response.create `Switching_protocols ~headers:(Headers.of_list upgrade_headers));
+  Alcotest.check write_operation "Writer is `Upgrade" `Upgrade (current_write_operation t);
+;;
+
 let tests =
   [ "initial reader state"  , `Quick, test_initial_reader_state
   ; "shutdown reader closed", `Quick, test_reader_is_closed_after_eof
@@ -974,4 +996,5 @@ let tests =
   ; "response finished before body read", `Quick, test_response_finished_before_body_read
   ; "shutdown in request handler", `Quick, test_shutdown_in_request_handler
   ; "shutdown during asynchronous request", `Quick, test_shutdown_during_asynchronous_request
+  ; "test upgrades", `Quick, test_upgrade
   ]

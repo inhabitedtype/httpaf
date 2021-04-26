@@ -18,7 +18,7 @@ let response_to_string ?body r =
   Faraday.serialize_to_string f
 
 module Read_operation = struct
-  type t = [ `Read | `Yield | `Close ]
+  type t = [ `Read | `Yield | `Close | `Upgrade ]
 
   let pp_hum fmt (t : t) =
     let str =
@@ -26,13 +26,14 @@ module Read_operation = struct
       | `Read -> "Read"
       | `Yield -> "Yield"
       | `Close -> "Close"
+      | `Upgrade -> "Upgrade"
     in
     Format.pp_print_string fmt str
   ;;
 end
 
 module Write_operation = struct
-  type t = [ `Write of Bigstringaf.t IOVec.t list | `Yield | `Close of int ]
+  type t = [ `Write of Bigstringaf.t IOVec.t list | `Yield | `Close of int | `Upgrade ]
 
   let iovecs_to_string iovecs =
     let len = IOVec.lengthv iovecs in
@@ -50,12 +51,13 @@ module Write_operation = struct
     | `Write iovecs -> Format.fprintf fmt "Write %S" (iovecs_to_string iovecs)
     | `Yield -> Format.pp_print_string fmt "Yield"
     | `Close len -> Format.fprintf fmt "Close %i" len
+    | `Upgrade -> Format.pp_print_string fmt "Upgrade"
   ;;
 
   let to_write_as_string t =
     match t with
     | `Write iovecs -> Some (iovecs_to_string iovecs)
-    | `Close _ | `Yield -> None
+    | `Close _ | `Yield | `Upgrade -> None
   ;;
 end
 
