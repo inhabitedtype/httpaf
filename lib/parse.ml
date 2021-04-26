@@ -192,7 +192,7 @@ let body ~encoding writer =
       _hex >>= fun size ->
       if size = 0L
       then eol *> finish writer
-      else fixed size ~unexpected:"expected more from body chunk" *> eol *> p)
+      else fixed size ~unexpected:"expected more from body chunk" *> eol *> commit *> p)
   | `Close_delimited ->
     fix (fun p ->
       let _rec = (available >>= fun n -> schedule_size writer n) *> p in
@@ -239,16 +239,19 @@ module Reader = struct
 
   let request handler =
     let parser =
-      request <* commit >>= fun request ->
-      match Request.body_length request with
-      | `Error `Bad_request -> return (Error (`Bad_request request))
-      | `Fixed 0L  ->
-        handler request Body.empty;
-        ok
-      | `Fixed _ | `Chunked as encoding ->
-        let request_body = Body.create_reader Bigstringaf.empty in
-        handler request request_body;
-        body ~encoding request_body *> ok
+      at_end_of_input >>= function
+      | true -> ok
+      | false ->
+        request <* commit >>= fun request ->
+        match Request.body_length request with
+        | `Error `Bad_request -> return (Error (`Bad_request request))
+        | `Fixed 0L  ->
+          handler request Body.empty;
+          ok
+        | `Fixed _ | `Chunked as encoding ->
+          let request_body = Body.create_reader Bigstringaf.empty in
+          handler request request_body;
+          body ~encoding request_body *> ok
     in
     create parser
 
@@ -300,21 +303,29 @@ module Reader = struct
       | _ -> assert false
   ;;
 
-  let rec read_with_more t bs ~off ~len more =
+  let read_with_more t bs ~off ~len more =
     let consumed =
-      match t.parse_state with
-      | Fail _ -> 0
-      | Done   ->
-        start t (AU.parse t.parser);
-        read_with_more  t bs ~off ~len more;
-      | Partial continue ->
-        transition t (continue bs more ~off ~len)
+      let rec loop () =
+        match t.parse_state with
+        | Fail _ -> 0
+        | Done   ->
+          start t (AU.parse t.parser);
+          loop ()
+        | Partial continue ->
+          transition t (continue bs more ~off ~len)
+      in
+      loop ()
     in
     begin match more with
     | Complete -> t.closed <- true;
     | Incomplete -> ()
     end;
-    consumed;
+    let error =
+      match t.parse_state with
+      | Fail err -> Some err
+      | Done | Partial _ -> None
+    in
+    consumed, error;
   ;;
 
   let force_close t =

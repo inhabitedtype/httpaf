@@ -162,20 +162,25 @@ module Oneshot = struct
       end
   ;;
 
+  let handle_error t e =
+    match e with
+    | `Parse(marks, message) ->
+      let message = String.concat "" [ String.concat ">" marks; ": "; message] in
+      set_error_and_handle t (`Malformed_response message)
+    | (`Invalid_response_body_length _ as error) ->
+      set_error_and_handle t error
+
   let next_read_operation t =
     match _next_read_operation t with
-    | `Error (`Parse(marks, message)) ->
-      let message = String.concat "" [ String.concat ">" marks; ": "; message] in
-      set_error_and_handle t (`Malformed_response message);
-      `Close
-    | `Error (`Invalid_response_body_length _ as error) ->
-      set_error_and_handle t error;
-      `Close
+    | `Error e -> handle_error t e; `Close
     | (`Read | `Close) as operation -> operation
   ;;
 
   let read_with_more t bs ~off ~len more =
-    let consumed = Reader.read_with_more t.reader bs ~off ~len more in
+    let consumed, error = Reader.read_with_more t.reader bs ~off ~len more in
+    (match error with
+     | Some e -> handle_error t e
+     | None -> ());
     flush_response_body t;
     consumed
   ;;

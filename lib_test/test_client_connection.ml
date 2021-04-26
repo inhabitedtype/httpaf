@@ -148,7 +148,7 @@ let test_response_eof () =
   Alcotest.(check int) "read_eof with no input returns 0" 0 c;
   connection_is_shutdown t;
   Alcotest.(check (option string)) "unexpected eof"
-    (Some "unexpected eof")
+    (Some ": not enough input")
     !error_message
 ;;
 

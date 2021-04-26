@@ -214,15 +214,20 @@ and _final_read_operation_for t reqd =
   )
 ;;
 
+
+let handle_error t error =
+  match error with
+  | `Parse _             -> set_error_and_handle          t `Bad_request
+  | `Bad_request request -> set_error_and_handle ~request t `Bad_request
+
 let next_read_operation t =
   match _next_read_operation t with
-  | `Error (`Parse _)             -> set_error_and_handle          t `Bad_request; `Close
-  | `Error (`Bad_request request) -> set_error_and_handle ~request t `Bad_request; `Close
+  | `Error e -> handle_error t e; `Close
   | (`Read | `Yield | `Close) as operation -> operation
 
 let rec read_with_more t bs ~off ~len more =
   let call_handler = Queue.is_empty t.request_queue in
-  let consumed = Reader.read_with_more t.reader bs ~off ~len more in
+  let consumed, error = Reader.read_with_more t.reader bs ~off ~len more in
   if is_active t
   then (
     let reqd = current_reqd_exn t in
@@ -230,14 +235,17 @@ let rec read_with_more t bs ~off ~len more =
     then t.request_handler reqd;
     Reqd.flush_request_body reqd;
   );
-  (* Keep consuming input as long as progress is made and data is
-     available, in case multiple requests were received at once. *)
-  if consumed > 0 && consumed < len then
-    let off = off + consumed
-    and len = len - consumed in
-    consumed + read_with_more t bs ~off ~len more
-  else
-    consumed
+  match error with
+  | Some e -> handle_error t e; consumed
+  | None ->
+    (* Keep consuming input as long as progress is made and data is
+       available, in case multiple requests were received at once. *)
+    if consumed > 0 && consumed < len then
+      let off = off + consumed
+      and len = len - consumed in
+      consumed + read_with_more t bs ~off ~len more
+    else
+      consumed
 ;;
 
 let read t bs ~off ~len =
