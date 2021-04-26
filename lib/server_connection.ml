@@ -199,6 +199,7 @@ let rec _next_read_operation t =
     match Reqd.input_state reqd with
     | Ready    -> Reader.next t.reader
     | Complete -> _final_read_operation_for t reqd
+    | Upgraded -> `Upgrade
   )
 
 and _final_read_operation_for t reqd =
@@ -208,6 +209,7 @@ and _final_read_operation_for t reqd =
   ) else (
     match Reqd.output_state reqd with
     | Waiting | Ready -> `Yield
+    | Upgraded -> `Upgrade
     | Complete ->
       advance_request_queue t;
       _next_read_operation t;
@@ -218,7 +220,7 @@ let next_read_operation t =
   match _next_read_operation t with
   | `Error (`Parse _)             -> set_error_and_handle          t `Bad_request; `Close
   | `Error (`Bad_request request) -> set_error_and_handle ~request t `Bad_request; `Close
-  | (`Read | `Yield | `Close) as operation -> operation
+  | (`Read | `Yield | `Close | `Upgrade) as operation -> operation
 
 let rec read_with_more t bs ~off ~len more =
   let call_handler = Queue.is_empty t.request_queue in
@@ -262,6 +264,12 @@ let rec _next_write_operation t =
       Reqd.flush_response_body reqd;
       Writer.next t.writer
     | Complete -> _final_write_operation_for t reqd
+    | Upgraded ->
+      if Writer.has_pending_output t.writer then
+        (* Even in the Upgrade case, we're still responsible for writing the response
+           header, so we might have work to do. *)
+        Writer.next t.writer
+      else _final_write_operation_for t reqd
   )
 
 and _final_write_operation_for t reqd =
@@ -272,6 +280,7 @@ and _final_write_operation_for t reqd =
     ) else (
       match Reqd.input_state reqd with
       | Ready -> Writer.next t.writer;
+      | Upgraded -> `Upgrade
       | Complete ->
         advance_request_queue t;
         _next_write_operation t;
