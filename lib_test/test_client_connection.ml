@@ -277,6 +277,38 @@ let test_failed_response_parse () =
   test (response_to_string response) 39 (`Invalid_response_body_length response);
 ;;
 
+let test_body_schedule_read_with_data_available () =
+  let request' = Request.create `GET "/" in
+  let response = Response.create `OK ~headers:(Headers.encoding_fixed 11) in
+
+  let body = ref None in
+  let response_handler response' body' =
+    body := Some body';
+    Alcotest.check (module Response) "expected response" response response';
+  in
+  let req_body, t =
+    request request' ~response_handler ~error_handler:no_error_handler
+  in
+  Body.close_writer req_body;
+  write_request  t request';
+  writer_closed  t;
+  read_response  t response;
+
+  (* We get some data on the connection, but not the full response yet. *)
+  read_string t "Hello";
+
+  (* Schedule a read when there is already data available. on_read should be called
+     straight away, as who knows how long it'll be before more data arrives. *)
+  let body = Option.get !body in
+  let on_read_called = ref false in
+  Body.schedule_read body
+    ~on_read:(fun buf ~off ~len ->
+      on_read_called := true;
+      Alcotest.(check string) "Body" (Bigstringaf.substring buf ~off ~len) "Hello")
+    ~on_eof:(fun () -> assert false);
+  Alcotest.(check bool) "on_read called" !on_read_called true
+;;
+
 let tests =
   [ "GET"         , `Quick, test_get
   ; "send streaming body", `Quick, test_send_streaming_body
@@ -285,4 +317,6 @@ let tests =
   ; "report_exn"  , `Quick, test_report_exn
   ; "input_shrunk", `Quick, test_input_shrunk
   ; "failed response parse", `Quick, test_failed_response_parse
+  ; "Body.schedule_read with data available", `Quick,
+    test_body_schedule_read_with_data_available
   ]

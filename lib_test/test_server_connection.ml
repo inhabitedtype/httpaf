@@ -943,6 +943,32 @@ let test_shutdown_during_asynchronous_request () =
   writer_closed t
 ;;
 
+let test_body_schedule_read_with_data_available () =
+  let response = Response.create `OK ~headers:(Headers.encoding_fixed 4) in
+  let body = ref None in
+  let request_handler reqd =
+    body := Some (Reqd.request_body reqd);
+    Reqd.respond_with_string reqd response "done"
+  in
+  let t = create request_handler in
+  read_request t (Request.create `GET "/" ~headers:(Headers.encoding_fixed 11));
+  write_response t response ~body:"done";
+
+  (* We get some data on the connection, but not the full response yet. *)
+  read_string t "Hello";
+
+  (* Schedule a read when there is already data available. on_read should be called
+     straight away, as who knows how long it'll be before more data arrives. *)
+  let body = Option.get !body in
+  let on_read_called = ref false in
+  Body.schedule_read body
+    ~on_read:(fun buf ~off ~len ->
+      on_read_called := true;
+      Alcotest.(check string) "Body" (Bigstringaf.substring buf ~off ~len) "Hello")
+    ~on_eof:(fun () -> assert false);
+  Alcotest.(check bool) "on_read called" !on_read_called true
+;;
+
 let tests =
   [ "initial reader state"  , `Quick, test_initial_reader_state
   ; "shutdown reader closed", `Quick, test_reader_is_closed_after_eof
@@ -974,4 +1000,5 @@ let tests =
   ; "response finished before body read", `Quick, test_response_finished_before_body_read
   ; "shutdown in request handler", `Quick, test_shutdown_in_request_handler
   ; "shutdown during asynchronous request", `Quick, test_shutdown_during_asynchronous_request
+  ; "Body.schedule_read with data available", `Quick, test_body_schedule_read_with_data_available
   ]

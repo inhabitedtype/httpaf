@@ -136,7 +136,8 @@ let schedule_read t ~on_eof ~on_read =
   else begin
     t.read_scheduled <- true;
     t.on_eof         <- on_eof;
-    t.on_read        <- on_read
+    t.on_read        <- on_read;
+    do_execute_read t on_eof on_read;
   end
 
 let has_pending_output t =
