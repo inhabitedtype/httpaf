@@ -918,16 +918,24 @@ let test_upgrade () =
 
 let test_upgrade_where_server_does_not_upgrade () =
   let upgrade_headers =["Connection", "upgrade" ; "Upgrade", "foo"] in
-  let response = Response.create `Bad_request ~headers:(Headers.of_list upgrade_headers) in
-  let request_handler reqd =
-    Reqd.respond_with_string reqd response ""
-  in
+  let reqd = ref None in
+  let request_handler reqd' = reqd := Some reqd' in
   let t = create request_handler in
   read_request t
     (Request.create `GET "/"
        ~headers:(Headers.of_list (("Content-Length", "0") :: upgrade_headers)));
-  Alcotest.check read_operation "Reader is `Close" `Close (current_read_operation t);
+  (* At this point, we don't know if the response handler will call respond_with_upgrade
+     or not. So we pause the reader until that is determined. *)
+  Alcotest.check read_operation "Reader is `Yield during upgrade negotiation"
+    `Yield (current_read_operation t);
+
+  (* Now pretend the user doesn't want to do the upgrade and make sure we close the
+     connection *)
+  let reqd = Option.get !reqd in
+  let response = Response.create `Bad_request ~headers:(Headers.of_list upgrade_headers) in
+  Reqd.respond_with_string reqd response "";
   write_response t response;
+  Alcotest.check read_operation "Reader is `Close" `Close (current_read_operation t);
   Alcotest.check write_operation "Writer is `Close" (`Close 0) (current_write_operation t);
 ;;
 

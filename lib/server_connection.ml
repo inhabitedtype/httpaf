@@ -197,6 +197,7 @@ let rec _next_read_operation t =
   ) else (
     let reqd = current_reqd_exn t in
     match Reqd.input_state reqd with
+    | Waiting  -> `Yield
     | Ready    -> Reader.next t.reader
     | Complete -> _final_read_operation_for t reqd
     | Upgraded -> `Upgrade
@@ -281,6 +282,7 @@ and _final_write_operation_for t reqd ~upgrade =
       Writer.next t.writer;
     ) else (
       match Reqd.input_state reqd with
+      | Waiting -> `Yield
       | Ready -> Writer.next t.writer;
       | Upgraded -> `Upgrade
       | Complete ->
