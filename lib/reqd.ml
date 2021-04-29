@@ -235,12 +235,17 @@ let output_state t : Output_state.t =
   match t.response_state with
   | Fixed _ -> Complete
   | Streaming (_, response_body) ->
-    if Body.has_pending_output response_body
+    if Writer.is_closed t.writer
+    then Complete
+    else if Body.has_pending_output response_body
     then Ready
     else if Body.is_closed response_body
     then Complete
     else Waiting
-  | Waiting -> Waiting
+  | Waiting ->
+    if Writer.is_closed t.writer
+    then Complete
+    else Waiting
 ;;
 
 let flush_request_body t =
