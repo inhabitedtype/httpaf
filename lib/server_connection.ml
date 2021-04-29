@@ -269,7 +269,7 @@ let rec _next_write_operation t =
         (* Even in the Upgrade case, we're still responsible for writing the response
            header, so we might have work to do. *)
         Writer.next t.writer
-      else _final_write_operation_for t reqd
+      else `Upgrade
   )
 
 and _final_write_operation_for t reqd =

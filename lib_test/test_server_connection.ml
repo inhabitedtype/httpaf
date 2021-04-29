@@ -901,7 +901,7 @@ let test_response_finished_before_body_read () =
 ;;
 
 let test_upgrade () =
-  let upgrade_headers =["Connection", "Upgrade" ; "Upgrade", "foo"] in
+  let upgrade_headers =["Connection", "upgrade" ; "Upgrade", "foo"] in
   let request_handler reqd =
     Reqd.respond_with_upgrade reqd
       (Headers.of_list upgrade_headers)
@@ -916,6 +916,20 @@ let test_upgrade () =
   Alcotest.check write_operation "Writer is `Upgrade" `Upgrade (current_write_operation t);
 ;;
 
+let test_upgrade_where_server_does_not_upgrade () =
+  let upgrade_headers =["Connection", "upgrade" ; "Upgrade", "foo"] in
+  let response = Response.create `Bad_request ~headers:(Headers.of_list upgrade_headers) in
+  let request_handler reqd =
+    Reqd.respond_with_string reqd response ""
+  in
+  let t = create request_handler in
+  read_request t
+    (Request.create `GET "/"
+       ~headers:(Headers.of_list (("Content-Length", "0") :: upgrade_headers)));
+  Alcotest.check read_operation "Reader is `Close" `Close (current_read_operation t);
+  write_response t response;
+  Alcotest.check write_operation "Writer is `Close" (`Close 0) (current_write_operation t);
+;;
 
 let tests =
   [ "initial reader state"  , `Quick, test_initial_reader_state
@@ -946,4 +960,5 @@ let tests =
   ; "parse failure after checkpoint", `Quick, test_parse_failure_after_checkpoint
   ; "response finished before body read", `Quick, test_response_finished_before_body_read
   ; "test upgrades", `Quick, test_upgrade
+  ; "test upgrade where server does not upgrade", `Quick, test_upgrade_where_server_does_not_upgrade
   ]
