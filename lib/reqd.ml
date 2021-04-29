@@ -44,6 +44,7 @@ end
 
 module Input_state = struct
   type t =
+    | Waiting
     | Ready
     | Complete
     | Upgraded
@@ -189,11 +190,14 @@ let respond_with_streaming ?(flush_headers_immediately=false) t response =
 let respond_with_upgrade ?reason t headers =
   match t.response_state with
   | Waiting ->
-    let response = Response.create ?reason ~headers `Switching_protocols in
-    t.response_state <- Upgrade response;
-    Body.close_reader t.request_body;
-    Writer.write_response t.writer response;
-    Writer.wakeup t.writer;
+    if not (Request.is_upgrade t.request) then
+      failwith "httpaf.Reqd.respond_with_upgrade: request was not an upgrade request"
+    else (
+      let response = Response.create ?reason ~headers `Switching_protocols in
+      t.response_state <- Upgrade response;
+      Body.close_reader t.request_body;
+      Writer.write_response t.writer response;
+      Writer.wakeup t.writer);
   | Streaming _ ->
     failwith "httpaf.Reqd.respond_with_upgrade: response already started"
   | Upgrade _
@@ -248,12 +252,23 @@ let persistent_connection t =
   t.persistent
 
 let input_state t : Input_state.t =
-  match t.response_state with
-  | Upgrade _ -> Upgraded
-  | Waiting | Fixed _ | Streaming _ ->
+  let upgrade_status =
+    match Request.is_upgrade t.request with
+    | false -> `Not_upgrading
+    | true ->
+      match t.response_state with
+      | Upgrade _ -> `Finished_upgrading
+      | Fixed _ | Streaming _ -> `Upgrade_declined
+      | Waiting -> `Upgrade_in_progress
+  in
+  match upgrade_status with
+  | `Finished_upgrading -> Upgraded
+  | `Not_upgrading | `Upgrade_declined ->
     if Body.is_closed t.request_body
     then Complete
     else Ready
+  | `Upgrade_in_progress ->
+    Waiting
 ;;
 
 let output_state t : Output_state.t =
