@@ -144,6 +144,7 @@ let shutdown_reader t =
   else wakeup_reader t
 
 let shutdown_writer t =
+  if is_active t then Reqd.flush_response_body (current_reqd_exn t);
   Writer.close t.writer;
   if is_active t
   then Reqd.close_request_body (current_reqd_exn t)

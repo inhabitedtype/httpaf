@@ -53,6 +53,7 @@ end = struct
     ; write_loop : (unit -> unit)
     ; mutable read_unyield_hook : (unit -> unit) option
     ; mutable write_unyield_hook : (unit -> unit) option
+    ; mutable stopped : bool
     }
 
   let rec read_step t =
@@ -63,12 +64,13 @@ end = struct
     | `Yield ->
       trace "reader: Yield";
       t.read_operation <- `Yield;
-      yield_reader t.server_connection (fun () ->
-        trace "reader: Yield callback";
-        read_step t;
-        t.read_unyield_hook |> Option.iter (fun f ->
-          t.read_unyield_hook <- None;
-          f ()))
+      if not t.stopped then
+        yield_reader t.server_connection (fun () ->
+          trace "reader: Yield callback";
+          read_step t;
+          t.read_unyield_hook |> Option.iter (fun f ->
+            t.read_unyield_hook <- None;
+            f ()))
     | `Close ->
       trace "reader: Close";
       t.read_operation <- `Close
@@ -82,12 +84,13 @@ end = struct
     | `Yield ->
       t.write_operation <- `Yield;
       trace "writer: Yield";
-      yield_writer t.server_connection (fun () ->
-        trace "writer: Yield callback";
-        write_step t;
-        t.write_unyield_hook |> Option.iter (fun f ->
-          t.write_unyield_hook <- None;
-          f ()))
+      if not t.stopped then
+        yield_writer t.server_connection (fun () ->
+          trace "writer: Yield callback";
+          write_step t;
+          t.write_unyield_hook |> Option.iter (fun f ->
+            t.write_unyield_hook <- None;
+            f ()))
     | `Close n ->
       trace "writer: Close";
       t.write_operation <- `Close n
@@ -103,6 +106,7 @@ end = struct
         ; write_loop = (fun () -> write_step (Lazy.force_val t))
         ; read_unyield_hook = None
         ; write_unyield_hook = None
+        ; stopped = false
         })
     in
     let t = Lazy.force_val t in
@@ -161,7 +165,9 @@ end = struct
 
   let report_exn t = Server_connection.report_exn t.server_connection
 
-  let shutdown t = Server_connection.shutdown t.server_connection
+  let shutdown t =
+    t.stopped <- true;
+    Server_connection.shutdown t.server_connection
 end
 
 open Runtime
@@ -943,6 +949,21 @@ let test_shutdown_during_asynchronous_request () =
   writer_closed t
 ;;
 
+let test_flush_response_before_shutdown () =
+  let reqd = ref None in
+  let request_handler reqd' = reqd := Some reqd' in
+  let t = create request_handler in
+  let request = Request.create `GET "/" ~headers:(Headers.encoding_fixed 0) in
+  read_request t request;
+  let reqd = Option.get !reqd in
+  let response = Response.create `OK in
+  let body = Reqd.respond_with_streaming ~flush_headers_immediately:true reqd response in
+  write_response t response;
+  Body.write_string body "hello world";
+  shutdown t;
+  write_string t "hello world";
+;;
+
 let tests =
   [ "initial reader state"  , `Quick, test_initial_reader_state
   ; "shutdown reader closed", `Quick, test_reader_is_closed_after_eof
@@ -974,4 +995,5 @@ let tests =
   ; "response finished before body read", `Quick, test_response_finished_before_body_read
   ; "shutdown in request handler", `Quick, test_shutdown_in_request_handler
   ; "shutdown during asynchronous request", `Quick, test_shutdown_during_asynchronous_request
+  ; "flush response before shutdown", `Quick, test_flush_response_before_shutdown
   ]
