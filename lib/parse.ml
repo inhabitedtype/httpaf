@@ -212,13 +212,22 @@ module Reader = struct
     | `Invalid_response_body_length of Response.t
     | `Parse of string list * string ]
 
+  type parser_result =
+    | Can_continue
+    | Stop
+
   type 'error parse_state =
-    | Done
+    | Done of parser_result
     | Fail    of 'error
-    | Partial of (Bigstringaf.t -> off:int -> len:int -> AU.more -> (unit, 'error) result AU.state)
+    | Partial of
+        (Bigstringaf.t
+         -> off:int
+         -> len:int
+         -> AU.more
+         -> (parser_result, 'error) result AU.state)
 
   type 'error t =
-    { parser              : (unit, 'error) result Angstrom.t
+    { parser              : (parser_result, 'error) result Angstrom.t
     ; mutable parse_state : 'error parse_state
       (* The state of the parse for the current request *)
     ; mutable closed      : bool
@@ -231,24 +240,25 @@ module Reader = struct
 
   let create parser =
     { parser
-    ; parse_state = Done
+    ; parse_state = Done Can_continue
     ; closed      = false
     }
-
-  let ok = return (Ok ())
 
   let request handler =
     let parser =
       request <* commit >>= fun request ->
       match Request.body_length request with
-      | `Error `Bad_request -> return (Error (`Bad_request request))
+      | `Error `Bad_request ->
+        return (Error (`Bad_request request))
       | `Fixed 0L  ->
         handler request Body.empty;
-        ok
+        (* If the client has requested an upgrade, then any bytes after the headers are
+           likely not HTTP, so we should be careful not to try to parse them. *)
+        return (Ok (if Request.is_upgrade request then Stop else Can_continue))
       | `Fixed _ | `Chunked as encoding ->
         let request_body = Body.create_reader Bigstringaf.empty in
         handler request request_body;
-        body ~encoding request_body *> ok
+        body ~encoding request_body *> return (Ok Can_continue)
     in
     create parser
 
@@ -261,13 +271,13 @@ module Reader = struct
       | `Error `Internal_server_error -> return (Error (`Invalid_response_body_length response))
       | `Fixed 0L ->
         handler response Body.empty;
-        ok
+        return (Ok Can_continue)
       | `Fixed _ | `Chunked | `Close_delimited as encoding ->
         (* We do not trust the length provided in the [`Fixed] case, as the
            client could DOS easily. *)
         let response_body = Body.create_reader Bigstringaf.empty in
         handler response response_body;
-        body ~encoding response_body *> ok
+        body ~encoding response_body *> return (Ok Can_continue)
     in
     create parser
   ;;
@@ -278,8 +288,8 @@ module Reader = struct
 
   let transition t state =
     match state with
-    | AU.Done(consumed, Ok ()) ->
-      t.parse_state <- Done;
+    | AU.Done(consumed, Ok result) ->
+      t.parse_state <- Done result;
       consumed
     | AU.Done(consumed, Error error) ->
       t.parse_state <- Fail error;
@@ -303,8 +313,8 @@ module Reader = struct
   let rec read_with_more t bs ~off ~len more =
     let consumed =
       match t.parse_state with
-      | Fail _ -> 0
-      | Done   ->
+      | Fail _  | Done Stop -> 0
+      | Done Can_continue ->
         start t (AU.parse t.parser);
         read_with_more  t bs ~off ~len more;
       | Partial continue ->
@@ -324,11 +334,10 @@ module Reader = struct
   let next t =
     if t.closed
     then `Close
-    else (
+    else
       match t.parse_state with
       | Fail err  -> `Error err
-      | Done      -> `Read
-      | Partial _ -> `Read
-    )
+      | Done Stop -> `Close
+      | Done Can_continue | Partial _ -> `Read
   ;;
 end
