@@ -888,6 +888,24 @@ let test_parse_failure_after_checkpoint () =
   | Some error -> Alcotest.(check request_error) "Error" error `Bad_request
 ;;
 
+let test_parse_failure_at_eof () =
+  let error_queue = ref None in
+  let error_handler ?request:_ error _start_response =
+    Alcotest.(check (option reject)) "Error queue is empty" !error_queue None;
+    error_queue := Some error
+  in
+  let request_handler _reqd = assert false in
+  let t = create ~error_handler request_handler in
+  reader_ready t;
+  read_string t "GET index.html HTTP/1.1\r\n";
+  let result = feed_string ~eof:true t " index.html HTTP/1.1\r\n\r\n" in
+  Alcotest.(check int) "Bad header not consumed" result 0;
+  reader_closed t;
+  match !error_queue with
+  | None -> Alcotest.fail "Expected error"
+  | Some error -> Alcotest.(check request_error) "Error" error `Bad_request
+;;
+
 let test_response_finished_before_body_read () =
   let response = Response.create `OK ~headers:(Headers.encoding_fixed 4) in
   let rev_body_chunks = ref [] in
@@ -971,6 +989,7 @@ let tests =
   ; "multiple requests with connection close", `Quick, test_multiple_requests_in_single_read_with_close
   ; "multiple requests with eof", `Quick, test_multiple_requests_in_single_read_with_eof
   ; "parse failure after checkpoint", `Quick, test_parse_failure_after_checkpoint
+  ; "parse failure at eof", `Quick, test_parse_failure_at_eof
   ; "response finished before body read", `Quick, test_response_finished_before_body_read
   ; "shutdown in request handler", `Quick, test_shutdown_in_request_handler
   ; "shutdown during asynchronous request", `Quick, test_shutdown_during_asynchronous_request
