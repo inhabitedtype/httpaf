@@ -967,8 +967,8 @@ let test_upgrade () =
 
 let test_upgrade_where_server_does_not_upgrade () =
   let upgrade_headers =["Connection", "upgrade" ; "Upgrade", "foo"] in
-  let reqd = ref None in
-  let request_handler reqd' = reqd := Some reqd' in
+  let reqd_ref = ref None in
+  let request_handler reqd = reqd_ref := Some reqd in
   let t = create request_handler in
   read_request t
     (Request.create `GET "/"
@@ -980,12 +980,17 @@ let test_upgrade_where_server_does_not_upgrade () =
 
   (* Now pretend the user doesn't want to do the upgrade and make sure we close the
      connection *)
-  let reqd = Option.get !reqd in
-  let response = Response.create `Bad_request ~headers:(Headers.of_list upgrade_headers) in
+  let reqd = Option.get !reqd_ref in
+  let response = Response.create `Bad_request ~headers:(Headers.encoding_fixed 0) in
   Reqd.respond_with_string reqd response "";
   write_response t response;
-  Alcotest.check read_operation "Reader is `Close" `Close (current_read_operation t);
-  Alcotest.check write_operation "Writer is `Close" (`Close 0) (current_write_operation t);
+
+  (* The connection is left healthy and can be used for more requests *)
+  read_request t (Request.create `GET "/" ~headers:(Headers.encoding_fixed 0));
+  let reqd = Option.get !reqd_ref in
+  let response = Response.create `OK ~headers:(Headers.encoding_fixed 0) in
+  Reqd.respond_with_string reqd response "";
+  write_response t response;
 ;;
 
 let tests =
