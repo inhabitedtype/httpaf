@@ -124,7 +124,27 @@ let test_get () =
   Body.close_writer body;
   write_request  t request';
   read_response  t response;
-  read_string    t "d\r\nHello, world!\r\n0\r\n\r\n";
+  read_string    t "d\r\nHello, world!\r\n0\r\n\r\n"
+;;
+
+let test_send_streaming_body () =
+  let request' = Request.create `GET "/" ~headers:Headers.encoding_chunked in
+  let response = Response.create `OK ~headers:Headers.encoding_chunked in
+  let body, t =
+    request
+      request'
+      ~response_handler:(default_response_handler response)
+      ~error_handler:no_error_handler
+  in
+  write_request  t request';
+  read_response  t response;
+  Body.write_string body "hello";
+  write_string t "5\r\nhello\r\n";
+  Body.write_string body "world";
+  Body.close_writer body;
+  write_string t "5\r\nworld\r\n";
+  write_string t "0\r\n\r\n";
+  writer_closed t
 ;;
 
 let test_response_eof () =
@@ -259,6 +279,7 @@ let test_failed_response_parse () =
 
 let tests =
   [ "GET"         , `Quick, test_get
+  ; "send streaming body", `Quick, test_send_streaming_body
   ; "Response EOF", `Quick, test_response_eof
   ; "Response header order preserved", `Quick, test_response_header_order
   ; "report_exn"  , `Quick, test_report_exn
