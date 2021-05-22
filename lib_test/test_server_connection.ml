@@ -40,6 +40,8 @@ module Runtime : sig
   val on_writer_unyield : t -> (unit -> unit) -> bool ref
 
   val report_exn : t -> exn -> unit
+
+  val shutdown : t -> unit
 end = struct
   open Server_connection
 
@@ -158,32 +160,35 @@ end = struct
   ;;
 
   let report_exn t = Server_connection.report_exn t.server_connection
+
+  let shutdown t = Server_connection.shutdown t.server_connection
 end
 
 open Runtime
 
-let read t str ~off ~len =
-  do_read t (fun conn -> Server_connection.read conn str ~off ~len)
+let read ?(eof=false) t str ~off ~len =
+  do_read t (fun conn ->
+    if eof
+    then Server_connection.read_eof conn str ~off ~len
+    else Server_connection.read     conn str ~off ~len)
 ;;
 
-let read_eof t str ~off ~len =
-  do_read t (fun conn -> Server_connection.read_eof conn str ~off ~len)
-;;
+let read_eof = read ~eof:true
 
-let feed_string t str =
+let feed_string ?eof t str =
   let len = String.length str in
   let input = Bigstringaf.of_string str ~off:0 ~len in
-  read t input ~off:0 ~len
+  read ?eof t input ~off:0 ~len
 ;;
 
-let read_string t str =
-  let c = feed_string t str in
+let read_string ?eof t str =
+  let c = feed_string ?eof t str in
   Alcotest.(check int) "read consumes all input" (String.length str) c;
 ;;
 
-let read_request t r =
+let read_request ?eof t r =
   let request_string = request_to_string r in
-  read_string t request_string
+  read_string ?eof t request_string
 ;;
 
 let reader_ready t =
@@ -850,6 +855,21 @@ let test_multiple_requests_in_single_read_with_close () =
   connection_is_shutdown t;
 ;;
 
+let test_multiple_requests_in_single_read_with_eof () =
+  let response = Response.create `OK in
+  let t =
+    create (fun reqd -> Reqd.respond_with_string reqd response "")
+  in
+  let reqs =
+    request_to_string (Request.create `GET "/") ^
+    request_to_string (Request.create `GET "/")
+  in
+  read_string t reqs ~eof:true;
+  write_response t response;
+  write_response t response;
+  connection_is_shutdown t;
+;;
+
 let test_parse_failure_after_checkpoint () =
   let error_queue = ref None in
   let error_handler ?request:_ error _start_response =
@@ -894,6 +914,17 @@ let test_response_finished_before_body_read () =
   write_response t response ~body:"done";
 ;;
 
+let test_shutdown_in_request_handler () =
+  let request = Request.create `GET "/" in
+  let rec t =
+    lazy (create (fun _ -> shutdown (Lazy.force t)))
+  in
+  let t = Lazy.force t in
+  read_request t request;
+  reader_closed t;
+  writer_closed t
+;;
+
 let tests =
   [ "initial reader state"  , `Quick, test_initial_reader_state
   ; "shutdown reader closed", `Quick, test_reader_is_closed_after_eof
@@ -920,6 +951,8 @@ let tests =
   ; "multiple requests in single read", `Quick, test_multiple_requests_in_single_read
   ; "multiple async requests in single read", `Quick, test_multiple_async_requests_in_single_read
   ; "multiple requests with connection close", `Quick, test_multiple_requests_in_single_read_with_close
+  ; "multiple requests with eof", `Quick, test_multiple_requests_in_single_read_with_eof
   ; "parse failure after checkpoint", `Quick, test_parse_failure_after_checkpoint
   ; "response finished before body read", `Quick, test_response_finished_before_body_read
+  ; "shutdown in request handler", `Quick, test_shutdown_in_request_handler
   ]

@@ -207,7 +207,19 @@ and _final_read_operation_for t reqd =
     Reader.next t.reader;
   ) else (
     match Reqd.output_state reqd with
-    | Waiting | Ready -> `Yield
+    | Waiting | Ready ->
+      (* XXX(dpatti): This is a way in which the reader and writer are not
+         parallel -- we tell the writer when it needs to yield but the reader is
+         always asking for more data. This is the only branch in either
+         operation function that does not return `(Reader|Writer).next`, which
+         means there are surprising states you can get into. For example, we ask
+         the runtime to yield but then raise when it tries to because the reader
+         is closed. I don't think checking `is_closed` here makes sense
+         semantically, but I don't think checking it in `_next_read_operation`
+         makes sense either. I chose here so I could describe why. *)
+      if Reader.is_closed t.reader
+      then Reader.next t.reader
+      else `Yield
     | Complete ->
       advance_request_queue t;
       _next_read_operation t;
