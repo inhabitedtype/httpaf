@@ -945,19 +945,20 @@ let test_shutdown_during_asynchronous_request () =
 
 let test_flush_response_before_shutdown () =
   let request = Request.create `GET "/" ~headers:(Headers.encoding_fixed 0) in
-  let response = Response.create `OK in
+  let response = Response.create `OK ~headers:Headers.encoding_chunked in
   let continue = ref (fun () -> ()) in
   let request_handler reqd =
     let body = Reqd.respond_with_streaming ~flush_headers_immediately:true reqd response in
     continue := (fun () ->
-      Body.write_string body "hello world");
+      Body.write_string body "hello world";
+      Body.close_writer body);
   in
   let t = create request_handler in
   read_request t request;
   write_response t response;
   !continue ();
   shutdown t;
-  write_string t "hello world";
+  write_string t "b\r\nhello world\r\n";
   connection_is_shutdown t
 ;;
 
