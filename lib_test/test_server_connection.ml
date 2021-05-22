@@ -925,6 +925,24 @@ let test_shutdown_in_request_handler () =
   writer_closed t
 ;;
 
+let test_shutdown_during_asynchronous_request () =
+  let request = Request.create `GET "/" in
+  let response = Response.create `OK in
+  let continue = ref (fun () -> ()) in
+  let t = create (fun reqd ->
+    continue := (fun () ->
+      Reqd.respond_with_string reqd response ""))
+  in
+  read_request t request;
+  shutdown t;
+  (* This is raised from Faraday *)
+  Alcotest.check_raises "[continue] raises because writer is closed"
+    (Failure "cannot write to closed writer")
+    !continue;
+  reader_closed t;
+  writer_closed t
+;;
+
 let tests =
   [ "initial reader state"  , `Quick, test_initial_reader_state
   ; "shutdown reader closed", `Quick, test_reader_is_closed_after_eof
@@ -955,4 +973,5 @@ let tests =
   ; "parse failure after checkpoint", `Quick, test_parse_failure_after_checkpoint
   ; "response finished before body read", `Quick, test_response_finished_before_body_read
   ; "shutdown in request handler", `Quick, test_shutdown_in_request_handler
+  ; "shutdown during asynchronous request", `Quick, test_shutdown_during_asynchronous_request
   ]
