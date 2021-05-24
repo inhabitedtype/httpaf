@@ -195,12 +195,16 @@ module Oneshot = struct
   let next_write_operation t =
     flush_request_body t;
     if Body.is_closed t.request_body
+    (* Even though we've just done [flush_request_body], it might still be the case that
+       [Body.has_pending_output] returns true, because it does so when we've written all
+       output except for the final chunk. *)
+    && not (Body.has_pending_output t.request_body)
     then Writer.close t.writer;
     Writer.next t.writer
   ;;
 
   let yield_writer t k =
-    if Body.is_closed t.request_body
+    if Body.is_closed t.request_body && not (Body.has_pending_output t.request_body)
     then begin
       Writer.close t.writer;
       k ()
