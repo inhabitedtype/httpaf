@@ -10,7 +10,10 @@ let main port max_accepts_per_batch () =
   let where_to_listen = Tcp.Where_to_listen.of_port port in
   Tcp.(Server.create_sock ~on_handler_error:`Raise
       ~backlog:10_000 ~max_connections:10_000 ~max_accepts_per_batch where_to_listen)
-    (Server.create_connection_handler ~request_handler ~error_handler)
+    (Server.create_connection_handler
+       ~request_handler
+       ~error_handler
+       ~upgrade_handler:None)
   >>= fun _server ->
     Stdio.printf "Listening on port %i and echoing POST requests.\n" port;
     Stdio.printf "To send a POST request, try one of the following\n\n";
