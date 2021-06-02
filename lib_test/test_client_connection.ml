@@ -228,6 +228,38 @@ let test_report_exn () =
     !error_message
 ;;
 
+let test_report_exn_during_body_read () =
+  let request' = Request.create `GET "/" in
+  let response = Response.create `OK in
+
+  let body_done = ref false in
+  let error_message = ref None in
+  let body, t =
+    request
+      request'
+      ~response_handler:(fun _ body ->
+        let on_read _ ~off:_ ~len:_ = () in
+        let on_eof () = body_done := true in
+        Body.schedule_read body ~on_read ~on_eof)
+      ~error_handler:(function
+        | `Exn (Failure msg) ->
+            Alcotest.(check bool) "body is not complete" false !body_done;
+            error_message := Some msg
+        | _ -> assert false)
+  in
+  Body.close_writer body;
+  write_request t request';
+  writer_closed t;
+  reader_ready t;
+  read_response t response;
+  report_exn t (Failure "something went wrong");
+  connection_is_shutdown t;
+  Alcotest.(check (option string)) "something went wrong"
+    (Some "something went wrong")
+    !error_message;
+  Alcotest.(check bool) "body is complete" true !body_done;
+;;
+
 let test_input_shrunk () =
   let request' = Request.create `GET "/" in
   let response = Response.create `OK in (* not actually writen to the channel *)
@@ -333,6 +365,7 @@ let tests =
   ; "Response EOF", `Quick, test_response_eof
   ; "Response header order preserved", `Quick, test_response_header_order
   ; "report_exn"  , `Quick, test_report_exn
+  ; "report_exn_during_body_read", `Quick, test_report_exn_during_body_read
   ; "input_shrunk", `Quick, test_input_shrunk
   ; "failed response parse", `Quick, test_failed_response_parse
   ; "schedule read with data available", `Quick, test_schedule_read_with_data_available
