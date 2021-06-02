@@ -239,19 +239,16 @@ module Reader = struct
 
   let request handler =
     let parser =
-      at_end_of_input >>= function
-      | true -> ok
-      | false ->
-        request <* commit >>= fun request ->
-        match Request.body_length request with
-        | `Error `Bad_request -> return (Error (`Bad_request request))
-        | `Fixed 0L  ->
-          handler request Body.empty;
-          ok
-        | `Fixed _ | `Chunked as encoding ->
-          let request_body = Body.create_reader Bigstringaf.empty in
-          handler request request_body;
-          body ~encoding request_body *> ok
+      request <* commit >>= fun request ->
+      match Request.body_length request with
+      | `Error `Bad_request -> return (Error (`Bad_request request))
+      | `Fixed 0L  ->
+        handler request Body.empty;
+        ok
+      | `Fixed _ | `Chunked as encoding ->
+        let request_body = Body.create_reader Bigstringaf.empty in
+        handler request request_body;
+        body ~encoding request_body *> ok
     in
     create parser
 
@@ -307,6 +304,7 @@ module Reader = struct
     let consumed =
       match t.parse_state with
       | Fail _ -> 0
+      | Done when len = 0 -> 0
       | Done   ->
         start t (AU.parse t.parser);
         read_with_more  t bs ~off ~len more;
