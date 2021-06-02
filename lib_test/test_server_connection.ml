@@ -890,9 +890,15 @@ let test_parse_failure_after_checkpoint () =
 
 let test_parse_failure_at_eof () =
   let error_queue = ref None in
-  let error_handler ?request:_ error _start_response =
+  let continue = ref (fun () -> ()) in
+  let error_handler ?request error start_response =
     Alcotest.(check (option reject)) "Error queue is empty" !error_queue None;
-    error_queue := Some error
+    Alcotest.(check (option reject)) "Request was not parsed" request None;
+    error_queue := Some error;
+    continue := (fun () ->
+      let resp_body = start_response Headers.empty in
+      Body.write_string resp_body "got an error";
+      Body.close_writer resp_body);
   in
   let request_handler _reqd = assert false in
   let t = create ~error_handler request_handler in
@@ -901,9 +907,10 @@ let test_parse_failure_at_eof () =
   let result = feed_string ~eof:true t " index.html HTTP/1.1\r\n\r\n" in
   Alcotest.(check int) "Bad header not consumed" result 0;
   reader_closed t;
-  match !error_queue with
-  | None -> Alcotest.fail "Expected error"
-  | Some error -> Alcotest.(check request_error) "Error" error `Bad_request
+  (match !error_queue with
+   | None -> Alcotest.fail "Expected error"
+   | Some error -> Alcotest.(check request_error) "Error" error `Bad_request);
+  !continue ()
 ;;
 
 let test_response_finished_before_body_read () =
