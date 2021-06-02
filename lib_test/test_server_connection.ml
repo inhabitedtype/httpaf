@@ -913,6 +913,8 @@ let test_can_read_more_requests_after_write_eof () =
   reqd := None;
   reader_ready t;
   read_request t request;
+  Reqd.respond_with_streaming (Option.get !reqd) response ~flush_headers_immediately:true
+  |> (ignore : [ `write ] Body.t -> unit);
   Alcotest.(check bool) "request handler fired" true (Option.is_some !reqd)
 ;;
 
