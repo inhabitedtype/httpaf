@@ -44,6 +44,11 @@ let reader_ready t =
     `Read (next_read_operation t :> [`Close | `Read | `Yield]);
 ;;
 
+let reader_closed t =
+  Alcotest.check read_operation "Reader is closed"
+    `Close (next_read_operation t :> [`Close | `Read | `Yield]);
+;;
+
 let write_string ?(msg="output written") t str =
   let len = String.length str in
   Alcotest.(check (option string)) msg
@@ -277,6 +282,51 @@ let test_failed_response_parse () =
   test (response_to_string response) 39 (`Invalid_response_body_length response);
 ;;
 
+let test_schedule_read_with_data_available () =
+  let request' = Request.create `GET "/" in
+  let response = Response.create `OK ~headers:(Headers.encoding_fixed 6) in
+
+  let body = ref None in
+  let response_handler response' body' =
+    body := Some body';
+    Alcotest.check (module Response) "expected response" response response';
+  in
+  let req_body, t =
+    request request' ~response_handler ~error_handler:no_error_handler
+  in
+  Body.close_writer req_body;
+  write_request t request';
+  writer_closed t;
+  read_response t response;
+
+  let body = Option.get !body in
+  let schedule_read expected =
+    let did_read = ref false in
+    Body.schedule_read body
+      ~on_read:(fun buf ~off ~len ->
+        let actual = Bigstringaf.substring buf ~off ~len in
+        did_read := true;
+        Alcotest.(check string) "Body" expected actual)
+      ~on_eof:(fun () -> assert false);
+    Alcotest.(check bool) "on_read called" true !did_read;
+  in
+
+  (* We get some data on the connection, but not the full response yet. *)
+  read_string t "Hello";
+
+  (* Schedule a read when there is already data available. on_read should be called
+     straight away, as who knows how long it'll be before more data arrives. *)
+  schedule_read "Hello";
+  read_string t "!";
+  schedule_read "!";
+  let did_eof = ref false in
+  Body.schedule_read body
+    ~on_read:(fun _ ~off:_ ~len:_ -> Alcotest.fail "Expected eof")
+    ~on_eof:(fun () -> did_eof := true);
+  Alcotest.(check bool) "on_eof called" true !did_eof;
+  reader_closed t;
+;;
+
 let tests =
   [ "GET"         , `Quick, test_get
   ; "send streaming body", `Quick, test_send_streaming_body
@@ -285,4 +335,5 @@ let tests =
   ; "report_exn"  , `Quick, test_report_exn
   ; "input_shrunk", `Quick, test_input_shrunk
   ; "failed response parse", `Quick, test_failed_response_parse
+  ; "schedule read with data available", `Quick, test_schedule_read_with_data_available
   ]
