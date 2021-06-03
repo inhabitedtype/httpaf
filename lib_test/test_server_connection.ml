@@ -981,6 +981,30 @@ let test_schedule_read_with_data_available () =
   write_response t response;
 ;;
 
+let test_can_read_more_requests_after_write_eof () =
+  let request = Request.create `GET "/" ~headers:(Headers.encoding_fixed 0) in
+  let reqd = ref None in
+  let request_handler reqd' = reqd := Some reqd' in
+  let t = create request_handler in
+  let response = Response.create `OK ~headers:Headers.encoding_chunked in
+  read_request t request;
+  Reqd.respond_with_streaming (Option.get !reqd) response ~flush_headers_immediately:true
+  |> (ignore : [ `write ] Body.t -> unit);
+  write_eof t;
+  (* In many runtimes, there are separate reader and writer threads that drive the reading
+     and writing from httpaf independently. So just because the writer thread has told us
+     that the socket is closed doesn't mean we won't get a bunch more requests delivered
+     to us from the reader thread. We should be ready to receive them, and call the
+     request handler for them, even if there is no possibility of writing responses (e.g.
+     those requests might be side-effecting requests like POST requests). *)
+  reqd := None;
+  reader_ready t;
+  read_request t request;
+  Reqd.respond_with_streaming (Option.get !reqd) response ~flush_headers_immediately:true
+  |> (ignore : [ `write ] Body.t -> unit);
+  Alcotest.(check bool) "request handler fired" true (Option.is_some !reqd)
+;;
+
 let tests =
   [ "initial reader state"  , `Quick, test_initial_reader_state
   ; "shutdown reader closed", `Quick, test_reader_is_closed_after_eof
@@ -1013,4 +1037,5 @@ let tests =
   ; "shutdown in request handler", `Quick, test_shutdown_in_request_handler
   ; "shutdown during asynchronous request", `Quick, test_shutdown_during_asynchronous_request
   ; "schedule read with data available", `Quick, test_schedule_read_with_data_available
+  ; "can read more requests after write eof", `Quick, test_can_read_more_requests_after_write_eof
   ]
