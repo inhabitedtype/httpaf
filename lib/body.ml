@@ -131,13 +131,12 @@ and execute_read t =
 let schedule_read t ~on_eof ~on_read =
   if t.read_scheduled
   then failwith "Body.schedule_read: reader already scheduled";
-  if is_closed t
-  then do_execute_read t on_eof on_read
-  else begin
+  if not (is_closed t) then begin
     t.read_scheduled <- true;
     t.on_eof         <- on_eof;
-    t.on_read        <- on_read
-  end
+    t.on_read        <- on_read;
+  end;
+  do_execute_read t on_eof on_read
 
 let has_pending_output t =
   (* Force another write poll to make sure that the final chunk is emitted for
