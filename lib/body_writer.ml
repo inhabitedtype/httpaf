@@ -85,7 +85,7 @@ let has_pending_output t =
   Faraday.has_pending_output t.faraday
   || (Faraday.is_closed t.faraday && t.write_final_if_chunked)
 
-let transfer_to_writer_with_encoding t ~encoding writer =
+let transfer_to_writer_with_encoding t ~encoding =
   let faraday = t.faraday in
   (* Play nicely with [has_pending_output] in the case of a fixed or
      close-delimited encoding. *)
@@ -99,8 +99,8 @@ let transfer_to_writer_with_encoding t ~encoding writer =
     let must_write_the_final_chunk = t.write_final_if_chunked in
     t.write_final_if_chunked <- false;
     if must_write_the_final_chunk then
-      Serialize.Writer.schedule_chunk writer [];
-    Serialize.Writer.unyield writer;
+      Serialize.Writer.schedule_chunk t.writer [];
+    Serialize.Writer.unyield t.writer;
   | `Writev iovecs ->
     let buffered = t.buffered_bytes in
     begin match IOVec.shiftv iovecs !buffered with
@@ -109,10 +109,10 @@ let transfer_to_writer_with_encoding t ~encoding writer =
       let lengthv  = IOVec.lengthv iovecs in
       buffered := !buffered + lengthv;
       begin match encoding with
-      | `Fixed _ | `Close_delimited -> Serialize.Writer.schedule_fixed writer iovecs
-      | `Chunked                    -> Serialize.Writer.schedule_chunk writer iovecs
+      | `Fixed _ | `Close_delimited -> Serialize.Writer.schedule_fixed t.writer iovecs
+      | `Chunked                    -> Serialize.Writer.schedule_chunk t.writer iovecs
       end;
-      Serialize.Writer.flush writer (fun () ->
+      Serialize.Writer.flush t.writer (fun () ->
         Faraday.shift faraday lengthv;
         buffered := !buffered - lengthv)
     end

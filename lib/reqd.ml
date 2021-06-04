@@ -255,5 +255,5 @@ let flush_response_body t =
       | `Fixed _ | `Close_delimited | `Chunked as encoding -> encoding
       | `Error _ -> assert false (* XXX(seliopou): This needs to be handled properly *)
     in
-    Body_writer.transfer_to_writer_with_encoding response_body ~encoding t.writer
+    Body_writer.transfer_to_writer_with_encoding response_body ~encoding
   | _ -> ()

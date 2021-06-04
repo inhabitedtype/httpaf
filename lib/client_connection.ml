@@ -88,7 +88,7 @@ module Oneshot = struct
         | `Fixed _ | `Chunked as encoding -> encoding
         | `Error _ -> assert false (* XXX(seliopou): This needs to be handled properly *)
       in
-      Body_writer.transfer_to_writer_with_encoding t.request_body ~encoding t.writer
+      Body_writer.transfer_to_writer_with_encoding t.request_body ~encoding
   ;;
 
   let set_error_and_handle_without_shutdown t error =
