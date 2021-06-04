@@ -174,8 +174,21 @@ let set_error_and_handle ?request t error =
     shutdown_reader t;
     let writer = t.writer in
     t.error_handler ?request error (fun headers ->
-      Writer.write_response writer (Response.create ~headers status);
-      let body_writer = Body_writer.of_faraday (Writer.faraday writer) writer in
+      let response = Response.create ~headers status in
+      Writer.write_response writer response;
+      let body_writer =
+        let encoding =
+          (* If we can't work it out, just say `Close_delimited -- i.e. just do our best to
+             get the bytes delivered to the client. *)
+          match request with
+          | None -> `Close_delimited
+          | Some request ->
+            match Response.body_length ~request_method:request.meth response with
+            | `Fixed _ | `Close_delimited | `Chunked as encoding -> encoding
+            | `Error _ -> `Close_delimited
+        in
+        Body_writer.of_faraday (Writer.faraday writer) writer ~encoding
+      in
       Body.Writer body_writer);
   end
 
