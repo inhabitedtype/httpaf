@@ -85,12 +85,7 @@ let close t =
 
 let has_pending_output t =
   (* Force another write poll to make sure that the final chunk is emitted for
-     chunk-encoded bodies.
-
-     Note that the body data type does not keep track of encodings, so it is
-     necessary for [transfer_to_writer_with_encoding] to check the encoding and
-     clear the [write_final_if_chunked] field when outputting a fixed or
-     close-delimited body. *)
+     chunk-encoded bodies. *)
   Faraday.has_pending_output t.faraday
   || (match t.encoding with
     | Fixed -> false
