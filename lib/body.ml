@@ -31,14 +31,6 @@
     POSSIBILITY OF SUCH DAMAGE.
   ----------------------------------------------------------------------------*)
 
-(* XXX(dpatti): A [Body.t] is kind of a reader body and writer body stitched
-   together into a single structure, but only half of it is used at any given
-   time. The two uses are also quite different in that a writer body is always
-   wired up to some [Writer.t] by httpaf internals at time of creation, whereas
-   a reader body is given to the user as-is and the user is expected to drive
-   the feeding of data into the body. It feels like they should simply be two
-   separate types. *)
-
 type 'a t =
   | Reader : Body_reader.t -> [ `read ] t
   | Writer : Body_writer.t -> [ `write ] t
