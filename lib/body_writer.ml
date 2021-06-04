@@ -109,8 +109,7 @@ let transfer_to_writer t =
        if not !written_final_chunk then begin
          written_final_chunk := true;
          Serialize.Writer.schedule_chunk t.writer [];
-       end);
-    Serialize.Writer.unyield t.writer;
+       end)
   | `Writev iovecs ->
     let buffered = t.buffered_bytes in
     begin match IOVec.shiftv iovecs !buffered with

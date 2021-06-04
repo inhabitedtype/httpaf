@@ -168,8 +168,7 @@ let unsafe_respond_with_streaming ~flush_headers_immediately t response =
       t.persistent <- Response.persistent_connection response;
     t.response_state <- Streaming (response, response_body);
     if flush_headers_immediately
-    then Writer.wakeup t.writer
-    else Writer.yield t.writer;
+    then Writer.wakeup t.writer;
     Body.Writer response_body
   | Streaming _ ->
     failwith "httpaf.Reqd.respond_with_streaming: response already started"

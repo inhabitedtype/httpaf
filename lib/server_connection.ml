@@ -277,12 +277,7 @@ let rec _next_write_operation t =
   else (
     let reqd = current_reqd_exn t in
     match Reqd.output_state reqd with
-    | Waiting ->
-      (* XXX(dpatti): I don't think we should need to call this, but it is
-         necessary in the case of a streaming, non-chunked body so that you can
-         set the appropriate flag. *)
-      Reqd.flush_response_body reqd;
-      Writer.next t.writer
+    | Waiting -> Writer.next t.writer
     | Ready ->
       Reqd.flush_response_body reqd;
       Writer.next t.writer
