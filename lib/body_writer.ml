@@ -33,20 +33,20 @@
 
 type t =
   { faraday                        : Faraday.t
+  ; writer                         : Serialize.Writer.t
   ; mutable write_final_if_chunked : bool
-  ; when_ready_to_write            : unit -> unit
   ; buffered_bytes                 : int ref
   }
 
-let of_faraday faraday ~when_ready_to_write =
+let of_faraday faraday writer =
   { faraday
+  ; writer
   ; write_final_if_chunked = true
-  ; when_ready_to_write
   ; buffered_bytes         = ref 0
   }
 
-let create buffer ~when_ready_to_write =
-  of_faraday (Faraday.of_bigstring buffer) ~when_ready_to_write
+let create buffer writer =
+  of_faraday (Faraday.of_bigstring buffer) writer
 
 let write_char t c =
   Faraday.write_char t.faraday c
@@ -60,7 +60,7 @@ let write_bigstring t ?off ?len b =
 let schedule_bigstring t ?off ?len (b:Bigstringaf.t) =
   Faraday.schedule_bigstring ?off ?len t.faraday b
 
-let ready_to_write t = t.when_ready_to_write ()
+let ready_to_write t = Serialize.Writer.wakeup t.writer
 
 let flush t kontinue =
   Faraday.flush t.faraday kontinue;

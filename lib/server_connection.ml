@@ -175,10 +175,7 @@ let set_error_and_handle ?request t error =
     let writer = t.writer in
     t.error_handler ?request error (fun headers ->
       Writer.write_response writer (Response.create ~headers status);
-      let body_writer =
-        Body_writer.of_faraday (Writer.faraday writer)
-          ~when_ready_to_write:(fun () -> Writer.wakeup writer)
-      in
+      let body_writer = Body_writer.of_faraday (Writer.faraday writer) writer in
       Body.Writer body_writer);
   end
 

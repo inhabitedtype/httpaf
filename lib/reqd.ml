@@ -156,10 +156,7 @@ let respond_with_bigstring t response (bstr:Bigstringaf.t) =
 let unsafe_respond_with_streaming ~flush_headers_immediately t response =
   match t.response_state with
   | Waiting ->
-    let response_body =
-      Body_writer.create t.response_body_buffer ~when_ready_to_write:(fun () ->
-        Writer.wakeup t.writer)
-    in
+    let response_body = Body_writer.create t.response_body_buffer t.writer in
     Writer.write_response t.writer response;
     if t.persistent then
       t.persistent <- Response.persistent_connection response;

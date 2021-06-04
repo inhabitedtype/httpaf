@@ -65,9 +65,7 @@ module Oneshot = struct
     in
     let writer = Writer.create () in
     let request_body =
-      Body_writer.create (Bigstringaf.create config.request_body_buffer_size)
-        ~when_ready_to_write:(fun () ->
-          Writer.wakeup writer)
+      Body_writer.create (Bigstringaf.create config.request_body_buffer_size) writer
     in
     let t =
       { request
