@@ -72,4 +72,5 @@ module Headers = struct
   let connection_close = Headers.of_list ["connection", "close"]
   let encoding_chunked = Headers.of_list ["transfer-encoding", "chunked"]
   let encoding_fixed n = Headers.of_list ["content-length", string_of_int n]
+  let upgrade protocol = Headers.of_list ["connection", "upgrade" ; "upgrade", protocol]
 end

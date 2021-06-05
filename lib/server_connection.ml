@@ -196,8 +196,15 @@ let rec _next_read_operation t =
     Reader.next t.reader
   ) else (
     let reqd = current_reqd_exn t in
+    (* XXX(dpatti): This fails for the same reason as my comment below in the
+       final_read_operation section. I played around with some alternatives and
+       believe I have some more improvements to the request queue mechanism that
+       removes the need for two hacks. *)
     match Reqd.input_state reqd with
-    | Waiting  -> `Yield
+    | Waiting  ->
+      if Reader.is_closed t.reader
+      then Reader.next t.reader
+      else `Yield
     | Ready    -> Reader.next t.reader
     | Complete -> _final_read_operation_for t reqd
     | Upgraded -> `Upgrade
