@@ -254,23 +254,13 @@ let persistent_connection t =
   t.persistent
 
 let input_state t : Input_state.t =
-  let upgrade_status =
-    match Request.is_upgrade t.request with
-    | false -> `Not_upgrading
-    | true ->
-      match t.response_state with
-      | Upgrade _ -> `Finished_upgrading
-      | Fixed _ | Streaming _ -> `Upgrade_declined
-      | Waiting -> `Upgrade_in_progress
-  in
-  match upgrade_status with
-  | `Finished_upgrading -> Upgraded
-  | `Not_upgrading | `Upgrade_declined ->
+  match t.response_state with
+  | Upgrade _ -> Upgraded
+  | Waiting when Request.is_upgrade t.request -> Waiting
+  | _ ->
     if Body.is_closed t.request_body
     then Complete
     else Ready
-  | `Upgrade_in_progress ->
-    Waiting
 ;;
 
 let output_state t : Output_state.t =
