@@ -23,7 +23,7 @@ let main port host =
       socket
       (Request.create ~headers `GET "/")
   in
-  Body.close_writer request_body;
+  Body.Writer.close request_body;
   finished
 ;;
 

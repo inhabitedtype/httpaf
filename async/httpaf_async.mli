@@ -20,5 +20,5 @@ module Client : sig
     -> Request.t
     -> error_handler    : Client_connection.error_handler
     -> response_handler : Client_connection.response_handler
-    -> [`write] Body.t
+    -> Body.Writer.t
 end
