@@ -53,7 +53,7 @@ type error =
   [ `Bad_gateway | `Bad_request | `Internal_server_error | `Exn of exn]
 
 type error_handler =
-  ?request:Request.t -> error -> (Headers.t -> [`write] Body.t) -> unit
+  ?request:Request.t -> error -> (Headers.t -> Body.Writer.t) -> unit
 
 type t =
   { reader                 : Reader.request
@@ -108,8 +108,8 @@ let default_error_handler ?request:_ error handle =
     | (#Status.client_error | #Status.server_error) as error -> Status.to_string error
   in
   let body = handle Headers.empty in
-  Body.write_string body message;
-  Body.close_writer body
+  Body.Writer.write_string body message;
+  Body.Writer.close body
 ;;
 
 let create ?(config=Config.default) ?(error_handler=default_error_handler) request_handler =
@@ -175,7 +175,7 @@ let set_error_and_handle ?request t error =
     let writer = t.writer in
     t.error_handler ?request error (fun headers ->
       Writer.write_response writer (Response.create ~headers status);
-      Body.writer_of_faraday (Writer.faraday writer)
+      Body.Writer.of_faraday (Writer.faraday writer)
         ~when_ready_to_write:(fun () -> Writer.wakeup writer));
   end
 

@@ -27,12 +27,13 @@ let main port host () =
     let stdin = Lazy.force Reader.stdin in
     don't_wait_for (
       Reader.read_one_chunk_at_a_time stdin ~handle_chunk:(fun bs ~pos:off ~len ->
-        Body.write_bigstring request_body bs ~off ~len;
-        Body.flush request_body (fun () -> ());
+        Body.Writer.write_bigstring request_body bs ~off ~len;
+        Body.Writer.flush request_body (fun () -> ());
         return (`Consumed(len, `Need_unknown)))
       >>| function
-        | `Eof_with_unconsumed_data s -> Body.write_string request_body s; Body.close_writer request_body
-        | `Eof                        -> Body.close_writer request_body
+        | `Eof_with_unconsumed_data s -> Body.Writer.write_string request_body s;
+                                         Body.Writer.close request_body
+        | `Eof                        -> Body.Writer.close request_body
         | `Stopped ()                 -> assert false);
     Ivar.read finished
 ;;
