@@ -304,6 +304,7 @@ module Reader = struct
     let consumed =
       match t.parse_state with
       | Fail _ -> 0
+      (* Don't feed empty input when we're at a request boundary *)
       | Done when len = 0 -> 0
       | Done   ->
         start t (AU.parse t.parser);

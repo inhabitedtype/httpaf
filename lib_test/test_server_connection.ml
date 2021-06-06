@@ -263,6 +263,12 @@ let connection_is_shutdown t =
   writer_closed t;
 ;;
 
+let raises_writer_closed f =
+  (* This is raised when you write to a closed [Faraday.t] *)
+  Alcotest.check_raises "raises because writer is closed"
+    (Failure "cannot write to closed writer") f
+;;
+
 let request_handler_with_body body reqd =
   Body.close_reader (Reqd.request_body reqd);
   Reqd.respond_with_string reqd (Response.create `OK) body
@@ -910,7 +916,7 @@ let test_parse_failure_at_eof () =
   (match !error_queue with
    | None -> Alcotest.fail "Expected error"
    | Some error -> Alcotest.(check request_error) "Error" error `Bad_request);
-  !continue ()
+  raises_writer_closed !continue
 ;;
 
 let test_response_finished_before_body_read () =
@@ -960,10 +966,7 @@ let test_shutdown_during_asynchronous_request () =
   in
   read_request t request;
   shutdown t;
-  (* This is raised from Faraday *)
-  Alcotest.check_raises "[continue] raises because writer is closed"
-    (Failure "cannot write to closed writer")
-    !continue;
+  raises_writer_closed !continue;
   reader_closed t;
   writer_closed t
 ;;
