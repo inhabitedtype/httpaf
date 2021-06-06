@@ -313,8 +313,8 @@ module Reader = struct
         transition t (continue bs more ~off ~len)
     in
     begin match more with
-    | Complete -> t.closed <- true;
-    | Incomplete -> ()
+    | Complete when consumed = len -> t.closed <- true;
+    | Complete | Incomplete -> ()
     end;
     consumed;
   ;;

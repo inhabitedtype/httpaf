@@ -1,7 +1,7 @@
 open Httpaf
 open Helpers
 
-let trace fmt = Format.ksprintf (Format.printf "%s\n") fmt
+let trace fmt = Format.ksprintf (Format.printf "%s\n%!") fmt
 
 let request_error_pp_hum fmt = function
   | `Bad_request           -> Format.fprintf fmt "Bad_request"
@@ -94,6 +94,15 @@ end = struct
   ;;
 
   let create ?config ?error_handler request_handler =
+    let request_handler r =
+      trace "invoked: request_handler";
+      request_handler r
+    in
+    let error_handler =
+      Option.map (fun error_handler ?request ->
+        trace "invoked: request_handler";
+        error_handler ?request) error_handler
+    in
     let rec t =
       lazy (
         { server_connection = create ?config ?error_handler request_handler
@@ -126,23 +135,27 @@ end = struct
   let do_read t f =
     match current_read_operation t with
     | `Read ->
+      trace "read: start";
       let res = f t.server_connection in
+      trace "read: finished";
       t.read_loop ();
       res
     | `Yield | `Close as op ->
-        Alcotest.failf "Read attempted during operation: %a"
-          Read_operation.pp_hum op
+      Alcotest.failf "Read attempted during operation: %a"
+        Read_operation.pp_hum op
   ;;
 
   let do_write t f =
     match current_write_operation t with
     | `Write bufs ->
-        let res = f t.server_connection bufs in
-        t.write_loop ();
-        res
+      trace "write: start";
+      let res = f t.server_connection bufs in
+      trace "write: finished";
+      t.write_loop ();
+      res
     | `Yield | `Close _ as op ->
-        Alcotest.failf "Write attempted during operation: %a"
-          Write_operation.pp_hum op
+      Alcotest.failf "Write attempted during operation: %a"
+        Write_operation.pp_hum op
   ;;
 
   let on_reader_unyield t f =
@@ -285,7 +298,10 @@ let echo_handler response reqd =
     Body.write_string response_body (Bigstringaf.substring ~off ~len buffer);
     Body.flush response_body (fun () ->
       Body.schedule_read request_body ~on_eof ~on_read)
-    and on_eof () = print_endline "got eof"; Body.close_writer response_body in
+  and on_eof () =
+    print_endline "echo handler eof";
+    Body.close_writer response_body
+  in
   Body.schedule_read request_body ~on_eof ~on_read;
 ;;
 
@@ -916,7 +932,9 @@ let test_parse_failure_at_eof () =
   (match !error_queue with
    | None -> Alcotest.fail "Expected error"
    | Some error -> Alcotest.(check request_error) "Error" error `Bad_request);
-  raises_writer_closed !continue
+  !continue ();
+  write_response t (Response.create `Bad_request) ~body:"got an error";
+  writer_closed t;
 ;;
 
 let test_response_finished_before_body_read () =
