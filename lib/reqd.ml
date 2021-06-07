@@ -253,16 +253,5 @@ let flush_request_body t =
 
 let flush_response_body t =
   match t.response_state with
-<<<<<<< HEAD
-  | Streaming (_, response_body) -> Body_writer.transfer_to_writer response_body
-=======
-  | Streaming (response, response_body) ->
-    let request_method = t.request.Request.meth in
-    let encoding =
-      match Response.body_length ~request_method response with
-      | `Fixed _ | `Close_delimited | `Chunked as encoding -> encoding
-      | `Error _ -> assert false (* XXX(seliopou): This needs to be handled properly *)
-    in
-    Body.Writer.transfer_to_writer_with_encoding response_body ~encoding t.writer
->>>>>>> master
+  | Streaming (_, response_body) -> Body.Writer.transfer_to_writer response_body
   | _ -> ()
