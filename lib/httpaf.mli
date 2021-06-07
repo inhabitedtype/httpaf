@@ -447,64 +447,74 @@ end
 (** {2 Message Body} *)
 
 module Body : sig
-  type 'rw t
+  module Reader : sig
+    type t
 
-  val schedule_read
-    :  [`read] t
-    -> on_eof  : (unit -> unit)
-    -> on_read : (Bigstringaf.t -> off:int -> len:int -> unit)
-    -> unit
-  (** [schedule_read t ~on_eof ~on_read] will setup [on_read] and [on_eof] as
-      callbacks for when bytes are available in [t] for the application to
-      consume, or when the input channel has been closed and no further bytes
-      will be received by the application.
+    val schedule_read
+      :  t
+      -> on_eof  : (unit -> unit)
+      -> on_read : (Bigstringaf.t -> off:int -> len:int -> unit)
+      -> unit
+    (** [schedule_read t ~on_eof ~on_read] will setup [on_read] and [on_eof] as
+        callbacks for when bytes are available in [t] for the application to
+        consume, or when the input channel has been closed and no further bytes
+        will be received by the application.
 
-      Once either of these callbacks have been called, they become inactive.
-      The application is responsible for scheduling subsequent reads, either
-      within the [on_read] callback or by some other mechanism. *)
+        Once either of these callbacks have been called, they become inactive.
+        The application is responsible for scheduling subsequent reads, either
+        within the [on_read] callback or by some other mechanism. *)
 
-  val write_char : [`write] t -> char -> unit
-  (** [write_char w char] copies [char] into an internal buffer. If possible,
-      this write will be combined with previous and/or subsequent writes before
-      transmission. *)
+    val close : t -> unit
+    (** [close t] closes [t], indicating that any subsequent input
+        received should be discarded. *)
 
-  val write_string : [`write] t -> ?off:int -> ?len:int -> string -> unit
-  (** [write_string w ?off ?len str] copies [str] into an internal buffer. If
-      possible, this write will be combined with previous and/or subsequent
-      writes before transmission. *)
+    val is_closed : t -> bool
+    (** [is_closed t] is [true] if {!close} has been called on [t] and [false]
+        otherwise. A closed [t] may still have bytes available for reading. *)
+  end
 
-  val write_bigstring : [`write] t -> ?off:int -> ?len:int -> Bigstringaf.t -> unit
-  (** [write_bigstring w ?off ?len bs] copies [bs] into an internal buffer. If
-      possible, this write will be combined with previous and/or subsequent
-      writes before transmission. *)
+  module Writer : sig
+    type t
 
-  val schedule_bigstring : [`write] t -> ?off:int -> ?len:int -> Bigstringaf.t -> unit
-  (** [schedule_bigstring w ?off ?len bs] schedules [bs] to be transmitted at
-      the next opportunity without performing a copy. [bs] should not be
-      modified until a subsequent call to {!flush} has successfully
-      completed. *)
+    val write_char : t -> char -> unit
+    (** [write_char w char] copies [char] into an internal buffer. If possible,
+        this write will be combined with previous and/or subsequent writes
+        before transmission. *)
 
-  val flush : [`write] t -> (unit -> unit) -> unit
-  (** [flush t f] makes all bytes in [t] available for writing to the awaiting
-      output channel. Once those bytes have reached that output channel, [f]
-      will be called.
+    val write_string : t -> ?off:int -> ?len:int -> string -> unit
+    (** [write_string w ?off ?len str] copies [str] into an internal buffer. If
+        possible, this write will be combined with previous and/or subsequent
+        writes before transmission. *)
 
-      The type of the output channel is runtime-dependent, as are guarantees about
-      whether those packets have been queued for delivery or have actually been
-      received by the intended recipient. *)
+    val write_bigstring : t -> ?off:int -> ?len:int -> Bigstringaf.t -> unit
+    (** [write_bigstring w ?off ?len bs] copies [bs] into an internal buffer. If
+        possible, this write will be combined with previous and/or subsequent
+        writes before transmission. *)
 
-  val close_reader : [`read] t -> unit
-  (** [close_reader t] closes [t], indicating that any subsequent input
-      received should be discarded. *)
+    val schedule_bigstring : t -> ?off:int -> ?len:int -> Bigstringaf.t -> unit
+    (** [schedule_bigstring w ?off ?len bs] schedules [bs] to be transmitted at
+        the next opportunity without performing a copy. [bs] should not be
+        modified until a subsequent call to {!flush} has successfully
+        completed. *)
 
-  val close_writer : [`write] t -> unit
-  (** [close_writer t] closes [t], causing subsequent write calls to raise. If
-      [t] is writable, this will cause any pending output to become available
-      to the output channel. *)
+    val flush : t -> (unit -> unit) -> unit
+    (** [flush t f] makes all bytes in [t] available for writing to the awaiting
+        output channel. Once those bytes have reached that output channel, [f]
+        will be called.
 
-  val is_closed : _ t -> bool
-  (** [is_closed t] is [true] if {!close} has been called on [t] and [false]
-      otherwise. A closed [t] may still have pending output. *)
+        The type of the output channel is runtime-dependent, as are guarantees
+        about whether those packets have been queued for delivery or have
+        actually been received by the intended recipient. *)
+
+    val close : t -> unit
+    (** [close t] closes [t], causing subsequent write calls to raise. If
+        [t] is writable, this will cause any pending output to become available
+        to the output channel. *)
+
+    val is_closed : t -> bool
+    (** [is_closed t] is [true] if {!close} has been called on [t] and [false]
+        otherwise. A closed [t] may still have pending output. *)
+  end
 
 end
 
@@ -630,7 +640,7 @@ module Reqd : sig
   type t
 
   val request : t -> Request.t
-  val request_body : t -> [`read] Body.t
+  val request_body : t -> Body.Reader.t
 
   val response : t -> Response.t option
   val response_exn : t -> Response.t
@@ -647,7 +657,7 @@ module Reqd : sig
 
   val respond_with_string    : t -> Response.t -> string -> unit
   val respond_with_bigstring : t -> Response.t -> Bigstringaf.t -> unit
-  val respond_with_streaming : ?flush_headers_immediately:bool -> t -> Response.t -> [`write] Body.t
+  val respond_with_streaming : ?flush_headers_immediately:bool -> t -> Response.t -> Body.Writer.t
 
   (** {3 Exception Handling} *)
 
@@ -680,7 +690,7 @@ module Server_connection : sig
   type request_handler = Reqd.t -> unit
 
   type error_handler =
-    ?request:Request.t -> error -> (Headers.t -> [`write] Body.t) -> unit
+    ?request:Request.t -> error -> (Headers.t -> Body.Writer.t) -> unit
 
   val create
     :  ?config:Config.t
@@ -768,7 +778,7 @@ module Client_connection : sig
   type error =
     [ `Malformed_response of string | `Invalid_response_body_length of Response.t | `Exn of exn ]
 
-  type response_handler = Response.t -> [`read] Body.t  -> unit
+  type response_handler = Response.t -> Body.Reader.t  -> unit
 
   type error_handler = error -> unit
 
@@ -777,7 +787,7 @@ module Client_connection : sig
     -> Request.t
     -> error_handler:error_handler
     -> response_handler:response_handler
-    -> [`write] Body.t * t
+    -> Body.Writer.t * t
 
   val next_read_operation : t -> [ `Read | `Close ]
   (** [next_read_operation t] returns a value describing the next operation

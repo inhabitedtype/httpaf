@@ -53,7 +53,7 @@ type error =
   [ `Bad_gateway | `Bad_request | `Internal_server_error | `Exn of exn]
 
 type error_handler =
-  ?request:Request.t -> error -> (Headers.t -> [`write] Body.t) -> unit
+  ?request:Request.t -> error -> (Headers.t -> Body.Writer.t) -> unit
 
 type t =
   { reader                 : Reader.request
@@ -108,8 +108,8 @@ let default_error_handler ?request:_ error handle =
     | (#Status.client_error | #Status.server_error) as error -> Status.to_string error
   in
   let body = handle Headers.empty in
-  Body.write_string body message;
-  Body.close_writer body
+  Body.Writer.write_string body message;
+  Body.Writer.close body
 ;;
 
 let create ?(config=Config.default) ?(error_handler=default_error_handler) request_handler =
@@ -176,20 +176,17 @@ let set_error_and_handle ?request t error =
     t.error_handler ?request error (fun headers ->
       let response = Response.create ~headers status in
       Writer.write_response writer response;
-      let body_writer =
-        let encoding =
-          (* If we can't work it out, just say `Close_delimited -- i.e. just do our best to
-             get the bytes delivered to the client. *)
-          match request with
-          | None -> `Close_delimited
-          | Some request ->
-            match Response.body_length ~request_method:request.meth response with
-            | `Fixed _ | `Close_delimited | `Chunked as encoding -> encoding
-            | `Error _ -> `Close_delimited
-        in
-        Body_writer.of_faraday (Writer.faraday writer) writer ~encoding
+      let encoding =
+        (* If we can't work it out, just say `Close_delimited -- i.e. just do our best to
+           get the bytes delivered to the client. *)
+        match request with
+        | None -> `Close_delimited
+        | Some request ->
+          match Response.body_length ~request_method:request.meth response with
+          | `Fixed _ | `Close_delimited | `Chunked as encoding -> encoding
+          | `Error _ -> `Close_delimited
       in
-      Body.Writer body_writer);
+      Body.Writer.of_faraday (Writer.faraday writer) writer ~encoding);
   end
 
 let report_exn t exn =

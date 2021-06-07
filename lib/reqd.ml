@@ -38,7 +38,7 @@ module Response_state = struct
   type t =
     | Waiting
     | Fixed     of Response.t
-    | Streaming of Response.t * Body_writer.t
+    | Streaming of Response.t * Body.Writer.t
 end
 
 module Input_state = struct
@@ -55,7 +55,7 @@ module Output_state = struct
 end
 
 type error_handler =
-  ?request:Request.t -> error -> (Headers.t -> [`write] Body.t) -> unit
+  ?request:Request.t -> error -> (Headers.t -> Body.Writer.t) -> unit
 
 module Writer = Serialize.Writer
 
@@ -71,11 +71,11 @@ module Writer = Serialize.Writer
  * {[
  *   type 'handle t =
  *     { mutable request        : Request.t
- *     ; mutable request_body   : Response.Body.t
+ *     ; mutable request_body   : Response.Body.Reader.t
  *     ; mutable response       : Response.t (* Starts off as a dummy value,
  *                                            * using [(==)] to identify it when
  *                                            * necessary *)
- *     ; mutable response_body  : Response.Body.t
+ *     ; mutable response_body  : Response.Body.Writer.t
  *     ; mutable persistent     : bool
  *     ; mutable response_state : [ `Waiting | `Started | `Streaming ]
  *     }
@@ -84,7 +84,7 @@ module Writer = Serialize.Writer
  * *)
 type t =
   { request                 : Request.t
-  ; request_body            : Body_reader.t
+  ; request_body            : Body.Reader.t
   ; writer                  : Writer.t
   ; response_body_buffer    : Bigstringaf.t
   ; error_handler           : error_handler
@@ -105,7 +105,7 @@ let create error_handler request request_body writer response_body_buffer =
   }
 
 let request { request; _ } = request
-let request_body { request_body; _ } = Body.Reader request_body
+let request_body { request_body; _ } = request_body
 
 let response { response_state; _ } =
   match response_state with
@@ -162,14 +162,14 @@ let unsafe_respond_with_streaming ~flush_headers_immediately t response =
       | `Error _ ->
         failwith "httpaf.Reqd.respond_with_streaming: invalid response body length"
     in
-    let response_body = Body_writer.create t.response_body_buffer t.writer ~encoding in
+    let response_body = Body.Writer.create t.response_body_buffer t.writer ~encoding in
     Writer.write_response t.writer response;
     if t.persistent then
       t.persistent <- Response.persistent_connection response;
     t.response_state <- Streaming (response, response_body);
     if flush_headers_immediately
     then Writer.wakeup t.writer;
-    Body.Writer response_body
+    response_body
   | Streaming _ ->
     failwith "httpaf.Reqd.respond_with_streaming: response already started"
   | Fixed _ ->
@@ -182,7 +182,7 @@ let respond_with_streaming ?(flush_headers_immediately=false) t response =
 
 let report_error t error =
   t.persistent <- false;
-  Body_reader.close t.request_body;
+  Body.Reader.close t.request_body;
   match t.response_state, t.error_code with
   | Waiting, `Ok ->
     t.error_code <- (error :> [`Ok | error]);
@@ -200,9 +200,9 @@ let report_error t error =
      * has been reported as well. *)
     failwith "httpaf.Reqd.report_exn: NYI"
   | Streaming (_response, response_body), `Ok ->
-    Body_writer.close response_body
+    Body.Writer.close response_body
   | Streaming (_response, response_body), `Exn _ ->
-    Body_writer.close response_body;
+    Body.Writer.close response_body;
     Writer.close_and_drain t.writer
   | (Fixed _ | Streaming _ | Waiting) , _ ->
     (* XXX(seliopou): Once additional logging support is added, log the error
@@ -218,7 +218,7 @@ let try_with t f : (unit, exn) Result.result =
 (* Private API, not exposed to the user through httpaf.mli *)
 
 let close_request_body { request_body; _ } =
-  Body_reader.close request_body
+  Body.Reader.close request_body
 
 let error_code t =
   match t.error_code with
@@ -229,7 +229,7 @@ let persistent_connection t =
   t.persistent
 
 let input_state t : Input_state.t =
-  if Body_reader.is_closed t.request_body
+  if Body.Reader.is_closed t.request_body
   then Complete
   else Ready
 ;;
@@ -238,20 +238,31 @@ let output_state t : Output_state.t =
   match t.response_state with
   | Fixed _ -> Complete
   | Streaming (_, response_body) ->
-    if Body_writer.has_pending_output response_body
+    if Body.Writer.has_pending_output response_body
     then Ready
-    else if Body_writer.is_closed response_body
+    else if Body.Writer.is_closed response_body
     then Complete
     else Waiting
   | Waiting -> Waiting
 ;;
 
 let flush_request_body t =
-  if Body_reader.has_pending_output t.request_body
-  then try Body_reader.execute_read t.request_body
+  if Body.Reader.has_pending_output t.request_body
+  then try Body.Reader.execute_read t.request_body
   with exn -> report_exn t exn
 
 let flush_response_body t =
   match t.response_state with
+<<<<<<< HEAD
   | Streaming (_, response_body) -> Body_writer.transfer_to_writer response_body
+=======
+  | Streaming (response, response_body) ->
+    let request_method = t.request.Request.meth in
+    let encoding =
+      match Response.body_length ~request_method response with
+      | `Fixed _ | `Close_delimited | `Chunked as encoding -> encoding
+      | `Error _ -> assert false (* XXX(seliopou): This needs to be handled properly *)
+    in
+    Body.Writer.transfer_to_writer_with_encoding response_body ~encoding t.writer
+>>>>>>> master
   | _ -> ()

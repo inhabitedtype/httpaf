@@ -82,7 +82,7 @@ let default_response_handler expected_response response body =
   Alcotest.check (module Response) "expected response" expected_response response;
   let on_read _ ~off:_ ~len:_ = () in
   let on_eof () = () in
-  Body.schedule_read body ~on_read ~on_eof;
+  Body.Reader.schedule_read body ~on_read ~on_eof;
 ;;
 
 let no_error_handler _ = assert false
@@ -98,7 +98,7 @@ let test_get () =
       ~response_handler:(default_response_handler response)
       ~error_handler:no_error_handler
   in
-  Body.close_writer body;
+  Body.Writer.close body;
   write_request  t request';
   writer_closed  t;
   read_response  t response;
@@ -111,7 +111,7 @@ let test_get () =
       ~response_handler:(default_response_handler response)
       ~error_handler:no_error_handler
   in
-  Body.close_writer body;
+  Body.Writer.close body;
   write_request  t request';
   read_response  t response;
   let c = read_eof t Bigstringaf.empty ~off:0 ~len:0 in
@@ -126,7 +126,7 @@ let test_get () =
       ~response_handler:(default_response_handler response)
       ~error_handler:no_error_handler
   in
-  Body.close_writer body;
+  Body.Writer.close body;
   write_request  t request';
   read_response  t response;
   read_string    t "d\r\nHello, world!\r\n0\r\n\r\n"
@@ -143,10 +143,10 @@ let test_send_streaming_body () =
   in
   write_request  t request';
   read_response  t response;
-  Body.write_string body "hello";
+  Body.Writer.write_string body "hello";
   write_string t "5\r\nhello\r\n";
-  Body.write_string body "world";
-  Body.close_writer body;
+  Body.Writer.write_string body "world";
+  Body.Writer.close body;
   write_string t "5\r\nworld\r\n";
   write_string t "0\r\n\r\n";
   writer_closed t
@@ -165,7 +165,7 @@ let test_response_eof () =
         | `Malformed_response msg -> error_message := Some msg
         | _ -> assert false)
   in
-  Body.close_writer body;
+  Body.Writer.close body;
   write_request  t request';
   writer_closed  t;
   reader_ready t;
@@ -193,7 +193,7 @@ let test_response_header_order () =
       ~response_handler:(fun response _ -> received := Some response)
       ~error_handler:no_error_handler
   in
-  Body.close_writer body;
+  Body.Writer.close body;
   write_request t request';
   writer_closed t;
   read_response t response;
@@ -217,7 +217,7 @@ let test_report_exn () =
         | `Exn (Failure msg) -> error_message := Some msg
         | _ -> assert false)
   in
-  Body.close_writer body;
+  Body.Writer.close body;
   write_request  t request';
   writer_closed  t;
   reader_ready t;
@@ -241,7 +241,7 @@ let test_input_shrunk () =
         | `Exn (Failure msg) -> error_message := Some msg
         | _ -> assert false)
   in
-  Body.close_writer body;
+  Body.Writer.close body;
   write_request  t request';
   writer_closed  t;
   reader_ready t;
@@ -265,7 +265,7 @@ let test_failed_response_parse () =
         ~response_handler:(fun _ _ -> assert false)
         ~error_handler:(fun e -> error := Some e)
     in
-    Body.close_writer body;
+    Body.Writer.close body;
     write_request t request';
     writer_closed t;
     reader_ready t;
@@ -294,7 +294,7 @@ let test_schedule_read_with_data_available () =
   let req_body, t =
     request request' ~response_handler ~error_handler:no_error_handler
   in
-  Body.close_writer req_body;
+  Body.Writer.close req_body;
   write_request t request';
   writer_closed t;
   read_response t response;
@@ -302,7 +302,7 @@ let test_schedule_read_with_data_available () =
   let body = Option.get !body in
   let schedule_read expected =
     let did_read = ref false in
-    Body.schedule_read body
+    Body.Reader.schedule_read body
       ~on_read:(fun buf ~off ~len ->
         let actual = Bigstringaf.substring buf ~off ~len in
         did_read := true;
@@ -320,7 +320,7 @@ let test_schedule_read_with_data_available () =
   read_string t "!";
   schedule_read "!";
   let did_eof = ref false in
-  Body.schedule_read body
+  Body.Reader.schedule_read body
     ~on_read:(fun _ ~off:_ ~len:_ -> Alcotest.fail "Expected eof")
     ~on_eof:(fun () -> did_eof := true);
   Alcotest.(check bool) "on_eof called" true !did_eof;
