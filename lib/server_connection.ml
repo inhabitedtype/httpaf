@@ -201,14 +201,10 @@ let rec _next_read_operation t =
        believe I have some more improvements to the request queue mechanism that
        removes the need for two hacks. *)
     match Reqd.input_state reqd with
-<<<<<<< HEAD
-    | Waiting  -> `Yield
-=======
     | Waiting  ->
       if Reader.is_closed t.reader
       then Reader.next t.reader
       else `Yield
->>>>>>> origin/http-upgrades
     | Ready    -> Reader.next t.reader
     | Complete -> _final_read_operation_for t reqd
     | Upgraded -> `Upgrade
@@ -220,9 +216,6 @@ and _final_read_operation_for t reqd =
     Reader.next t.reader;
   ) else (
     match Reqd.output_state reqd with
-<<<<<<< HEAD
-    | Waiting | Ready -> `Yield
-=======
     | Waiting | Ready ->
       (* XXX(dpatti): This is a way in which the reader and writer are not
          parallel -- we tell the writer when it needs to yield but the reader is
@@ -236,7 +229,6 @@ and _final_read_operation_for t reqd =
       if Reader.is_closed t.reader
       then Reader.next t.reader
       else `Yield
->>>>>>> origin/http-upgrades
     | Upgraded -> `Upgrade
     | Complete ->
       advance_request_queue t;

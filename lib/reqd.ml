@@ -197,7 +197,7 @@ let respond_with_upgrade ?reason t headers =
       t.response_state <- Upgrade response;
       (* The parser ensures it only passes empty bodies in the case of an
          upgrade request *)
-      assert (Body.is_closed t.request_body);
+      assert (Body.Reader.is_closed t.request_body);
       Writer.write_response t.writer response;
       Writer.wakeup t.writer);
   | Streaming _ ->

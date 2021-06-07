@@ -41,16 +41,12 @@ let read_response t r =
 
 let reader_ready t =
   Alcotest.check read_operation "Reader is ready"
-<<<<<<< HEAD
-    `Read (next_read_operation t :> [`Close | `Read | `Yield | `Upgrade]);
-=======
     `Read (next_read_operation t :> Read_operation.t);
->>>>>>> origin/http-upgrades
 ;;
 
 let reader_closed t =
   Alcotest.check read_operation "Reader is closed"
-    `Close (next_read_operation t :> [`Close | `Read | `Yield]);
+    `Close (next_read_operation t :> Read_operation.t);
 ;;
 
 let write_string ?(msg="output written") t str =
@@ -78,11 +74,7 @@ let writer_closed t =
 
 let connection_is_shutdown t =
   Alcotest.check read_operation "Reader is closed"
-<<<<<<< HEAD
-    `Close (next_read_operation t :> [`Close | `Read | `Yield | `Upgrade]);
-=======
     `Close (next_read_operation t :> Read_operation.t);
->>>>>>> origin/http-upgrades
   writer_closed t;
 ;;
 
