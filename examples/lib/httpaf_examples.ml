@@ -27,9 +27,9 @@ module Client = struct
       Format.fprintf Format.std_formatter "%a\n%!" Response.pp_hum response;
       let rec on_read bs ~off ~len =
         Bigstringaf.substring ~off ~len bs |> print_string;
-        Body.schedule_read response_body ~on_read ~on_eof
+        Body.Reader.schedule_read response_body ~on_read ~on_eof
       in
-      Body.schedule_read response_body ~on_read ~on_eof;
+      Body.Reader.schedule_read response_body ~on_read ~on_eof;
     | response ->
       Format.fprintf Format.err_formatter "%a\n%!" Response.pp_hum response;
       Caml.exit 1
@@ -51,12 +51,12 @@ module Server = struct
       let request_body  = Reqd.request_body reqd in
       let response_body = Reqd.respond_with_streaming reqd response in
       let rec on_read buffer ~off ~len =
-        Body.write_bigstring response_body buffer ~off ~len;
-        Body.schedule_read request_body ~on_eof ~on_read;
+        Body.Writer.write_bigstring response_body buffer ~off ~len;
+        Body.Reader.schedule_read request_body ~on_eof ~on_read;
       and on_eof () =
-        Body.close_writer response_body
+        Body.Writer.close response_body
       in
-      Body.schedule_read (Reqd.request_body reqd) ~on_eof ~on_read
+      Body.Reader.schedule_read (Reqd.request_body reqd) ~on_eof ~on_read
     | _ ->
       let headers = Headers.of_list [ "connection", "close" ] in
       Reqd.respond_with_string reqd (Response.create ~headers `Method_not_allowed) ""
@@ -67,7 +67,7 @@ module Server = struct
     let handler reqd =
       let { Request.target; _ } = Reqd.request reqd in
       let request_body          = Reqd.request_body reqd in
-      Body.close_reader request_body;
+      Body.Reader.close request_body;
       match target with
       | "/" -> Reqd.respond_with_bigstring reqd (Response.create ~headers `OK) text;
       | _   -> Reqd.respond_with_string    reqd (Response.create `Not_found) "Route not found"
@@ -79,11 +79,11 @@ module Server = struct
     let response_body = start_response Headers.empty in
     begin match error with
     | `Exn exn ->
-      Body.write_string response_body (Exn.to_string exn);
-      Body.write_string response_body "\n";
+      Body.Writer.write_string response_body (Exn.to_string exn);
+      Body.Writer.write_string response_body "\n";
     | #Status.standard as error ->
-      Body.write_string response_body (Status.default_reason_phrase error)
+      Body.Writer.write_string response_body (Status.default_reason_phrase error)
     end;
-    Body.close_writer response_body
+    Body.Writer.close response_body
   ;;
 end
