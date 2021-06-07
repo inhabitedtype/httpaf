@@ -40,6 +40,8 @@ module Runtime : sig
   val on_writer_unyield : t -> (unit -> unit) -> bool ref
 
   val report_exn : t -> exn -> unit
+
+  val shutdown : t -> unit
 end = struct
   open Server_connection
 
@@ -164,32 +166,35 @@ end = struct
   ;;
 
   let report_exn t = Server_connection.report_exn t.server_connection
+
+  let shutdown t = Server_connection.shutdown t.server_connection
 end
 
 open Runtime
 
-let read t str ~off ~len =
-  do_read t (fun conn -> Server_connection.read conn str ~off ~len)
+let read ?(eof=false) t str ~off ~len =
+  do_read t (fun conn ->
+    if eof
+    then Server_connection.read_eof conn str ~off ~len
+    else Server_connection.read     conn str ~off ~len)
 ;;
 
-let read_eof t str ~off ~len =
-  do_read t (fun conn -> Server_connection.read_eof conn str ~off ~len)
-;;
+let read_eof = read ~eof:true
 
-let feed_string t str =
+let feed_string ?eof t str =
   let len = String.length str in
   let input = Bigstringaf.of_string str ~off:0 ~len in
-  read t input ~off:0 ~len
+  read ?eof t input ~off:0 ~len
 ;;
 
-let read_string t str =
-  let c = feed_string t str in
+let read_string ?eof t str =
+  let c = feed_string ?eof t str in
   Alcotest.(check int) "read consumes all input" (String.length str) c;
 ;;
 
-let read_request t r =
+let read_request ?eof t r =
   let request_string = request_to_string r in
-  read_string t request_string
+  read_string ?eof t request_string
 ;;
 
 let reader_ready t =
@@ -205,6 +210,11 @@ let reader_yielded t =
 let reader_closed t =
   Alcotest.check read_operation "Reader is closed"
     `Close (current_read_operation t);
+;;
+
+let reader_upgraded t =
+  Alcotest.check read_operation "Reader is upgraded"
+    `Upgrade (current_read_operation t);
 ;;
 
 (* Checks that the [len] prefixes of expected and the write match, and returns
@@ -259,6 +269,11 @@ let writer_closed ?(unread = 0) t =
     (`Close unread) (current_write_operation t);
 ;;
 
+let writer_upgraded t =
+  Alcotest.check write_operation "Writer is upgraded"
+    `Upgrade (current_write_operation t);
+;;
+
 let connection_is_shutdown t =
   reader_closed t;
   writer_closed t;
@@ -298,6 +313,16 @@ let streaming_handler ?(flush=false) response writes reqd =
       Body.flush body write
   in
   write ();
+;;
+
+let capture_handler () =
+  let fail _ = failwith "Captured handler was not invoked" in
+  let capture = ref fail in
+  let respond reqd f =
+    capture := fail;
+    f reqd
+  in
+  capture, (fun reqd -> capture := respond reqd)
 ;;
 
 let synchronous_raise reqd =
@@ -856,6 +881,21 @@ let test_multiple_requests_in_single_read_with_close () =
   connection_is_shutdown t;
 ;;
 
+let test_multiple_requests_in_single_read_with_eof () =
+  let response = Response.create `OK in
+  let t =
+    create (fun reqd -> Reqd.respond_with_string reqd response "")
+  in
+  let reqs =
+    request_to_string (Request.create `GET "/") ^
+    request_to_string (Request.create `GET "/")
+  in
+  read_string t reqs ~eof:true;
+  write_response t response;
+  write_response t response;
+  connection_is_shutdown t;
+;;
+
 let test_parse_failure_after_checkpoint () =
   let error_queue = ref None in
   let error_handler ?request:_ error _start_response =
@@ -900,48 +940,117 @@ let test_response_finished_before_body_read () =
   write_response t response ~body:"done";
 ;;
 
-let test_upgrade () =
-  let upgrade_headers =["Connection", "upgrade" ; "Upgrade", "foo"] in
-  let request_handler reqd =
-    Reqd.respond_with_upgrade reqd
-      (Headers.of_list upgrade_headers)
+let test_shutdown_in_request_handler () =
+  let request = Request.create `GET "/" in
+  let rec t =
+    lazy (create (fun _ -> shutdown (Lazy.force t)))
   in
+  let t = Lazy.force t in
+  read_request t request;
+  reader_closed t;
+  writer_closed t
+;;
+
+let test_shutdown_during_asynchronous_request () =
+  let request = Request.create `GET "/" in
+  let response = Response.create `OK in
+  let continue = ref (fun () -> ()) in
+  let t = create (fun reqd ->
+    continue := (fun () ->
+      Reqd.respond_with_string reqd response ""))
+  in
+  read_request t request;
+  shutdown t;
+  (* This is raised from Faraday *)
+  Alcotest.check_raises "[continue] raises because writer is closed"
+    (Failure "cannot write to closed writer")
+    !continue;
+  reader_closed t;
+  writer_closed t
+;;
+
+let test_upgrade () =
+  let headers = Headers.upgrade "foo" in
+  let request_handler reqd = Reqd.respond_with_upgrade reqd headers in
   let t = create request_handler in
-  read_request t
-    (Request.create `GET "/"
-       ~headers:(Headers.of_list (("Content-Length", "0") :: upgrade_headers)));
-  Alcotest.check read_operation "Reader is `Upgrade" `Upgrade (current_read_operation t);
-  write_response t
-    (Response.create `Switching_protocols ~headers:(Headers.of_list upgrade_headers));
-  Alcotest.check write_operation "Writer is `Upgrade" `Upgrade (current_write_operation t);
+  read_request t (Request.create `GET "/" ~headers);
+  reader_upgraded t;
+  write_response t (Response.create `Switching_protocols ~headers);
+  writer_upgraded t;
 ;;
 
 let test_upgrade_where_server_does_not_upgrade () =
-  let upgrade_headers =["Connection", "upgrade" ; "Upgrade", "foo"] in
-  let reqd_ref = ref None in
-  let request_handler reqd = reqd_ref := Some reqd in
-  let t = create request_handler in
-  read_request t
-    (Request.create `GET "/"
-       ~headers:(Headers.of_list (("Content-Length", "0") :: upgrade_headers)));
+  let respond, handler = capture_handler () in
+  let t = create handler in
+  read_request t (Request.create `GET "/" ~headers:(Headers.upgrade "foo"));
   (* At this point, we don't know if the response handler will call respond_with_upgrade
      or not. So we pause the reader until that is determined. *)
-  Alcotest.check read_operation "Reader is `Yield during upgrade negotiation"
-    `Yield (current_read_operation t);
+  reader_yielded t;
 
   (* Now pretend the user doesn't want to do the upgrade and make sure we close the
      connection *)
-  let reqd = Option.get !reqd_ref in
-  let response = Response.create `Bad_request ~headers:(Headers.encoding_fixed 0) in
-  Reqd.respond_with_string reqd response "";
-  write_response t response;
+  !respond (fun reqd ->
+    let response = Response.create `Bad_request ~headers:(Headers.encoding_fixed 0) in
+    Reqd.respond_with_string reqd response "";
+    write_response t response);
 
   (* The connection is left healthy and can be used for more requests *)
   read_request t (Request.create `GET "/" ~headers:(Headers.encoding_fixed 0));
-  let reqd = Option.get !reqd_ref in
-  let response = Response.create `OK ~headers:(Headers.encoding_fixed 0) in
-  Reqd.respond_with_string reqd response "";
-  write_response t response;
+  !respond (fun reqd ->
+    let response = Response.create `OK ~headers:(Headers.encoding_fixed 0) in
+    Reqd.respond_with_string reqd response "";
+    write_response t response);
+;;
+
+let test_upgrade_with_initial_data () =
+  let headers = Headers.upgrade "foo" in
+  let request_handler reqd = Reqd.respond_with_upgrade reqd headers in
+  let t = create request_handler in
+  let payload = request_to_string (Request.create `GET "/" ~headers) ^ "foo" in
+  let c = feed_string t payload in
+  Alcotest.(check int) "read consumes headers" 53 c;
+  reader_upgraded t;
+  write_response t (Response.create `Switching_protocols ~headers);
+  writer_upgraded t;
+;;
+
+let test_upgrade_with_bad_body_length () =
+  let headers = Headers.upgrade "foo" in
+  let request_handler reqd = Reqd.respond_with_upgrade reqd headers in
+  let t = create request_handler in
+  read_request t
+    (Request.create `GET "/" ~headers:Headers.(headers @ encoding_fixed 100));
+  reader_closed t;
+  write_response t (Response.create `Bad_request) ~body:"400";
+  writer_closed t;
+;;
+
+let test_asynchronous_upgrade () =
+  let headers = Headers.upgrade "foo" in
+  let respond, handler = capture_handler () in
+  let t = create handler in
+  read_request t (Request.create `GET "/" ~headers);
+  reader_yielded t;
+
+  !respond (fun reqd -> Reqd.respond_with_upgrade reqd headers);
+  reader_upgraded t;
+  write_response t (Response.create `Switching_protocols ~headers);
+  writer_upgraded t;
+;;
+
+let test_upgrade_interrupted_by_shutdown () =
+  let headers = Headers.upgrade "foo" in
+  let respond, handler = capture_handler () in
+  let t = create handler in
+  read_request t (Request.create `GET "/" ~headers);
+  reader_yielded t;
+
+  shutdown t;
+  (* XXX(dpatti): If we call this, we try to write to the closed writer *)
+  (* !respond (fun reqd -> Reqd.respond_with_upgrade reqd headers); *)
+  ignore respond;
+  reader_closed t;
+  writer_closed t;
 ;;
 
 let tests =
@@ -970,8 +1079,15 @@ let tests =
   ; "multiple requests in single read", `Quick, test_multiple_requests_in_single_read
   ; "multiple async requests in single read", `Quick, test_multiple_async_requests_in_single_read
   ; "multiple requests with connection close", `Quick, test_multiple_requests_in_single_read_with_close
+  ; "multiple requests with eof", `Quick, test_multiple_requests_in_single_read_with_eof
   ; "parse failure after checkpoint", `Quick, test_parse_failure_after_checkpoint
   ; "response finished before body read", `Quick, test_response_finished_before_body_read
-  ; "test upgrades", `Quick, test_upgrade
-  ; "test upgrade where server does not upgrade", `Quick, test_upgrade_where_server_does_not_upgrade
+  ; "shutdown in request handler", `Quick, test_shutdown_in_request_handler
+  ; "shutdown during asynchronous request", `Quick, test_shutdown_during_asynchronous_request
+  ; "upgrade", `Quick, test_upgrade
+  ; "upgrade where server does not upgrade", `Quick, test_upgrade_where_server_does_not_upgrade
+  ; "upgrade with initial data", `Quick, test_upgrade_with_initial_data
+  ; "upgrade with bad body length", `Quick, test_upgrade_with_bad_body_length
+  ; "asynchronous upgrade", `Quick, test_asynchronous_upgrade
+  ; "upgrade interrupted by shutdown", `Quick, test_upgrade_interrupted_by_shutdown
   ]
