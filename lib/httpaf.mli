@@ -660,6 +660,13 @@ module Reqd : sig
   val respond_with_streaming : ?flush_headers_immediately:bool -> t -> Response.t -> Body.Writer.t
 
   val respond_with_upgrade : ?reason:string -> t -> Headers.t -> unit
+  (** Initiate an HTTP upgrade. [Server_connection.next_write_request] and
+      [next_read_request] will begin returning [`Upgrade] once the response headers have
+      been written, which indicates that the runtime should take over direct control of
+      the socket rather than shuttling bytes through httpaf.
+
+      The headers must indicate a valid upgrade message, e.g. must include "Connection:
+      upgrade". *)
 
   (** {3 Exception Handling} *)
 
