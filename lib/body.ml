@@ -104,7 +104,7 @@ end
 module Writer = struct
   type encoding =
     | Fixed
-    | Chunked of { written_final_chunk : bool ref }
+    | Chunked of { mutable written_final_chunk : bool }
 
   type t =
     { faraday        : Faraday.t
@@ -117,7 +117,7 @@ module Writer = struct
     let encoding =
       match encoding with
       | `Fixed _ | `Close_delimited -> Fixed
-      | `Chunked -> Chunked { written_final_chunk = ref false }
+      | `Chunked -> Chunked { written_final_chunk = false }
     in
     { faraday
     ; writer
@@ -162,7 +162,7 @@ module Writer = struct
       | Fixed -> false
       | Chunked { written_final_chunk } ->
         Faraday.is_closed t.faraday &&
-        not !written_final_chunk)
+        not written_final_chunk)
 
   let transfer_to_writer t =
     let faraday = t.faraday in
@@ -171,9 +171,9 @@ module Writer = struct
     | `Close ->
       (match t.encoding with
        | Fixed -> ()
-       | Chunked { written_final_chunk } ->
-         if not !written_final_chunk then begin
-           written_final_chunk := true;
+       | Chunked ({ written_final_chunk } as chunked) ->
+         if not written_final_chunk then begin
+           chunked.written_final_chunk <- true;
            Serialize.Writer.schedule_chunk t.writer [];
          end)
     | `Writev iovecs ->
