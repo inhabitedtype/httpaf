@@ -177,14 +177,23 @@ let set_error_and_handle ?request t error =
       let response = Response.create ~headers status in
       Writer.write_response writer response;
       let encoding =
-        (* If we can't work it out, just say `Close_delimited -- i.e. just do our best to
-           get the bytes delivered to the client. *)
-        match request with
-        | None -> `Close_delimited
-        | Some request ->
-          match Response.body_length ~request_method:request.meth response with
-          | `Fixed _ | `Close_delimited | `Chunked as encoding -> encoding
-          | `Error _ -> `Close_delimited
+        (* If we haven't parsed the request method, just use GET as a standard
+           placeholder. The method is only used for edge cases, like HEAD or
+           CONNECT. *)
+        let request_method =
+          match request with
+          | None -> `GET
+          | Some request -> request.meth
+        in
+        match Response.body_length ~request_method response with
+        | `Fixed _ | `Close_delimited as encoding -> encoding
+        | `Chunked ->
+          (* XXX(dpatti): Because we pass the writer's faraday directly to the
+             new body, we don't write the chunked encoding. A client won't be
+             able to interpret this. *)
+          `Close_delimited
+        | `Error (`Bad_gateway | `Internal_server_error) ->
+          failwith "httpaf.Server_connection.error_handler: invalid response body length"
       in
       Body.Writer.of_faraday (Writer.faraday writer) ~encoding
         ~when_ready_to_write:(fun () -> Writer.wakeup writer));
