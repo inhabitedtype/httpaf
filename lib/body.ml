@@ -103,30 +103,30 @@ end
 
 module Writer = struct
   type encoding =
-    | Fixed
+    | Identity
     | Chunked of { mutable written_final_chunk : bool }
 
   type t =
-    { faraday        : Faraday.t
-    ; writer         : Serialize.Writer.t
-    ; buffered_bytes : int ref
-    ; encoding       : encoding
+    { faraday             : Faraday.t
+    ; encoding            : encoding
+    ; when_ready_to_write : unit -> unit
+    ; buffered_bytes      : int ref
     }
 
-  let of_faraday faraday writer ~encoding =
+  let of_faraday faraday ~encoding ~when_ready_to_write =
     let encoding =
       match encoding with
-      | `Fixed _ | `Close_delimited -> Fixed
+      | `Fixed _ | `Close_delimited -> Identity
       | `Chunked -> Chunked { written_final_chunk = false }
     in
     { faraday
-    ; writer
     ; encoding
+    ; when_ready_to_write
     ; buffered_bytes = ref 0
     }
 
-  let create buffer writer ~encoding =
-    of_faraday (Faraday.of_bigstring buffer) writer ~encoding
+  let create buffer ~encoding ~when_ready_to_write =
+    of_faraday (Faraday.of_bigstring buffer) ~encoding ~when_ready_to_write
 
   let write_char t c =
     Faraday.write_char t.faraday c
@@ -140,7 +140,7 @@ module Writer = struct
   let schedule_bigstring t ?off ?len (b:Bigstringaf.t) =
     Faraday.schedule_bigstring ?off ?len t.faraday b
 
-  let ready_to_write t = Serialize.Writer.wakeup t.writer
+  let ready_to_write t = t.when_ready_to_write ()
 
   let flush t kontinue =
     Faraday.flush t.faraday kontinue;
@@ -157,25 +157,28 @@ module Writer = struct
   let has_pending_output t =
     (* Force another write poll to make sure that the final chunk is emitted for
        chunk-encoded bodies. *)
-    Faraday.has_pending_output t.faraday
-    || (match t.encoding with
-      | Fixed -> false
+    let faraday_has_output = Faraday.has_pending_output t.faraday in
+    let additional_encoding_output =
+      match t.encoding with
+      | Identity -> false
       | Chunked { written_final_chunk } ->
-        Faraday.is_closed t.faraday &&
-        not written_final_chunk)
+        Faraday.is_closed t.faraday && not written_final_chunk
+    in
+    faraday_has_output || additional_encoding_output
 
-  let transfer_to_writer t =
+  let transfer_to_writer t writer =
     let faraday = t.faraday in
     begin match Faraday.operation faraday with
     | `Yield -> ()
     | `Close ->
       (match t.encoding with
-       | Fixed -> ()
+       | Identity -> ()
        | Chunked ({ written_final_chunk } as chunked) ->
          if not written_final_chunk then begin
            chunked.written_final_chunk <- true;
-           Serialize.Writer.schedule_chunk t.writer [];
-         end)
+           Serialize.Writer.schedule_chunk writer [];
+         end);
+      Serialize.Writer.unyield writer;
     | `Writev iovecs ->
       let buffered = t.buffered_bytes in
       begin match IOVec.shiftv iovecs !buffered with
@@ -184,10 +187,10 @@ module Writer = struct
         let lengthv  = IOVec.lengthv iovecs in
         buffered := !buffered + lengthv;
         begin match t.encoding with
-        | Fixed     -> Serialize.Writer.schedule_fixed t.writer iovecs
-        | Chunked _ -> Serialize.Writer.schedule_chunk t.writer iovecs
+        | Identity  -> Serialize.Writer.schedule_fixed writer iovecs
+        | Chunked _ -> Serialize.Writer.schedule_chunk writer iovecs
         end;
-        Serialize.Writer.flush t.writer (fun () ->
+        Serialize.Writer.flush writer (fun () ->
           Faraday.shift faraday lengthv;
           buffered := !buffered - lengthv)
       end

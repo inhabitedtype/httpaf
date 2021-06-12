@@ -186,7 +186,8 @@ let set_error_and_handle ?request t error =
           | `Fixed _ | `Close_delimited | `Chunked as encoding -> encoding
           | `Error _ -> `Close_delimited
       in
-      Body.Writer.of_faraday (Writer.faraday writer) writer ~encoding);
+      Body.Writer.of_faraday (Writer.faraday writer) ~encoding
+        ~when_ready_to_write:(fun () -> Writer.wakeup writer));
   end
 
 let report_exn t exn =
