@@ -38,17 +38,17 @@ module Oneshot = struct
   type error =
     [ `Malformed_response of string | `Invalid_response_body_length of Response.t | `Exn of exn ]
 
-  type response_handler = Response.t -> [`read] Body.t  -> unit
+  type response_handler = Response.t -> Body.Reader.t  -> unit
   type error_handler = error -> unit
 
   type state =
     | Awaiting_response
-    | Received_response of Response.t * [`read] Body.t
+    | Received_response of Response.t * Body.Reader.t
     | Closed
 
   type t =
     { request          : Request.t
-    ; request_body     : [ `write ] Body.t
+    ; request_body     : Body.Writer.t
     ; error_handler    : (error -> unit)
     ; reader : Reader.response
     ; writer : Writer.t
@@ -65,9 +65,14 @@ module Oneshot = struct
     in
     let writer = Writer.create () in
     let request_body =
-      Body.create_writer (Bigstringaf.create config.request_body_buffer_size)
-        ~when_ready_to_write:(fun () ->
-          Writer.wakeup writer)
+      let encoding =
+        match Request.body_length request with
+        | `Fixed _ | `Chunked as encoding -> encoding
+        | `Error `Bad_request ->
+          failwith "Httpaf.Client_connection.request: invalid body length"
+      in
+      Body.Writer.create (Bigstringaf.create config.request_body_buffer_size)
+        ~encoding ~when_ready_to_write:(fun () -> Writer.wakeup writer)
     in
     let t =
       { request
@@ -83,14 +88,8 @@ module Oneshot = struct
   ;;
 
   let flush_request_body t =
-    if Body.has_pending_output t.request_body
-    then
-      let encoding =
-        match Request.body_length t.request with
-        | `Fixed _ | `Chunked as encoding -> encoding
-        | `Error _ -> assert false (* XXX(seliopou): This needs to be handled properly *)
-      in
-      Body.transfer_to_writer_with_encoding t.request_body ~encoding t.writer
+    if Body.Writer.has_pending_output t.request_body
+    then Body.Writer.transfer_to_writer t.request_body t.writer
   ;;
 
   let set_error_and_handle_without_shutdown t error =
@@ -109,15 +108,15 @@ module Oneshot = struct
     | Awaiting_response -> unexpected_eof t;
     | Closed -> ()
     | Received_response(_, response_body) ->
-      Body.close_reader response_body;
-      Body.execute_read response_body;
+      Body.Reader.close response_body;
+      Body.Reader.execute_read response_body;
     end;
   ;;
 
   let shutdown_writer t =
     flush_request_body t;
     Writer.close t.writer;
-    Body.close_writer t.request_body;
+    Body.Writer.close t.request_body;
   ;;
 
   let shutdown t =
@@ -132,8 +131,8 @@ module Oneshot = struct
     | Awaiting_response ->
       set_error_and_handle_without_shutdown t error;
     | Received_response(_, response_body) ->
-      Body.close_reader response_body;
-      Body.execute_read response_body;
+      Body.Reader.close response_body;
+      Body.Reader.execute_read response_body;
       set_error_and_handle_without_shutdown t error;
     end
   ;;
@@ -146,7 +145,7 @@ module Oneshot = struct
     match !(t.state) with
     | Awaiting_response | Closed -> ()
     | Received_response(_, response_body) ->
-      try Body.execute_read response_body
+      try Body.Reader.execute_read response_body
       with exn -> report_exn t exn
   ;;
 
@@ -154,7 +153,7 @@ module Oneshot = struct
     match !(t.state) with
     | Awaiting_response | Closed -> Reader.next t.reader
     | Received_response(_, response_body) ->
-      if not (Body.is_closed response_body)
+      if not (Body.Reader.is_closed response_body)
       then Reader.next t.reader
       else begin
         Reader.force_close t.reader;
@@ -194,17 +193,18 @@ module Oneshot = struct
 
   let next_write_operation t =
     flush_request_body t;
-    if Body.is_closed t.request_body
+    if Body.Writer.is_closed t.request_body
     (* Even though we've just done [flush_request_body], it might still be the case that
-       [Body.has_pending_output] returns true, because it does so when we've written all
-       output except for the final chunk. *)
-    && not (Body.has_pending_output t.request_body)
+       [Body.Writer.has_pending_output] returns true, because it does so when
+       we've written all output except for the final chunk. *)
+    && not (Body.Writer.has_pending_output t.request_body)
     then Writer.close t.writer;
     Writer.next t.writer
   ;;
 
   let yield_writer t k =
-    if Body.is_closed t.request_body && not (Body.has_pending_output t.request_body)
+    if Body.Writer.is_closed t.request_body
+    && not (Body.Writer.has_pending_output t.request_body)
     then begin
       Writer.close t.writer;
       k ()

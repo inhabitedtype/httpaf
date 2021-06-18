@@ -1,7 +1,7 @@
 open Httpaf
 open Helpers
 
-let trace fmt = Format.ksprintf (Format.printf "%s\n") fmt
+let trace fmt = Format.ksprintf (Format.printf "%s\n%!") fmt
 
 let request_error_pp_hum fmt = function
   | `Bad_request           -> Format.fprintf fmt "Bad_request"
@@ -94,6 +94,15 @@ end = struct
   ;;
 
   let create ?config ?error_handler request_handler =
+    let request_handler r =
+      trace "invoked: request_handler";
+      request_handler r
+    in
+    let error_handler =
+      Option.map (fun error_handler ?request ->
+        trace "invoked: request_handler";
+        error_handler ?request) error_handler
+    in
     let rec t =
       lazy (
         { server_connection = create ?config ?error_handler request_handler
@@ -126,23 +135,27 @@ end = struct
   let do_read t f =
     match current_read_operation t with
     | `Read ->
+      trace "read: start";
       let res = f t.server_connection in
+      trace "read: finished";
       t.read_loop ();
       res
     | `Yield | `Close as op ->
-        Alcotest.failf "Read attempted during operation: %a"
-          Read_operation.pp_hum op
+      Alcotest.failf "Read attempted during operation: %a"
+        Read_operation.pp_hum op
   ;;
 
   let do_write t f =
     match current_write_operation t with
     | `Write bufs ->
-        let res = f t.server_connection bufs in
-        t.write_loop ();
-        res
+      trace "write: start";
+      let res = f t.server_connection bufs in
+      trace "write: finished";
+      t.write_loop ();
+      res
     | `Yield | `Close _ as op ->
-        Alcotest.failf "Write attempted during operation: %a"
-          Write_operation.pp_hum op
+      Alcotest.failf "Write attempted during operation: %a"
+        Write_operation.pp_hum op
   ;;
 
   let on_reader_unyield t f =
@@ -263,8 +276,14 @@ let connection_is_shutdown t =
   writer_closed t;
 ;;
 
+let raises_writer_closed f =
+  (* This is raised when you write to a closed [Faraday.t] *)
+  Alcotest.check_raises "raises because writer is closed"
+    (Failure "cannot write to closed writer") f
+;;
+
 let request_handler_with_body body reqd =
-  Body.close_reader (Reqd.request_body reqd);
+  Body.Reader.close (Reqd.request_body reqd);
   Reqd.respond_with_string reqd (Response.create `OK) body
 ;;
 
@@ -276,25 +295,28 @@ let echo_handler response reqd =
   let request_body  = Reqd.request_body reqd in
   let response_body = Reqd.respond_with_streaming reqd response in
   let rec on_read buffer ~off ~len =
-    Body.write_string response_body (Bigstringaf.substring ~off ~len buffer);
-    Body.flush response_body (fun () ->
-      Body.schedule_read request_body ~on_eof ~on_read)
-    and on_eof () = print_endline "got eof"; Body.close_writer response_body in
-  Body.schedule_read request_body ~on_eof ~on_read;
+    Body.Writer.write_string response_body (Bigstringaf.substring ~off ~len buffer);
+    Body.Writer.flush response_body (fun () ->
+      Body.Reader.schedule_read request_body ~on_eof ~on_read)
+  and on_eof () =
+    print_endline "echo handler eof";
+    Body.Writer.close response_body
+  in
+  Body.Reader.schedule_read request_body ~on_eof ~on_read;
 ;;
 
 let streaming_handler ?(flush=false) response writes reqd =
   let writes = ref writes in
   let request_body = Reqd.request_body reqd in
-  Body.close_reader request_body;
+  Body.Reader.close request_body;
   let body = Reqd.respond_with_streaming ~flush_headers_immediately:flush reqd response in
   let rec write () =
     match !writes with
-    | [] -> Body.close_writer body
+    | [] -> Body.Writer.close body
     | w :: ws ->
-      Body.write_string body w;
+      Body.Writer.write_string body w;
       writes := ws;
-      Body.flush body write
+      Body.Writer.flush body write
   in
   write ();
 ;;
@@ -305,8 +327,8 @@ let synchronous_raise reqd =
 
 let error_handler ?request:_ _error start_response =
   let resp_body = start_response Headers.empty in
-  Body.write_string resp_body "got an error";
-  Body.close_writer resp_body
+  Body.Writer.write_string resp_body "got an error";
+  Body.Writer.close resp_body
 ;;
 
 let test_initial_reader_state () =
@@ -359,14 +381,14 @@ let test_asynchronous_response () =
   let continue = ref (fun () -> ()) in
   let t = create (fun reqd ->
     continue := fun () ->
-      Body.close_reader (Reqd.request_body reqd);
+      Body.Reader.close (Reqd.request_body reqd);
       let data = Bigstringaf.of_string ~off:0 ~len:response_body_length response_body in
       let size = Bigstringaf.length data in
       let response = Response.create `OK ~headers:(Headers.encoding_fixed size) in
       let response_body =
         Reqd.respond_with_streaming reqd response in
-      Body.write_bigstring response_body data;
-      Body.close_writer response_body)
+      Body.Writer.write_bigstring response_body data;
+      Body.Writer.close response_body)
    in
   read_request   t (Request.create `GET "/");
   reader_yielded t;
@@ -459,10 +481,10 @@ let test_asynchronous_streaming_response () =
     | None -> failwith "no body found"
     | Some body -> body
   in
-  Body.write_string body "Hello ";
+  Body.Writer.write_string body "Hello ";
   Alcotest.(check bool) "Writer not woken up"
     false !writer_woken_up;
-  Body.flush body ignore;
+  Body.Writer.flush body ignore;
   Alcotest.(check bool) "Writer woken up"
     true !writer_woken_up;
 
@@ -472,10 +494,10 @@ let test_asynchronous_streaming_response () =
       write_string t "world!";
       writer_closed t)
   in
-  Body.write_string body "world!";
+  Body.Writer.write_string body "world!";
   Alcotest.(check bool) "Writer not woken up"
     false !writer_woken_up;
-  Body.close_writer body;
+  Body.Writer.close body;
   Alcotest.(check bool) "Writer woken up"
     true !writer_woken_up
 ;;
@@ -510,7 +532,7 @@ let test_asynchronous_streaming_response_with_immediate_flush () =
     on_writer_unyield t (fun () ->
       writer_closed t)
   in
-  Body.close_writer body;
+  Body.Writer.close body;
   Alcotest.(check bool) "Writer woken up"
     true !writer_woken_up
 ;;
@@ -660,10 +682,10 @@ let test_chunked_encoding () =
   let request_handler reqd =
     let response = Response.create `OK ~headers:Headers.encoding_chunked in
     let resp_body = Reqd.respond_with_streaming reqd response in
-    Body.write_string resp_body "First chunk";
-    Body.flush resp_body (fun () ->
-      Body.write_string resp_body "Second chunk";
-      Body.close_writer resp_body);
+    Body.Writer.write_string resp_body "First chunk";
+    Body.Writer.flush resp_body (fun () ->
+      Body.Writer.write_string resp_body "Second chunk";
+      Body.Writer.close resp_body);
   in
   let t = create ~error_handler request_handler in
   writer_yielded t;
@@ -682,12 +704,36 @@ let test_chunked_encoding () =
     `Read (current_read_operation t);
 ;;
 
+let test_chunked_encoding_for_error () =
+  let error_handler ?request error start_response =
+    Alcotest.(check (option request)) "No parsed request"
+      None request;
+    Alcotest.(check request_error) "Request error"
+      `Bad_request error;
+    let body = start_response Headers.encoding_chunked in
+    Body.Writer.write_string body "Bad";
+    Body.Writer.flush body (fun () ->
+      Body.Writer.write_string body " request";
+      Body.Writer.close body);
+  in
+  let t = create ~error_handler (fun _ -> assert false) in
+  let c = feed_string t "  X\r\n\r\n" in
+  Alcotest.(check int) "Partial read" 2 c;
+  (* XXX(dpatti): Note that even if we use a chunked encoding header, we still
+     write it without any encoding *)
+  write_response t
+    (Response.create `Bad_request ~headers:Headers.encoding_chunked)
+    ~body:"Bad";
+  write_string t " request";
+  connection_is_shutdown t;
+;;
+
 let test_blocked_write_on_chunked_encoding () =
   let request_handler reqd =
     let response = Response.create `OK ~headers:Headers.encoding_chunked in
     let resp_body = Reqd.respond_with_streaming reqd response in
-    Body.write_string resp_body "gets partially written";
-    Body.flush resp_body ignore;
+    Body.Writer.write_string resp_body "gets partially written";
+    Body.Writer.flush resp_body ignore;
     (* Response body never gets closed but for the purposes of the test, that's
      * OK. *)
   in
@@ -721,7 +767,7 @@ let test_input_shrunk () =
       ; "Accept"         , "application/json, text/plain, */*"
       ; "Accept-Language", "en-US,en;q=0.5" ]
       (Headers.to_list (Reqd.request reqd).headers);
-    Body.close_reader (Reqd.request_body reqd);
+    Body.Reader.close (Reqd.request_body reqd);
     continue_response := (fun () ->
       Reqd.respond_with_string reqd (Response.create `OK) "");
   in
@@ -755,7 +801,7 @@ let test_failed_request_parse () =
       None request;
     Alcotest.(check request_error) "Request error"
       `Bad_request error;
-    start_response Headers.empty |> Body.close_writer;
+    start_response Headers.empty |> Body.Writer.close;
   in
   let request_handler _reqd = assert false in
   let t = create ~error_handler request_handler in
@@ -784,7 +830,7 @@ let test_bad_request () =
       (Some request) request';
     Alcotest.(check request_error) "Request error"
       `Bad_request error;
-    start_response Headers.empty |> Body.close_writer;
+    start_response Headers.empty |> Body.Writer.close;
   in
   let request_handler _reqd = assert false in
   let t = create ~error_handler request_handler in
@@ -888,12 +934,39 @@ let test_parse_failure_after_checkpoint () =
   | Some error -> Alcotest.(check request_error) "Error" error `Bad_request
 ;;
 
+let test_parse_failure_at_eof () =
+  let error_queue = ref None in
+  let continue = ref (fun () -> ()) in
+  let error_handler ?request error start_response =
+    Alcotest.(check (option reject)) "Error queue is empty" !error_queue None;
+    Alcotest.(check (option reject)) "Request was not parsed" request None;
+    error_queue := Some error;
+    continue := (fun () ->
+      let resp_body = start_response Headers.empty in
+      Body.Writer.write_string resp_body "got an error";
+      Body.Writer.close resp_body);
+  in
+  let request_handler _reqd = assert false in
+  let t = create ~error_handler request_handler in
+  reader_ready t;
+  read_string t "GET index.html HTTP/1.1\r\n";
+  let result = feed_string ~eof:true t " index.html HTTP/1.1\r\n\r\n" in
+  Alcotest.(check int) "Bad header not consumed" result 0;
+  reader_closed t;
+  (match !error_queue with
+   | None -> Alcotest.fail "Expected error"
+   | Some error -> Alcotest.(check request_error) "Error" error `Bad_request);
+  !continue ();
+  write_response t (Response.create `Bad_request) ~body:"got an error";
+  writer_closed t;
+;;
+
 let test_response_finished_before_body_read () =
   let response = Response.create `OK ~headers:(Headers.encoding_fixed 4) in
   let rev_body_chunks = ref [] in
   let request_handler reqd =
     let rec read_body () =
-      Body.schedule_read
+      Body.Reader.schedule_read
         (Reqd.request_body reqd)
         ~on_read:(fun buf ~off ~len ->
           rev_body_chunks := Bigstringaf.substring buf ~off ~len :: !rev_body_chunks;
@@ -935,10 +1008,7 @@ let test_shutdown_during_asynchronous_request () =
   in
   read_request t request;
   shutdown t;
-  (* This is raised from Faraday *)
-  Alcotest.check_raises "[continue] raises because writer is closed"
-    (Failure "cannot write to closed writer")
-    !continue;
+  raises_writer_closed !continue;
   reader_closed t;
   writer_closed t
 ;;
@@ -950,16 +1020,18 @@ let test_flush_response_before_shutdown () =
   let request_handler reqd =
     let body = Reqd.respond_with_streaming ~flush_headers_immediately:true reqd response in
     continue := (fun () ->
-      Body.write_string body "hello world";
-      Body.close_writer body);
+      Body.Writer.write_string body "hello world";
+      Body.Writer.close body);
   in
   let t = create request_handler in
   read_request t request;
   write_response t response;
   !continue ();
   shutdown t;
-  write_string t "b\r\nhello world\r\n";
-  connection_is_shutdown t
+  raises_writer_closed (fun () ->
+    write_string t "b\r\nhello world\r\n";
+    connection_is_shutdown t);
+;;
 
 let test_schedule_read_with_data_available () =
   let response = Response.create `OK in
@@ -976,7 +1048,7 @@ let test_schedule_read_with_data_available () =
   let body = Option.get !body in
   let schedule_read expected =
     let did_read = ref false in
-    Body.schedule_read body
+    Body.Reader.schedule_read body
       ~on_read:(fun buf ~off ~len ->
         let actual = Bigstringaf.substring buf ~off ~len in
         did_read := true;
@@ -993,7 +1065,7 @@ let test_schedule_read_with_data_available () =
   read_string t "!";
   schedule_read "!";
   (* Also works with eof *)
-  Body.schedule_read body
+  Body.Reader.schedule_read body
     ~on_read:(fun _ ~off:_ ~len:_ -> Alcotest.fail "Expected eof")
     ~on_eof:(fun () -> !continue ());
   write_response t response;
@@ -1017,6 +1089,7 @@ let tests =
   ; "asynchronous error, synchronous handling", `Quick, test_asynchronous_error
   ; "asynchronous error, asynchronous handling", `Quick, test_asynchronous_error_asynchronous_handling
   ; "chunked encoding", `Quick, test_chunked_encoding
+  ; "chunked encoding for error", `Quick, test_chunked_encoding_for_error
   ; "blocked write on chunked encoding", `Quick, test_blocked_write_on_chunked_encoding
   ; "writer unexpected eof", `Quick, test_unexpected_eof
   ; "input shrunk", `Quick, test_input_shrunk
@@ -1027,6 +1100,7 @@ let tests =
   ; "multiple requests with connection close", `Quick, test_multiple_requests_in_single_read_with_close
   ; "multiple requests with eof", `Quick, test_multiple_requests_in_single_read_with_eof
   ; "parse failure after checkpoint", `Quick, test_parse_failure_after_checkpoint
+  ; "parse failure at eof", `Quick, test_parse_failure_at_eof
   ; "response finished before body read", `Quick, test_response_finished_before_body_read
   ; "shutdown in request handler", `Quick, test_shutdown_in_request_handler
   ; "shutdown during asynchronous request", `Quick, test_shutdown_during_asynchronous_request
