@@ -704,6 +704,30 @@ let test_chunked_encoding () =
     `Read (current_read_operation t);
 ;;
 
+let test_chunked_encoding_for_error () =
+  let error_handler ?request error start_response =
+    Alcotest.(check (option request)) "No parsed request"
+      None request;
+    Alcotest.(check request_error) "Request error"
+      `Bad_request error;
+    let body = start_response Headers.encoding_chunked in
+    Body.Writer.write_string body "Bad";
+    Body.Writer.flush body (fun () ->
+      Body.Writer.write_string body " request";
+      Body.Writer.close body);
+  in
+  let t = create ~error_handler (fun _ -> assert false) in
+  let c = feed_string t "  X\r\n\r\n" in
+  Alcotest.(check int) "Partial read" 2 c;
+  (* XXX(dpatti): Note that even if we use a chunked encoding header, we still
+     write it without any encoding *)
+  write_response t
+    (Response.create `Bad_request ~headers:Headers.encoding_chunked)
+    ~body:"Bad";
+  write_string t " request";
+  connection_is_shutdown t;
+;;
+
 let test_blocked_write_on_chunked_encoding () =
   let request_handler reqd =
     let response = Response.create `OK ~headers:Headers.encoding_chunked in
@@ -1045,6 +1069,7 @@ let tests =
   ; "asynchronous error, synchronous handling", `Quick, test_asynchronous_error
   ; "asynchronous error, asynchronous handling", `Quick, test_asynchronous_error_asynchronous_handling
   ; "chunked encoding", `Quick, test_chunked_encoding
+  ; "chunked encoding for error", `Quick, test_chunked_encoding_for_error
   ; "blocked write on chunked encoding", `Quick, test_blocked_write_on_chunked_encoding
   ; "writer unexpected eof", `Quick, test_unexpected_eof
   ; "input shrunk", `Quick, test_input_shrunk

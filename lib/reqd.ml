@@ -156,8 +156,14 @@ let respond_with_bigstring t response (bstr:Bigstringaf.t) =
 let unsafe_respond_with_streaming ~flush_headers_immediately t response =
   match t.response_state with
   | Waiting ->
+    let encoding =
+      match Response.body_length ~request_method:t.request.meth response with
+      | `Fixed _ | `Close_delimited | `Chunked as encoding -> encoding
+      | `Error (`Bad_gateway | `Internal_server_error) ->
+        failwith "httpaf.Reqd.respond_with_streaming: invalid response body length"
+    in
     let response_body =
-      Body.Writer.create t.response_body_buffer ~when_ready_to_write:(fun () ->
+      Body.Writer.create t.response_body_buffer ~encoding ~when_ready_to_write:(fun () ->
         Writer.wakeup t.writer)
     in
     Writer.write_response t.writer response;
@@ -165,8 +171,7 @@ let unsafe_respond_with_streaming ~flush_headers_immediately t response =
       t.persistent <- Response.persistent_connection response;
     t.response_state <- Streaming (response, response_body);
     if flush_headers_immediately
-    then Writer.wakeup t.writer
-    else Writer.yield t.writer;
+    then Writer.wakeup t.writer;
     response_body
   | Streaming _ ->
     failwith "httpaf.Reqd.respond_with_streaming: response already started"
@@ -251,12 +256,6 @@ let flush_request_body t =
 
 let flush_response_body t =
   match t.response_state with
-  | Streaming (response, response_body) ->
-    let request_method = t.request.Request.meth in
-    let encoding =
-      match Response.body_length ~request_method response with
-      | `Fixed _ | `Close_delimited | `Chunked as encoding -> encoding
-      | `Error _ -> assert false (* XXX(seliopou): This needs to be handled properly *)
-    in
-    Body.Writer.transfer_to_writer_with_encoding response_body ~encoding t.writer
+  | Streaming (_, response_body) ->
+    Body.Writer.transfer_to_writer response_body t.writer
   | _ -> ()

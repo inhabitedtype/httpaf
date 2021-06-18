@@ -176,8 +176,28 @@ let set_error_and_handle ?request t error =
     shutdown_reader t;
     let writer = t.writer in
     t.error_handler ?request error (fun headers ->
-      Writer.write_response writer (Response.create ~headers status);
-      Body.Writer.of_faraday (Writer.faraday writer)
+      let response = Response.create ~headers status in
+      Writer.write_response writer response;
+      let encoding =
+        (* If we haven't parsed the request method, just use GET as a standard
+           placeholder. The method is only used for edge cases, like HEAD or
+           CONNECT. *)
+        let request_method =
+          match request with
+          | None -> `GET
+          | Some request -> request.meth
+        in
+        match Response.body_length ~request_method response with
+        | `Fixed _ | `Close_delimited as encoding -> encoding
+        | `Chunked ->
+          (* XXX(dpatti): Because we pass the writer's faraday directly to the
+             new body, we don't write the chunked encoding. A client won't be
+             able to interpret this. *)
+          `Close_delimited
+        | `Error (`Bad_gateway | `Internal_server_error) ->
+          failwith "httpaf.Server_connection.error_handler: invalid response body length"
+      in
+      Body.Writer.of_faraday (Writer.faraday writer) ~encoding
         ~when_ready_to_write:(fun () -> Writer.wakeup writer));
   end
 
@@ -269,12 +289,7 @@ let rec _next_write_operation t =
   else (
     let reqd = current_reqd_exn t in
     match Reqd.output_state reqd with
-    | Waiting ->
-      (* XXX(dpatti): I don't think we should need to call this, but it is
-         necessary in the case of a streaming, non-chunked body so that you can
-         set the appropriate flag. *)
-      Reqd.flush_response_body reqd;
-      Writer.next t.writer
+    | Waiting -> Writer.next t.writer
     | Ready ->
       Reqd.flush_response_body reqd;
       Writer.next t.writer
