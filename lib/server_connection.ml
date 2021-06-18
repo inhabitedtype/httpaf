@@ -139,16 +139,21 @@ let create ?(config=Config.default) ?(error_handler=default_error_handler) reque
   }
 
 let shutdown_reader t =
-  Reader.force_close t.reader;
   if is_active t
-  then Reqd.close_request_body (current_reqd_exn t)
-  else wakeup_reader t
+  then Reqd.close_request_body (current_reqd_exn t);
+  Reader.force_close t.reader;
+  wakeup_reader t
 
 let shutdown_writer t =
+  if is_active t then (
+    let reqd = current_reqd_exn t in
+    (* XXX(dpatti): I'm not sure I understand why we close the *request* body
+       here. Maybe we can write a test such that removing this line causes it to
+       fail? *)
+    Reqd.close_request_body reqd;
+    Reqd.flush_response_body reqd);
   Writer.close t.writer;
-  if is_active t
-  then Reqd.close_request_body (current_reqd_exn t)
-  else wakeup_writer t
+  wakeup_writer t
 
 let error_code t =
   if is_active t
@@ -157,9 +162,7 @@ let error_code t =
 
 let shutdown t =
   shutdown_reader t;
-  shutdown_writer t;
-  wakeup_reader t;
-  wakeup_writer t
+  shutdown_writer t
 
 let set_error_and_handle ?request t error =
   if is_active t then begin
