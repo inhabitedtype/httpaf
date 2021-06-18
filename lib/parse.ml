@@ -304,6 +304,8 @@ module Reader = struct
     let consumed =
       match t.parse_state with
       | Fail _ -> 0
+      (* Don't feed empty input when we're at a request boundary *)
+      | Done when len = 0 -> 0
       | Done   ->
         start t (AU.parse t.parser);
         read_with_more  t bs ~off ~len more;
@@ -311,8 +313,8 @@ module Reader = struct
         transition t (continue bs more ~off ~len)
     in
     begin match more with
-    | Complete -> t.closed <- true;
-    | Incomplete -> ()
+    | Complete when consumed = len -> t.closed <- true;
+    | Complete | Incomplete -> ()
     end;
     consumed;
   ;;
@@ -322,13 +324,11 @@ module Reader = struct
   ;;
 
   let next t =
-    if t.closed
-    then `Close
-    else (
-      match t.parse_state with
-      | Fail err  -> `Error err
-      | Done      -> `Read
-      | Partial _ -> `Read
-    )
+    match t.parse_state with
+    | Fail err  -> `Error err
+    | Done | Partial _ ->
+      if t.closed
+      then `Close
+      else `Read
   ;;
 end

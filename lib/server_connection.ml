@@ -64,14 +64,14 @@ type t =
   ; request_queue          : Reqd.t Queue.t
     (* invariant: If [request_queue] is not empty, then the head of the queue
        has already had [request_handler] called on it. *)
+  ; mutable is_errored     : bool
+    (* if there is a parse or connection error, we invoke the [error_handler]
+       and set [is_errored] to indicate we should not close the writer yet. *)
   ; mutable wakeup_reader  : Optional_thunk.t
   }
 
 let is_closed t =
   Reader.is_closed t.reader && Writer.is_closed t.writer
-
-let is_waiting t =
-  not (is_closed t) && Queue.is_empty t.request_queue
 
 let is_active t =
   not (Queue.is_empty t.request_queue)
@@ -134,6 +134,7 @@ let create ?(config=Config.default) ?(error_handler=default_error_handler) reque
   ; request_handler = request_handler
   ; error_handler   = error_handler
   ; request_queue
+  ; is_errored      = false
   ; wakeup_reader   = Optional_thunk.none
   }
 
@@ -166,6 +167,7 @@ let set_error_and_handle ?request t error =
     let reqd = current_reqd_exn t in
     Reqd.report_error reqd error
   end else begin
+    t.is_errored <- true;
     let status =
       match (error :> [error | Status.standard]) with
       | `Exn _                     -> `Internal_server_error
@@ -191,8 +193,11 @@ let advance_request_queue t =
 let rec _next_read_operation t =
   if not (is_active t)
   then (
-    if Reader.is_closed t.reader
-    then shutdown t;
+    (* If the request queue is empty, there is no connection error, and the
+       reader is closed, then we can assume that no more user code will be able
+       to write. *)
+    if Reader.is_closed t.reader && not t.is_errored
+    then shutdown_writer t;
     Reader.next t.reader
   ) else (
     let reqd = current_reqd_exn t in
@@ -289,6 +294,8 @@ and _final_write_operation_for t reqd =
         _next_write_operation t;
     )
   in
+  (* The only reason the reader yields is to wait for the writer, so we need to
+     notify it that we've completed. *)
   wakeup_reader t;
   next
 ;;
