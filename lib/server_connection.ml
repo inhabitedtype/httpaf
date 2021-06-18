@@ -147,6 +147,9 @@ let shutdown_reader t =
 let shutdown_writer t =
   if is_active t then (
     let reqd = current_reqd_exn t in
+    (* XXX(dpatti): I'm not sure I understand why we close the *request* body
+       here. Maybe we can write a test such that removing this line causes it to
+       fail? *)
     Reqd.close_request_body reqd;
     Reqd.flush_response_body reqd);
   Writer.close t.writer;
