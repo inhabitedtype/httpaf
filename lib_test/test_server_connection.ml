@@ -100,7 +100,7 @@ end = struct
     in
     let error_handler =
       Option.map (fun error_handler ?request ->
-        trace "invoked: request_handler";
+        trace "invoked: error_handler";
         error_handler ?request) error_handler
     in
     let rec t =
@@ -631,10 +631,6 @@ let test_asynchronous_error () =
     false !writer_woken_up;
   reader_yielded t;
   !continue ();
-  (* XXX(dpatti): I don't think anything is actually waking the reader up
-   * Alcotest.check read_operation "Error shuts down the reader"
-   *   `Close (current_read_operation t);
-   *)
   Alcotest.(check bool) "Writer woken up"
     true !writer_woken_up;
   (* This shows up in two flushes because [Reqd] creates error reposnses with
@@ -642,6 +638,7 @@ let test_asynchronous_error () =
   write_response t ~msg:"Error response written"
     (Response.create `Internal_server_error);
   write_string t "got an error";
+  connection_is_shutdown t
 ;;
 
 let test_asynchronous_error_asynchronous_handling () =
@@ -665,10 +662,6 @@ let test_asynchronous_error_asynchronous_handling () =
   Alcotest.(check bool) "Writer not woken up"
     false !writer_woken_up;
   !continue_error ();
-  (* XXX(dpatti): I don't think anything is actually waking the reader up
-   * Alcotest.check read_operation "Error shuts down the reader"
-   *   `Close (current_read_operation t);
-   *)
   Alcotest.(check bool) "Writer woken up"
     true !writer_woken_up;
   (* This shows up in two flushes because [Reqd] creates error reposnses with
@@ -676,6 +669,76 @@ let test_asynchronous_error_asynchronous_handling () =
   write_response t ~msg:"Error response written"
     (Response.create `Internal_server_error);
   write_string t "got an error";
+  connection_is_shutdown t
+;;
+
+let test_error_while_parsing () =
+  let continue_error = ref (fun () -> ()) in
+  let error_handler ?request error start_response =
+    continue_error := (fun () ->
+      error_handler ?request error start_response)
+  in
+  let setup () =
+    let t = create ~error_handler (fun _ -> assert false) in
+    let n = feed_string t "GET / HTTP/1.1\r\n" in
+    Alcotest.(check int) "read bytes" 16 n;
+    reader_ready t;
+    report_exn t (Failure "runtime error during parse");
+    t
+  in
+
+  (* Handle before read *)
+  let t = setup () in
+  !continue_error ();
+  write_response t ~msg:"Error response written"
+    (Response.create `Internal_server_error)
+    ~body:"got an error";
+  writer_closed t;
+  (* XXX(dpatti): Runtime is in a read loop and must report something. I don't
+     know if this could ever deadlock or if that's a runtime concern. *)
+  reader_ready t;
+  let n = feed_string t "Host: localhost\r\n" in
+  Alcotest.(check int) "read bytes" 0 n;
+  reader_closed t;
+
+  (* Read before handle *)
+  let t = setup () in
+  reader_ready t;
+  let n = feed_string t "Host: localhost\r\n" in
+  Alcotest.(check int) "read bytes" 0 n;
+  reader_closed t;
+  !continue_error ();
+  write_response t ~msg:"Error response written"
+    (Response.create `Internal_server_error)
+    ~body:"got an error";
+  writer_closed t;
+;;
+
+let test_error_before_read () =
+  let request_handler _ = assert false in
+  let invoked_error_handler = ref false in
+  let error_handler ?request:_ _ _ =
+    invoked_error_handler := true;
+  in
+  let t = create ~error_handler request_handler in
+  report_exn t (Failure "immediate runtime error");
+  reader_ready t;
+  writer_yielded t;
+  (* XXX(dpatti): This seems wrong to me. Should we be sending responses when we
+     haven't even read any bytes yet? Maybe too much of an edge case to worry. *)
+  Alcotest.(check bool) "Error handler was invoked" true !invoked_error_handler;
+;;
+
+let test_error_left_unhandled () =
+  let error_handler ?request:_ _ _ = () in
+  let t = create ~error_handler (fun _ -> ()) in
+  read_request t (Request.create `GET "/");
+  report_exn t (Failure "runtime error");
+  (* If the error handler is invoked and does not try to complete a response,
+     the connection will hang. This is not necessarily desirable but rather a
+     tradeoff to let the user respond asynchronously. *)
+  reader_yielded t;
+  writer_yielded t;
 ;;
 
 let test_chunked_encoding () =
@@ -1068,6 +1131,9 @@ let tests =
   ; "synchronous error, asynchronous handling", `Quick, test_synchronous_error_asynchronous_handling
   ; "asynchronous error, synchronous handling", `Quick, test_asynchronous_error
   ; "asynchronous error, asynchronous handling", `Quick, test_asynchronous_error_asynchronous_handling
+  ; "error while parsing", `Quick, test_error_while_parsing
+  ; "error before read", `Quick, test_error_before_read
+  ; "error left unhandled", `Quick, test_error_left_unhandled
   ; "chunked encoding", `Quick, test_chunked_encoding
   ; "chunked encoding for error", `Quick, test_chunked_encoding_for_error
   ; "blocked write on chunked encoding", `Quick, test_blocked_write_on_chunked_encoding
