@@ -12,7 +12,10 @@ let main port =
   Lwt.async (fun () ->
     Lwt_io.establish_server_with_client_socket
       listen_address
-      (Server.create_connection_handler ~request_handler ~error_handler)
+      (Server.create_connection_handler
+         ~request_handler
+         ~error_handler
+         ~upgrade_handler:None)
     >|= fun _server ->
       Stdio.printf "Listening on port %i and echoing POST requests.\n" port;
       Stdio.printf "To send a POST request, try one of the following\n\n";

@@ -41,12 +41,12 @@ let read_response t r =
 
 let reader_ready t =
   Alcotest.check read_operation "Reader is ready"
-    `Read (next_read_operation t :> [`Close | `Read | `Yield]);
+    `Read (next_read_operation t :> Read_operation.t);
 ;;
 
 let reader_closed t =
   Alcotest.check read_operation "Reader is closed"
-    `Close (next_read_operation t :> [`Close | `Read | `Yield]);
+    `Close (next_read_operation t :> Read_operation.t);
 ;;
 
 let write_string ?(msg="output written") t str =
@@ -64,17 +64,17 @@ let write_request ?(msg="request written") t r =
 
 let writer_yielded t =
   Alcotest.check write_operation "Writer is in a yield state"
-    `Yield (next_write_operation t);
+    `Yield (next_write_operation t :> Write_operation.t);
 ;;
 
 let writer_closed t =
   Alcotest.check write_operation "Writer is closed"
-    (`Close 0) (next_write_operation t);
+    (`Close 0) (next_write_operation t :> Write_operation.t);
 ;;
 
 let connection_is_shutdown t =
   Alcotest.check read_operation "Reader is closed"
-    `Close (next_read_operation t :> [`Close | `Read | `Yield]);
+    `Close (next_read_operation t :> Read_operation.t);
   writer_closed t;
 ;;
 

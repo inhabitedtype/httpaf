@@ -245,6 +245,8 @@ module Reader = struct
       | `Fixed 0L  ->
         handler request Body.Reader.empty;
         ok
+      | `Fixed _ | `Chunked when Request.is_upgrade request ->
+        return (Error (`Bad_request request))
       | `Fixed _ | `Chunked as encoding ->
         let request_body = Body.Reader.create Bigstringaf.empty in
         handler request request_body;

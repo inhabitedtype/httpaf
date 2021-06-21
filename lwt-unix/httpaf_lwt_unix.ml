@@ -106,7 +106,8 @@ let shutdown socket command =
 module Config = Httpaf.Config
 
 module Server = struct
-  let create_connection_handler ?(config=Config.default) ~request_handler ~error_handler =
+  let create_connection_handler
+        ?(config=Config.default) ~request_handler ~upgrade_handler ~error_handler =
     fun client_addr socket ->
       let module Server_connection = Httpaf.Server_connection in
       let connection =
@@ -140,6 +141,17 @@ module Server = struct
             Server_connection.yield_reader connection read_loop;
             Lwt.return_unit
 
+          | `Upgrade ->
+            (match upgrade_handler with
+             | None -> failwith "HTTP upgrades not supported"
+             | Some upgrade_handler ->
+               upgrade_handler client_addr >>= fun () ->
+               Lwt.wakeup_later notify_read_loop_exited ();
+               if not (Lwt_unix.state socket = Lwt_unix.Closed) then begin
+                 shutdown socket Unix.SHUTDOWN_RECEIVE
+               end;
+               Lwt.return_unit)
+
           | `Close ->
             Lwt.wakeup_later notify_read_loop_exited ();
             if not (Lwt_unix.state socket = Lwt_unix.Closed) then begin
@@ -171,6 +183,17 @@ module Server = struct
           | `Yield ->
             Server_connection.yield_writer connection write_loop;
             Lwt.return_unit
+
+          | `Upgrade ->
+            (match upgrade_handler with
+             | None -> failwith "HTTP upgrades not supported"
+             | Some upgrade_handler ->
+               upgrade_handler client_addr >>= fun () ->
+               Lwt.wakeup_later notify_write_loop_exited ();
+               if not (Lwt_unix.state socket = Lwt_unix.Closed) then begin
+                 shutdown socket Unix.SHUTDOWN_SEND
+               end;
+               Lwt.return_unit)
 
           | `Close _ ->
             Lwt.wakeup_later notify_write_loop_exited ();
