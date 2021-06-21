@@ -65,9 +65,14 @@ module Oneshot = struct
     in
     let writer = Writer.create () in
     let request_body =
+      let encoding =
+        match Request.body_length request with
+        | `Fixed _ | `Chunked as encoding -> encoding
+        | `Error `Bad_request ->
+          failwith "Httpaf.Client_connection.request: invalid body length"
+      in
       Body.Writer.create (Bigstringaf.create config.request_body_buffer_size)
-        ~when_ready_to_write:(fun () ->
-          Writer.wakeup writer)
+        ~encoding ~when_ready_to_write:(fun () -> Writer.wakeup writer)
     in
     let t =
       { request
@@ -84,13 +89,7 @@ module Oneshot = struct
 
   let flush_request_body t =
     if Body.Writer.has_pending_output t.request_body
-    then
-      let encoding =
-        match Request.body_length t.request with
-        | `Fixed _ | `Chunked as encoding -> encoding
-        | `Error _ -> assert false (* XXX(seliopou): This needs to be handled properly *)
-      in
-      Body.Writer.transfer_to_writer_with_encoding t.request_body ~encoding t.writer
+    then Body.Writer.transfer_to_writer t.request_body t.writer
   ;;
 
   let set_error_and_handle_without_shutdown t error =
