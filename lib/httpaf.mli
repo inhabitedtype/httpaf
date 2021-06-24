@@ -497,7 +497,7 @@ module Body : sig
         modified until a subsequent call to {!flush} has successfully
         completed. *)
 
-    val flush : t -> (unit -> unit) -> unit
+    val flush : t -> ([ `Written | `Closed ] -> unit) -> unit
     (** [flush t f] makes all bytes in [t] available for writing to the awaiting
         output channel. Once those bytes have reached that output channel, [f]
         will be called.

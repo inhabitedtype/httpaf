@@ -296,7 +296,7 @@ let echo_handler response reqd =
   let response_body = Reqd.respond_with_streaming reqd response in
   let rec on_read buffer ~off ~len =
     Body.Writer.write_string response_body (Bigstringaf.substring ~off ~len buffer);
-    Body.Writer.flush response_body (fun () ->
+    Body.Writer.flush response_body (fun _ ->
       Body.Reader.schedule_read request_body ~on_eof ~on_read)
   and on_eof () =
     print_endline "echo handler eof";
@@ -316,7 +316,9 @@ let streaming_handler ?(flush=false) response writes reqd =
     | w :: ws ->
       Body.Writer.write_string body w;
       writes := ws;
-      Body.Writer.flush body write
+      Body.Writer.flush body (function
+        | `Closed -> ()
+        | `Written -> write ())
   in
   write ();
 ;;
@@ -683,9 +685,11 @@ let test_chunked_encoding () =
     let response = Response.create `OK ~headers:Headers.encoding_chunked in
     let resp_body = Reqd.respond_with_streaming reqd response in
     Body.Writer.write_string resp_body "First chunk";
-    Body.Writer.flush resp_body (fun () ->
-      Body.Writer.write_string resp_body "Second chunk";
-      Body.Writer.close resp_body);
+    Body.Writer.flush resp_body (function
+      | `Closed -> ()
+      | `Written ->
+        Body.Writer.write_string resp_body "Second chunk";
+        Body.Writer.close resp_body);
   in
   let t = create ~error_handler request_handler in
   writer_yielded t;
@@ -712,9 +716,11 @@ let test_chunked_encoding_for_error () =
       `Bad_request error;
     let body = start_response Headers.encoding_chunked in
     Body.Writer.write_string body "Bad";
-    Body.Writer.flush body (fun () ->
-      Body.Writer.write_string body " request";
-      Body.Writer.close body);
+    Body.Writer.flush body (function
+      | `Closed -> assert false
+      | `Written ->
+        Body.Writer.write_string body " request";
+        Body.Writer.close body);
   in
   let t = create ~error_handler (fun _ -> assert false) in
   let c = feed_string t "  X\r\n\r\n" in
@@ -747,6 +753,57 @@ let test_blocked_write_on_chunked_encoding () =
     write_partial_string t ~msg:"first write" response_bytes 16
   in
   write_string t ~msg:"second write" second_write
+;;
+
+let test_body_writing_when_socket_closes () =
+  let response = Response.create `OK ~headers:Headers.encoding_chunked in
+  let body_ref = ref None in
+  let request_handler reqd =
+    let body = Reqd.respond_with_streaming reqd response in
+    body_ref := Some body
+  in
+  let t = create request_handler in
+  writer_yielded t;
+  read_request t (Request.create `GET "/");
+
+  let (flush_result_testable : [ `Closed | `Written ] Alcotest.testable) = (module struct
+    type t = [ `Closed | `Written ]
+    let pp = Fmt.using (function `Closed -> "Closed" | `Written -> "Written") Fmt.string
+    let equal t t' =
+      match t, t' with
+      | `Closed, `Closed | `Written, `Written -> true
+      | _ -> false end)
+  in
+
+  let body = Option.get !body_ref in
+  let check_flush ~expect service_writer =
+    let flush_result = ref None in
+    Body.Writer.flush body (fun r -> flush_result := Some r);
+    service_writer ();
+    Alcotest.(check' (option flush_result_testable))
+      ~msg:"flush_result is as expected"
+      ~expected:(Some expect)
+      ~actual:!flush_result;
+  in
+
+  Body.Writer.write_string body "First chunk";
+  check_flush (fun () ->
+    write_response t
+      ~msg:"First chunk written"
+      ~body:"b\r\nFirst chunk\r\n"
+      response)
+    ~expect:`Written;
+
+  Body.Writer.write_string body "Second chunk";
+  check_flush (fun () -> write_eof t) ~expect:`Closed;
+
+  (* Writing after the writer is closed does not raise, but flushes get immediately
+     resolved with `Closed. *)
+  Body.Writer.write_string body "Chunk after closed";
+  check_flush (fun () -> ()) ~expect:`Closed;
+
+  Body.Writer.close body;
+  check_flush (fun () -> ()) ~expect:`Closed;
 ;;
 
 let test_unexpected_eof () =
@@ -1051,6 +1108,7 @@ let test_schedule_read_with_data_available () =
   write_response t response;
 ;;
 
+
 let tests =
   [ "initial reader state"  , `Quick, test_initial_reader_state
   ; "shutdown reader closed", `Quick, test_reader_is_closed_after_eof
@@ -1071,6 +1129,7 @@ let tests =
   ; "chunked encoding", `Quick, test_chunked_encoding
   ; "chunked encoding for error", `Quick, test_chunked_encoding_for_error
   ; "blocked write on chunked encoding", `Quick, test_blocked_write_on_chunked_encoding
+  ; "body writing when socket closes", `Quick, test_body_writing_when_socket_closes
   ; "writer unexpected eof", `Quick, test_unexpected_eof
   ; "input shrunk", `Quick, test_input_shrunk
   ; "failed request parse", `Quick, test_failed_request_parse
