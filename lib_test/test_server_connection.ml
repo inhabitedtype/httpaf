@@ -686,7 +686,7 @@ let test_chunked_encoding () =
     let resp_body = Reqd.respond_with_streaming reqd response in
     Body.Writer.write_string resp_body "First chunk";
     Body.Writer.flush resp_body (function
-      | `Closed -> ()
+      | `Closed -> assert false
       | `Written ->
         Body.Writer.write_string resp_body "Second chunk";
         Body.Writer.close resp_body);
@@ -766,13 +766,9 @@ let test_body_writing_when_socket_closes () =
   writer_yielded t;
   read_request t (Request.create `GET "/");
 
-  let (flush_result_testable : [ `Closed | `Written ] Alcotest.testable) = (module struct
-    type t = [ `Closed | `Written ]
-    let pp = Fmt.using (function `Closed -> "Closed" | `Written -> "Written") Fmt.string
-    let equal t t' =
-      match t, t' with
-      | `Closed, `Closed | `Written, `Written -> true
-      | _ -> false end)
+  let flush_result_testable =
+    Alcotest.of_pp
+      (Fmt.using (function `Closed -> "Closed" | `Written -> "Written") Fmt.string)
   in
 
   let body = Option.get !body_ref in
