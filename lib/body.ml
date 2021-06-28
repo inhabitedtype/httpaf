@@ -149,13 +149,26 @@ module Writer = struct
   let ready_to_write t = Writer.wakeup t.writer
 
   let flush t kontinue =
-    if Writer.is_closed t.writer then kontinue `Closed;
-    Faraday.flush t.faraday (fun () ->
-      kontinue (if Writer.is_closed t.writer then `Closed else `Written));
-    ready_to_write t
+    if Writer.is_closed t.writer then
+      kontinue `Closed
+    else begin
+      Faraday.flush_with_reason t.faraday (fun reason ->
+        let result =
+          match reason with
+          | `Nothing_pending | `Shift -> `Written
+          | `Drain -> `Closed
+        in
+        kontinue result);
+      ready_to_write t
+    end
 
   let is_closed t =
     Faraday.is_closed t.faraday
+
+  let close_and_drain t =
+    Faraday.close t.faraday;
+    (* Resolve all pending flushes *)
+    ignore (Faraday.drain t.faraday : int)
 
   let close t =
     Faraday.close t.faraday;
@@ -176,11 +189,9 @@ module Writer = struct
 
   let transfer_to_writer t =
     let faraday = t.faraday in
-    if Writer.is_closed t.writer then begin
-      Faraday.close faraday;
-      (* Cause all pending flushes to be called *)
-      ignore (Faraday.drain faraday : int)
-    end else begin
+    if Writer.is_closed t.writer then
+      close_and_drain t
+    else begin
       match Faraday.operation faraday with
       | `Yield -> ()
       | `Close ->
@@ -203,9 +214,12 @@ module Writer = struct
           | Identity  -> Serialize.Writer.schedule_fixed t.writer iovecs
           | Chunked _ -> Serialize.Writer.schedule_chunk t.writer iovecs
           end;
-          Serialize.Writer.flush t.writer (fun () ->
-            Faraday.shift faraday lengthv;
-            buffered := !buffered - lengthv)
+          Serialize.Writer.flush t.writer (fun result ->
+            match result with
+            | `Closed -> close_and_drain t
+            | `Written ->
+              Faraday.shift faraday lengthv;
+              buffered := !buffered - lengthv)
         end
     end
 end
