@@ -162,10 +162,7 @@ let unsafe_respond_with_streaming ~flush_headers_immediately t response =
       | `Error (`Bad_gateway | `Internal_server_error) ->
         failwith "httpaf.Reqd.respond_with_streaming: invalid response body length"
     in
-    let response_body =
-      Body.Writer.create t.response_body_buffer ~encoding ~when_ready_to_write:(fun () ->
-        Writer.wakeup t.writer)
-    in
+    let response_body = Body.Writer.create t.response_body_buffer t.writer ~encoding in
     Writer.write_response t.writer response;
     if t.persistent then
       t.persistent <- Response.persistent_connection response;
@@ -256,6 +253,5 @@ let flush_request_body t =
 
 let flush_response_body t =
   match t.response_state with
-  | Streaming (_, response_body) ->
-    Body.Writer.transfer_to_writer response_body t.writer
+  | Streaming (_, response_body) -> Body.Writer.transfer_to_writer response_body
   | _ -> ()
