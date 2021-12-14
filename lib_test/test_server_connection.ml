@@ -1076,6 +1076,26 @@ let test_shutdown_during_asynchronous_request () =
   writer_closed t
 ;;
 
+let test_flush_response_before_shutdown () =
+  let request = Request.create `GET "/" ~headers:(Headers.encoding_fixed 0) in
+  let response = Response.create `OK ~headers:Headers.encoding_chunked in
+  let continue = ref (fun () -> ()) in
+  let request_handler reqd =
+    let body = Reqd.respond_with_streaming ~flush_headers_immediately:true reqd response in
+    continue := (fun () ->
+      Body.Writer.write_string body "hello world";
+      Body.Writer.close body);
+  in
+  let t = create request_handler in
+  read_request t request;
+  write_response t response;
+  !continue ();
+  shutdown t;
+  raises_writer_closed (fun () ->
+    write_string t "b\r\nhello world\r\n";
+    connection_is_shutdown t);
+;;
+
 let test_schedule_read_with_data_available () =
   let response = Response.create `OK in
   let body = ref None in
@@ -1150,5 +1170,6 @@ let tests =
   ; "response finished before body read", `Quick, test_response_finished_before_body_read
   ; "shutdown in request handler", `Quick, test_shutdown_in_request_handler
   ; "shutdown during asynchronous request", `Quick, test_shutdown_during_asynchronous_request
+  ; "flush response before shutdown", `Quick, test_flush_response_before_shutdown
   ; "schedule read with data available", `Quick, test_schedule_read_with_data_available
   ]
