@@ -155,8 +155,8 @@ module Writer = struct
       Faraday.flush_with_reason t.faraday (fun reason ->
         let result =
           match reason with
-          | `Nothing_pending | `Shift -> `Written
-          | `Drain -> `Closed
+          | Nothing_pending | Shift -> `Written
+          | Drain -> `Closed
         in
         kontinue result);
       ready_to_write t

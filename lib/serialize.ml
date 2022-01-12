@@ -161,8 +161,8 @@ module Writer = struct
     flush_with_reason t.encoder (fun reason ->
       let result =
         match reason with
-        | `Nothing_pending | `Shift -> `Written
-        | `Drain -> `Closed
+        | Nothing_pending | Shift -> `Written
+        | Drain -> `Closed
       in
       f result)
 
