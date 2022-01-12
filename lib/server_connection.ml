@@ -254,7 +254,10 @@ and _final_read_operation_for t reqd =
       if Reader.is_closed t.reader
       then Reader.next t.reader
       else `Yield
-    | Upgraded -> `Upgrade
+    | Upgraded ->
+      (* If the input state is not [Upgraded], the output state cannot be
+         either. *)
+      assert false
     | Complete ->
       advance_request_queue t;
       _next_read_operation t;
@@ -303,20 +306,18 @@ let rec _next_write_operation t =
     | Ready ->
       Reqd.flush_response_body reqd;
       Writer.next t.writer
-    | Complete -> _final_write_operation_for t reqd ~upgrade:false
-    | Upgraded -> _final_write_operation_for t reqd ~upgrade:true
-  )
+    | Complete -> _final_write_operation_for t reqd
+    | Upgraded ->
+      wakeup_reader t;
+      (* Even in the Upgrade case, we're still responsible for writing the
+         response header, so we might have work to do. *)
+      if Writer.has_pending_output t.writer
+      then Writer.next t.writer
+      else `Upgrade)
 
-and _final_write_operation_for t reqd ~upgrade =
+and _final_write_operation_for t reqd =
   let next =
-    if upgrade then (
-      if Writer.has_pending_output t.writer then
-        (* Even in the Upgrade case, we're still responsible for writing the response
-           header, so we might have work to do. *)
-        Writer.next t.writer
-      else
-        `Upgrade
-    ) else if not (Reqd.persistent_connection reqd) then (
+    if not (Reqd.persistent_connection reqd) then (
       shutdown_writer t;
       Writer.next t.writer;
     ) else (
