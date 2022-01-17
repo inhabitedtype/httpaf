@@ -91,7 +91,7 @@ open Httpaf
 
 module Server = struct
   let create_connection_handler
-        ?(config=Config.default) ~request_handler ~upgrade_handler ~error_handler =
+        ?(config=Config.default) ~request_handler ~error_handler ~upgrade_handler =
     fun client_addr socket ->
       let fd     = Socket.fd socket in
       let writev = Faraday_async.writev_of_fd fd in
@@ -99,6 +99,19 @@ module Server = struct
       let error_handler   = error_handler client_addr in
       let conn = Server_connection.create ~config ~error_handler request_handler in
       let read_complete = Ivar.create () in
+      let write_complete = Ivar.create () in
+      let upgrade_read, upgrade_write = Ivar.create (), Ivar.create () in
+      upon
+        (Deferred.both (Ivar.read upgrade_read) (Ivar.read upgrade_write))
+        (fun ((), ()) ->
+          match upgrade_handler with
+          | None -> failwith "HTTP upgrades not supported"
+          | Some upgrade_handler ->
+            upgrade_handler client_addr (Reader.create fd) (Writer.create fd)
+            >>> fun () ->
+            if not (Fd.is_closed fd) then Socket.shutdown socket `Both;
+            Ivar.fill read_complete ();
+            Ivar.fill write_complete ());
       let buffer = Buffer.create config.read_buffer_size in
       let rec reader_thread () =
         match Server_connection.next_read_operation conn with
@@ -120,21 +133,13 @@ module Server = struct
         | `Yield  ->
           (* Log.Global.printf "read_yield(%d)%!" (Fd.to_int_exn fd); *)
           Server_connection.yield_reader conn reader_thread
-        | `Upgrade ->
-          (match upgrade_handler with
-           | None -> failwith "HTTP upgrades not supported"
-           | Some upgrade_handler ->
-             upon (upgrade_handler client_addr) (fun () ->
-               Ivar.fill read_complete ();
-               if not (Fd.is_closed fd)
-               then Socket.shutdown socket `Receive))
+        | `Upgrade -> Ivar.fill upgrade_read ()
         | `Close ->
           (* Log.Global.printf "read_close(%d)%!" (Fd.to_int_exn fd); *)
           Ivar.fill read_complete ();
           if not (Fd.is_closed fd)
           then Socket.shutdown socket `Receive
       in
-      let write_complete = Ivar.create () in
       let rec writer_thread () =
         match Server_connection.next_write_operation conn with
         | `Write iovecs ->
@@ -145,14 +150,7 @@ module Server = struct
         | `Yield ->
           (* Log.Global.printf "write_yield(%d)%!" (Fd.to_int_exn fd); *)
           Server_connection.yield_writer conn writer_thread;
-        | `Upgrade ->
-          (match upgrade_handler with
-          | None -> failwith "HTTP upgrades not supported"
-          | Some upgrade_handler ->
-            upon (upgrade_handler client_addr) (fun () ->
-              Ivar.fill write_complete ();
-              if not (Fd.is_closed fd)
-              then Socket.shutdown socket `Send))
+        | `Upgrade -> Ivar.fill upgrade_write ()
         | `Close _ ->
           (* Log.Global.printf "write_close(%d)%!" (Fd.to_int_exn fd); *)
           Ivar.fill write_complete ();

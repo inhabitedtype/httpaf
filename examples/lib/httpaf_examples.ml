@@ -86,4 +86,14 @@ module Server = struct
     end;
     Body.Writer.close response_body
   ;;
+
+  let upgrade reqd =
+    if Request.is_upgrade (Reqd.request reqd) then (
+      let headers = Headers.of_list [ "connection", "upgrade" ] in
+      Reqd.respond_with_upgrade reqd headers;
+    ) else (
+      let headers = Headers.of_list [ "connection", "close" ] in
+      Reqd.respond_with_string reqd (Response.create ~headers `Not_found) ""
+    )
+  ;;
 end

@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+function headers {
+  printf "\
+GET / HTTP/1.1\r
+Host: localhost\r
+Connection: upgrade\r
+\r
+"
+}
+
+( headers; echo hello; cat; echo bye ) | nc localhost 8080 --close

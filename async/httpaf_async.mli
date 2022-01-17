@@ -7,8 +7,8 @@ module Server : sig
   val create_connection_handler
     :  ?config         : Config.t
     -> request_handler : ('a -> Server_connection.request_handler)
-    -> upgrade_handler : ('a -> unit Deferred.t) option
     -> error_handler   : ('a -> Server_connection.error_handler)
+    -> upgrade_handler : ('a -> Reader.t -> Writer.t -> unit Deferred.t) option
     -> ([< Socket.Address.t] as 'a)
     -> ([`Active], 'a) Socket.t
     -> unit Deferred.t
