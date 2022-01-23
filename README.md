@@ -106,6 +106,12 @@ opam pin add -n httpaf .
 opam install --deps-only httpaf
 ```
 
+If you use [Nix](https://nixos.org/), you can enter `nix-shell`, which contains dev dependencies including ocaml-lsp.
+
+```bash
+nix-shell shell.nix
+```
+
 After this, you may install a development version of the library using the
 install command as usual.
 
