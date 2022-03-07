@@ -119,6 +119,28 @@ module Server = struct
 
       let read_buffer = Buffer.create config.read_buffer_size in
       let read_loop_exited, notify_read_loop_exited = Lwt.wait () in
+      let write_loop_exited, notify_write_loop_exited = Lwt.wait () in
+
+      let (upgrade_read, notify_upgrade_read), (upgrade_write, notify_upgrade_write) =
+        Lwt.wait (), Lwt.wait ()
+      in
+      Lwt.async (fun () ->
+        upgrade_read
+        >>= fun () ->
+        upgrade_write
+        >>= fun () ->
+        match upgrade_handler with
+        | None -> Lwt.fail_with "HTTP upgrades not supported"
+        | Some upgrade_handler ->
+          upgrade_handler client_addr socket
+          >>= fun () ->
+          if (Lwt_unix.state socket = Lwt_unix.Closed)
+          then Lwt.return_unit
+          else Lwt_unix.close socket
+          >>= fun () ->
+          Lwt.wakeup_later notify_read_loop_exited ();
+          Lwt.wakeup_later notify_write_loop_exited ();
+          Lwt.return_unit);
 
       let rec read_loop () =
         let rec read_loop_step () =
@@ -142,15 +164,8 @@ module Server = struct
             Lwt.return_unit
 
           | `Upgrade ->
-            (match upgrade_handler with
-             | None -> failwith "HTTP upgrades not supported"
-             | Some upgrade_handler ->
-               upgrade_handler client_addr >>= fun () ->
-               Lwt.wakeup_later notify_read_loop_exited ();
-               if not (Lwt_unix.state socket = Lwt_unix.Closed) then begin
-                 shutdown socket Unix.SHUTDOWN_RECEIVE
-               end;
-               Lwt.return_unit)
+            Lwt.wakeup_later notify_upgrade_read ();
+            Lwt.return_unit
 
           | `Close ->
             Lwt.wakeup_later notify_read_loop_exited ();
@@ -170,7 +185,6 @@ module Server = struct
 
 
       let writev = Faraday_lwt_unix.writev_of_fd socket in
-      let write_loop_exited, notify_write_loop_exited = Lwt.wait () in
 
       let rec write_loop () =
         let rec write_loop_step () =
@@ -185,15 +199,8 @@ module Server = struct
             Lwt.return_unit
 
           | `Upgrade ->
-            (match upgrade_handler with
-             | None -> failwith "HTTP upgrades not supported"
-             | Some upgrade_handler ->
-               upgrade_handler client_addr >>= fun () ->
-               Lwt.wakeup_later notify_write_loop_exited ();
-               if not (Lwt_unix.state socket = Lwt_unix.Closed) then begin
-                 shutdown socket Unix.SHUTDOWN_SEND
-               end;
-               Lwt.return_unit)
+            Lwt.wakeup_later notify_upgrade_write ();
+            Lwt.return_unit
 
           | `Close _ ->
             Lwt.wakeup_later notify_write_loop_exited ();

@@ -42,7 +42,7 @@ module Server : sig
   val create_connection_handler
     :  ?config         : Config.t
     -> request_handler : (Unix.sockaddr -> Server_connection.request_handler)
-    -> upgrade_handler : (Unix.sockaddr -> unit Lwt.t) option
+    -> upgrade_handler : (Unix.sockaddr -> Lwt_unix.file_descr -> unit Lwt.t) option
     -> error_handler   : (Unix.sockaddr -> Server_connection.error_handler)
     -> Unix.sockaddr
     -> Lwt_unix.file_descr
