@@ -6,7 +6,10 @@ open Httpaf_async
 let request_handler (_ : Socket.Address.Inet.t) = Httpaf_examples.Server.upgrade
 let error_handler (_ : Socket.Address.Inet.t) = Httpaf_examples.Server.error_handler
 
-let upgrade_handler (_ : Socket.Address.Inet.t) reader writer =
+let upgrade_handler (_ : Socket.Address.Inet.t) socket =
+  let fd = Socket.fd socket in
+  let reader = Reader.create fd in
+  let writer = Writer.create fd in
   Reader.read_one_chunk_at_a_time reader ~handle_chunk:(fun bigstring ~pos ~len ->
     Writer.write_bigstring writer bigstring ~pos ~len;
     return `Continue)

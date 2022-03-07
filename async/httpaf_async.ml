@@ -107,7 +107,7 @@ module Server = struct
           match upgrade_handler with
           | None -> failwith "HTTP upgrades not supported"
           | Some upgrade_handler ->
-            upgrade_handler client_addr (Reader.create fd) (Writer.create fd)
+            upgrade_handler client_addr socket
             >>> fun () ->
             if not (Fd.is_closed fd) then Socket.shutdown socket `Both;
             Ivar.fill read_complete ();
