@@ -12,10 +12,9 @@ let upgrade_handler (_ : Unix.sockaddr) (fd : Lwt_unix.file_descr) =
   let output = Lwt_io.of_fd fd ~mode:Output in
   let rec loop () =
     Lwt_io.read input ~count:4096
-    >>= fun data ->
-    Lwt_io.write output data
-    >>= fun () ->
-    loop ()
+    >>= function
+    | "" -> Lwt.return_unit
+    | data -> Lwt_io.write output data >>= loop
   in
   loop ()
 ;;

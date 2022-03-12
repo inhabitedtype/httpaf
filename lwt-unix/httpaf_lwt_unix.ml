@@ -121,9 +121,8 @@ module Server = struct
       let read_loop_exited, notify_read_loop_exited = Lwt.wait () in
       let write_loop_exited, notify_write_loop_exited = Lwt.wait () in
 
-      let (upgrade_read, notify_upgrade_read), (upgrade_write, notify_upgrade_write) =
-        Lwt.wait (), Lwt.wait ()
-      in
+      let upgrade_read, notify_upgrade_read = Lwt.wait () in
+      let upgrade_write, notify_upgrade_write = Lwt.wait () in
       Lwt.async (fun () ->
         upgrade_read
         >>= fun () ->
