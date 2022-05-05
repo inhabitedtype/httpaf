@@ -3,6 +3,15 @@ open Async
 
 open Httpaf
 
+module Buffer : sig
+  type t
+
+  val create   : int -> t
+
+  val get : t -> f:(Bigstring.t -> off:int -> len:int -> int) -> int
+  val put : t -> f:(Bigstring.t -> off:int -> len:int -> int) -> int
+end
+
 module Server : sig
   val create_connection_handler
     :  ?config         : Config.t
