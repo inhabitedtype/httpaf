@@ -224,15 +224,8 @@ let rec _next_read_operation t =
     Reader.next t.reader
   ) else (
     let reqd = current_reqd_exn t in
-    (* XXX(dpatti): This fails for the same reason as my comment below in the
-       final_read_operation section. I played around with some alternatives and
-       believe I have some more improvements to the request queue mechanism that
-       removes the need for two hacks. *)
     match Reqd.input_state reqd with
-    | Waiting  ->
-      if Reader.is_closed t.reader
-      then Reader.next t.reader
-      else `Yield
+    | Waiting  -> _yield_reader t
     | Ready    -> Reader.next t.reader
     | Complete -> _final_read_operation_for t reqd
     | Upgraded -> `Upgrade
@@ -244,19 +237,7 @@ and _final_read_operation_for t reqd =
     Reader.next t.reader;
   ) else (
     match Reqd.output_state reqd with
-    | Waiting | Ready ->
-      (* XXX(dpatti): This is a way in which the reader and writer are not
-         parallel -- we tell the writer when it needs to yield but the reader is
-         always asking for more data. This is the only branch in either
-         operation function that does not return `(Reader|Writer).next`, which
-         means there are surprising states you can get into. For example, we ask
-         the runtime to yield but then raise when it tries to because the reader
-         is closed. I don't think checking `is_closed` here makes sense
-         semantically, but I don't think checking it in `_next_read_operation`
-         makes sense either. I chose here so I could describe why. *)
-      if Reader.is_closed t.reader
-      then Reader.next t.reader
-      else `Yield
+    | Waiting | Ready -> _yield_reader t
     | Upgraded ->
       (* If the input state is not [Upgraded], the output state cannot be
          either. *)
@@ -265,6 +246,21 @@ and _final_read_operation_for t reqd =
       advance_request_queue t;
       _next_read_operation t;
   )
+
+and _yield_reader t =
+  (* XXX(dpatti): This is a way in which the reader and writer are not
+     parallel -- we tell the writer when it needs to yield but the reader is
+     always asking for more data. This is the only branch in either
+     operation function that does not return `(Reader|Writer).next`, which
+     means there are surprising states you can get into. For example, we ask
+     the runtime to yield but then raise when it tries to because the reader
+     is closed. I think this can be avoided if we allow this module to tell the
+     reader when it should yield/resume, then we'd just do an inlined
+     `Reader.next` call instead. I put this function here to describe why this
+     is subtle. *)
+  if Reader.is_closed t.reader
+  then Reader.next t.reader
+  else `Yield
 ;;
 
 let next_read_operation t =
