@@ -215,7 +215,7 @@ let report_error t error =
 let report_exn t exn =
   report_error t (`Exn exn)
 
-let try_with t f : (unit, exn) Result.result =
+let try_with t f : (unit, exn) result =
   try f (); Ok () with exn -> report_exn t exn; Error exn
 
 (* Private API, not exposed to the user through httpaf.mli *)
