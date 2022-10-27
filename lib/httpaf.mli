@@ -41,9 +41,6 @@
     1.1 specification, and the basic principles of memory management and
     vectorized IO. *)
 
-
-open Result
-
 (** {2 Basic HTTP Types} *)
 
 
