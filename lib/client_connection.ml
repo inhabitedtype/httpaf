@@ -72,7 +72,7 @@ module Oneshot = struct
           failwith "Httpaf.Client_connection.request: invalid body length"
       in
       Body.Writer.create (Bigstringaf.create config.request_body_buffer_size)
-        ~encoding ~when_ready_to_write:(fun () -> Writer.wakeup writer)
+        ~encoding ~writer
     in
     let t =
       { request
@@ -89,7 +89,7 @@ module Oneshot = struct
 
   let flush_request_body t =
     if Body.Writer.has_pending_output t.request_body
-    then Body.Writer.transfer_to_writer t.request_body t.writer
+    then Body.Writer.transfer_to_writer t.request_body
   ;;
 
   let set_error_and_handle_without_shutdown t error =
