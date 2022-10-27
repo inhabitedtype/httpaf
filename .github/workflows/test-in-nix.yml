@@ -1,0 +1,47 @@
+name: test in Nix
+
+on:
+  - push
+  - pull_request
+
+jobs:
+  tests-in-nix:
+    name: Tests in Nix
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - macos-latest
+        ocaml-version:
+          - 4_11
+          - 4_12
+          - 4_13
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Setup Nix
+        uses: cachix/install-nix-action@v15
+        with:
+          nix_path: nixpkgs=channel:nixos-21.11
+          extra_nix_config: |
+            trusted-public-keys = cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY=
+            substituters = https://cache.nixos.org/
+            max-jobs = auto
+            cores = 0
+
+      - name: Build
+        run: |
+          nix-shell --argstr ocamlVersion ${{ matrix.ocaml-version }} --run "dune build"
+
+      - name: Test
+        run: |
+          nix-shell --argstr ocamlVersion ${{ matrix.ocaml-version }} --run "dune runtest"
+
+      - name: Examples
+        run: |
+          nix-shell --argstr ocamlVersion ${{ matrix.ocaml-version }} --run "dune build @examples"

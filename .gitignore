@@ -7,3 +7,5 @@ lib_test/tests_
 *.docdir
 .merlin
 *.install
+
+/result*
