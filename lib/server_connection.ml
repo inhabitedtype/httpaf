@@ -225,8 +225,10 @@ let rec _next_read_operation t =
   ) else (
     let reqd = current_reqd_exn t in
     match Reqd.input_state reqd with
+    | Waiting  -> _yield_reader t
     | Ready    -> Reader.next t.reader
     | Complete -> _final_read_operation_for t reqd
+    | Upgraded -> `Upgrade
   )
 
 and _final_read_operation_for t reqd =
@@ -235,30 +237,37 @@ and _final_read_operation_for t reqd =
     Reader.next t.reader;
   ) else (
     match Reqd.output_state reqd with
-    | Waiting | Ready ->
-      (* XXX(dpatti): This is a way in which the reader and writer are not
-         parallel -- we tell the writer when it needs to yield but the reader is
-         always asking for more data. This is the only branch in either
-         operation function that does not return `(Reader|Writer).next`, which
-         means there are surprising states you can get into. For example, we ask
-         the runtime to yield but then raise when it tries to because the reader
-         is closed. I don't think checking `is_closed` here makes sense
-         semantically, but I don't think checking it in `_next_read_operation`
-         makes sense either. I chose here so I could describe why. *)
-      if Reader.is_closed t.reader
-      then Reader.next t.reader
-      else `Yield
+    | Waiting | Ready -> _yield_reader t
+    | Upgraded ->
+      (* If the input state is not [Upgraded], the output state cannot be
+         either. *)
+      assert false
     | Complete ->
       advance_request_queue t;
       _next_read_operation t;
   )
+
+and _yield_reader t =
+  (* XXX(dpatti): This is a way in which the reader and writer are not
+     parallel -- we tell the writer when it needs to yield but the reader is
+     always asking for more data. This is the only branch in either
+     operation function that does not return `(Reader|Writer).next`, which
+     means there are surprising states you can get into. For example, we ask
+     the runtime to yield but then raise when it tries to because the reader
+     is closed. I think this can be avoided if we allow this module to tell the
+     reader when it should yield/resume, then we'd just do an inlined
+     `Reader.next` call instead. I put this function here to describe why this
+     is subtle. *)
+  if Reader.is_closed t.reader
+  then Reader.next t.reader
+  else `Yield
 ;;
 
 let next_read_operation t =
   match _next_read_operation t with
   | `Error (`Parse _)             -> set_error_and_handle          t `Bad_request; `Close
   | `Error (`Bad_request request) -> set_error_and_handle ~request t `Bad_request; `Close
-  | (`Read | `Yield | `Close) as operation -> operation
+  | (`Read | `Yield | `Close | `Upgrade) as operation -> operation
 
 let rec read_with_more t bs ~off ~len more =
   let call_handler = Queue.is_empty t.request_queue in
@@ -297,7 +306,13 @@ let rec _next_write_operation t =
       Reqd.flush_response_body reqd;
       Writer.next t.writer
     | Complete -> _final_write_operation_for t reqd
-  )
+    | Upgraded ->
+      wakeup_reader t;
+      (* Even in the Upgrade case, we're still responsible for writing the
+         response header, so we might have work to do. *)
+      if Writer.has_pending_output t.writer
+      then Writer.next t.writer
+      else `Upgrade)
 
 and _final_write_operation_for t reqd =
   let next =
@@ -306,7 +321,9 @@ and _final_write_operation_for t reqd =
       Writer.next t.writer;
     ) else (
       match Reqd.input_state reqd with
+      | Waiting -> `Yield
       | Ready -> Writer.next t.writer;
+      | Upgraded -> `Upgrade
       | Complete ->
         advance_request_queue t;
         _next_write_operation t;

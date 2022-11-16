@@ -1,6 +1,6 @@
 (executables
  (libraries httpaf httpaf-async httpaf_examples async core)
- (names     async_echo_post async_get async_post))
+ (names     async_echo_post async_echo_upgrade async_get async_post))
 
 (alias
  (name examples)

@@ -106,7 +106,8 @@ let shutdown socket command =
 module Config = Httpaf.Config
 
 module Server = struct
-  let create_connection_handler ?(config=Config.default) ~request_handler ~error_handler =
+  let create_connection_handler
+        ?(config=Config.default) ~request_handler ~upgrade_handler ~error_handler =
     fun client_addr socket ->
       let module Server_connection = Httpaf.Server_connection in
       let connection =
@@ -118,6 +119,27 @@ module Server = struct
 
       let read_buffer = Buffer.create config.read_buffer_size in
       let read_loop_exited, notify_read_loop_exited = Lwt.wait () in
+      let write_loop_exited, notify_write_loop_exited = Lwt.wait () in
+
+      let upgrade_read, notify_upgrade_read = Lwt.wait () in
+      let upgrade_write, notify_upgrade_write = Lwt.wait () in
+      Lwt.async (fun () ->
+        upgrade_read
+        >>= fun () ->
+        upgrade_write
+        >>= fun () ->
+        match upgrade_handler with
+        | None -> Lwt.fail_with "HTTP upgrades not supported"
+        | Some upgrade_handler ->
+          upgrade_handler client_addr socket
+          >>= fun () ->
+          if (Lwt_unix.state socket = Lwt_unix.Closed)
+          then Lwt.return_unit
+          else Lwt_unix.close socket
+          >>= fun () ->
+          Lwt.wakeup_later notify_read_loop_exited ();
+          Lwt.wakeup_later notify_write_loop_exited ();
+          Lwt.return_unit);
 
       let rec read_loop () =
         let rec read_loop_step () =
@@ -140,6 +162,10 @@ module Server = struct
             Server_connection.yield_reader connection read_loop;
             Lwt.return_unit
 
+          | `Upgrade ->
+            Lwt.wakeup_later notify_upgrade_read ();
+            Lwt.return_unit
+
           | `Close ->
             Lwt.wakeup_later notify_read_loop_exited ();
             if not (Lwt_unix.state socket = Lwt_unix.Closed) then begin
@@ -158,7 +184,6 @@ module Server = struct
 
 
       let writev = Faraday_lwt_unix.writev_of_fd socket in
-      let write_loop_exited, notify_write_loop_exited = Lwt.wait () in
 
       let rec write_loop () =
         let rec write_loop_step () =
@@ -170,6 +195,10 @@ module Server = struct
 
           | `Yield ->
             Server_connection.yield_writer connection write_loop;
+            Lwt.return_unit
+
+          | `Upgrade ->
+            Lwt.wakeup_later notify_upgrade_write ();
             Lwt.return_unit
 
           | `Close _ ->

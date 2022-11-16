@@ -4,8 +4,20 @@ module Arg = Caml.Arg
 
 open Httpaf_lwt_unix
 
-let request_handler (_ : Unix.sockaddr) = Httpaf_examples.Server.echo_post
+let request_handler (_ : Unix.sockaddr) = Httpaf_examples.Server.upgrade
 let error_handler (_ : Unix.sockaddr) = Httpaf_examples.Server.error_handler
+
+let upgrade_handler (_ : Unix.sockaddr) (fd : Lwt_unix.file_descr) =
+  let input = Lwt_io.of_fd fd ~mode:Input in
+  let output = Lwt_io.of_fd fd ~mode:Output in
+  let rec loop () =
+    Lwt_io.read input ~count:4096
+    >>= function
+    | "" -> Lwt.return_unit
+    | data -> Lwt_io.write output data >>= loop
+  in
+  loop ()
+;;
 
 let main port =
   let listen_address = Unix.(ADDR_INET (inet_addr_loopback, port)) in
@@ -15,13 +27,11 @@ let main port =
       (Server.create_connection_handler
          ~request_handler
          ~error_handler
-         ~upgrade_handler:None)
+         ~upgrade_handler:(Some upgrade_handler))
     >|= fun _server ->
-      Stdio.printf "Listening on port %i and echoing POST requests.\n" port;
-      Stdio.printf "To send a POST request, try one of the following\n\n";
-      Stdio.printf "  echo \"Testing echo POST\" | dune exec examples/async/async_post.exe\n";
-      Stdio.printf "  echo \"Testing echo POST\" | dune exec examples/lwt/lwt_post.exe\n";
-      Stdio.printf "  echo \"Testing echo POST\" | curl -XPOST --data @- http://localhost:%d\n\n%!" port);
+      Stdio.printf "Listening on port %i, upgrading, and echoing data.\n" port;
+      Stdio.printf "To send an interactive upgrade request, try\n\n";
+      Stdio.printf "  examples/script/upgrade-connect\n%!");
   let forever, _ = Lwt.wait () in
   Lwt_main.run forever
 ;;
@@ -34,3 +44,4 @@ let () =
     "Echoes POST requests. Runs forever.";
   main !port
 ;;
+

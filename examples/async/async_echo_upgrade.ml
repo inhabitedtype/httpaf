@@ -3,8 +3,19 @@ open Async
 
 open Httpaf_async
 
-let request_handler (_ : Socket.Address.Inet.t) = Httpaf_examples.Server.echo_post
+let request_handler (_ : Socket.Address.Inet.t) = Httpaf_examples.Server.upgrade
 let error_handler (_ : Socket.Address.Inet.t) = Httpaf_examples.Server.error_handler
+
+let upgrade_handler (_ : Socket.Address.Inet.t) socket =
+  let fd = Socket.fd socket in
+  let reader = Reader.create fd in
+  let writer = Writer.create fd in
+  Reader.read_one_chunk_at_a_time reader ~handle_chunk:(fun bigstring ~pos ~len ->
+    Writer.write_bigstring writer bigstring ~pos ~len;
+    return `Continue)
+  >>| function
+  | `Eof | `Stopped _ | `Eof_with_unconsumed_data _ -> ()
+;;
 
 let main port max_accepts_per_batch () =
   let where_to_listen = Tcp.Where_to_listen.of_port port in
@@ -13,13 +24,11 @@ let main port max_accepts_per_batch () =
     (Server.create_connection_handler
        ~request_handler
        ~error_handler
-       ~upgrade_handler:None)
+       ~upgrade_handler:(Some upgrade_handler))
   >>= fun _server ->
-    Stdio.printf "Listening on port %i and echoing POST requests.\n" port;
-    Stdio.printf "To send a POST request, try one of the following\n\n";
-    Stdio.printf "  echo \"Testing echo POST\" | dune exec examples/async/async_post.exe\n";
-    Stdio.printf "  echo \"Testing echo POST\" | dune exec examples/lwt/lwt_post.exe\n";
-    Stdio.printf "  echo \"Testing echo POST\" | curl -XPOST --data @- http://localhost:%d\n\n%!" port;
+    Stdio.printf "Listening on port %i, upgrading, and echoing data.\n" port;
+    Stdio.printf "To send an interactive upgrade request, try\n\n";
+    Stdio.printf "  examples/script/upgrade-connect\n%!";
     Deferred.never ()
 ;;
 
