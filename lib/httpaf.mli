@@ -208,6 +208,7 @@ module Status : sig
     | `Upgrade_required
     | `I_m_a_teapot
     | `Enhance_your_calm
+    | `Too_many_requests
     ]
   (** The 4xx (Client Error) class of status code indicates that the client
       seems to have erred.
