@@ -89,18 +89,18 @@ let schedule_bigstring_chunk t chunk =
 module Writer = struct
   type t =
     { buffer                : Bigstringaf.t
-      (* The buffer that the encoder uses for buffered writes. Managed by the
-       * control module for the encoder. *)
+    (* The buffer that the encoder uses for buffered writes. Managed by the
+     * control module for the encoder. *)
     ; encoder               : Faraday.t
-      (* The encoder that handles encoding for writes. Uses the [buffer]
-       * referenced above internally. *)
+    (* The encoder that handles encoding for writes. Uses the [buffer]
+     * referenced above internally. *)
     ; mutable drained_bytes : int
-      (* The number of bytes that were not written due to the output stream
-       * being closed before all buffered output could be written. Useful for
-       * detecting error cases. *)
+    (* The number of bytes that were not written due to the output stream
+     * being closed before all buffered output could be written. Useful for
+     * detecting error cases. *)
     ; mutable wakeup        : Optional_thunk.t
-      (* The callback from the runtime to be invoked when output is ready to be
-       * flushed. *)
+    (* The callback from the runtime to be invoked when output is ready to be
+     * flushed. *)
     }
 
   let create ?(buffer_size=0x800) () =
@@ -158,13 +158,19 @@ module Writer = struct
   ;;
 
   let flush t f =
-    flush t.encoder f
+    flush_with_reason t.encoder (fun reason ->
+      let result =
+        match reason with
+        | Nothing_pending | Shift -> `Written
+        | Drain -> `Closed
+      in
+      f result)
 
   let unyield t =
     (* This would be better implemented by a function that just takes the
        encoder out of a yielded state if it's in that state. Requires a change
        to the faraday library. *)
-    flush t (fun () -> ())
+    flush t (fun _result -> ())
 
   let yield t =
     Faraday.yield t.encoder

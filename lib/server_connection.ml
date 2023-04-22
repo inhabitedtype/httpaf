@@ -200,8 +200,7 @@ let set_error_and_handle ?request t error =
         | `Error (`Bad_gateway | `Internal_server_error) ->
           failwith "httpaf.Server_connection.error_handler: invalid response body length"
       in
-      Body.Writer.of_faraday (Writer.faraday writer) ~encoding
-        ~when_ready_to_write:(fun () -> Writer.wakeup writer));
+      Body.Writer.of_faraday (Writer.faraday writer) writer ~encoding);
   end
 
 let report_exn t exn =
