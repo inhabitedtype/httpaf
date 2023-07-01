@@ -230,6 +230,7 @@ module Client = struct
             read_loop_step ()
           end
 
+        | `Close when Client_connection.is_persistent connection -> Lwt.return_unit
         | `Close ->
           Lwt.wakeup_later notify_read_loop_exited ();
           if not (Lwt_unix.state socket = Lwt_unix.Closed) then begin
