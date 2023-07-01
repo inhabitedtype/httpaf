@@ -178,6 +178,7 @@ module Client = struct
               |> ignore;
               reader_thread ()
           end
+      | `Close when Client_connection.is_persistent conn -> ()
       | `Close ->
         (* Log.Global.printf "read_close(%d)%!" (Fd.to_int_exn fd); *)
         Ivar.fill read_complete ();

@@ -837,6 +837,9 @@ module Client_connection : sig
 
   val is_closed : t -> bool
 
+  val is_persistent : t -> bool
+  (** [is_persistent t] is [true] if the last response indicated a keep-alive connection *)
+
   (**/**)
   val shutdown : t -> unit
   (**/**)

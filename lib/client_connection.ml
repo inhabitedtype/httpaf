@@ -53,6 +53,7 @@ module Oneshot = struct
     ; reader : Reader.response
     ; writer : Writer.t
     ; state  : state ref
+    ; mutable is_persistent: bool
     ; mutable error_code : [ `Ok | error ]
     }
 
@@ -81,6 +82,7 @@ module Oneshot = struct
       ; error_code = `Ok
       ; reader = Reader.response ~request_method handler
       ; writer
+      ; is_persistent = false
       ; state }
     in
     Writer.write_request t.writer request;
@@ -152,12 +154,17 @@ module Oneshot = struct
   let _next_read_operation t =
     match !(t.state) with
     | Awaiting_response | Closed -> Reader.next t.reader
-    | Received_response(_, response_body) ->
+    | Received_response(response, response_body) ->
       if not (Body.Reader.is_closed response_body)
       then Reader.next t.reader
       else begin
         Reader.force_close t.reader;
-        Reader.next        t.reader
+        match Reader.next t.reader with
+        | `Read -> assert false
+        | `Error _ as err -> err
+        | `Close ->
+            t.is_persistent <- Response.persistent_connection response;
+            `Close
       end
   ;;
 
@@ -215,4 +222,6 @@ module Oneshot = struct
     Writer.report_result t.writer result
 
   let is_closed t = Reader.is_closed t.reader && Writer.is_closed t.writer
+
+  let is_persistent t = t.is_persistent
 end
