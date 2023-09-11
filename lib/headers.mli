@@ -1,4 +1,4 @@
-type t
+type t [@@deriving sexp]
 
 type name = string
 type value = string
@@ -30,4 +30,4 @@ val iter : f:(name -> value -> unit) -> t -> unit
 val fold : f:(name -> value -> 'a -> 'a) -> init:'a -> t -> 'a
 
 val to_string : t -> string
-val pp_hum : Format.formatter -> t -> unit [@@ocaml.toplevel_printer]
+val pp_hum : Format.formatter -> t -> unit

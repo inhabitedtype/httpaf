@@ -31,10 +31,12 @@
     POSSIBILITY OF SUCH DAMAGE.
   ----------------------------------------------------------------------------*)
 
+open Sexplib.Std
 
 type t =
   { major : int
   ; minor : int }
+[@@deriving sexp]
 
 let v1_0 = { major = 1; minor = 0 }
 let v1_1 = { major = 1; minor = 1 }

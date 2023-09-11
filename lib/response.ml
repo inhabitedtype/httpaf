@@ -31,11 +31,14 @@
     POSSIBILITY OF SUCH DAMAGE.
   ----------------------------------------------------------------------------*)
 
+open Sexplib.Std
+
 type t =
   { version : Version.t
   ; status  : Status.t
   ; reason  : string
   ; headers : Headers.t }
+[@@deriving sexp]
 
 let create ?reason ?(version=Version.v1_1) ?(headers=Headers.empty) status =
   let reason =

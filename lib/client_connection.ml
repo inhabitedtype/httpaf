@@ -31,12 +31,15 @@
     POSSIBILITY OF SUCH DAMAGE.
   ----------------------------------------------------------------------------*)
 
+open Sexplib.Std
+
 module Reader = Parse.Reader
 module Writer = Serialize.Writer
 
 module Oneshot = struct
   type error =
     [ `Malformed_response of string | `Invalid_response_body_length of Response.t | `Exn of exn ]
+  [@@deriving sexp_of]
 
   type response_handler = Response.t -> Body.Reader.t  -> unit
   type error_handler = error -> unit

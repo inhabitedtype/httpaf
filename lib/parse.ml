@@ -31,7 +31,6 @@
     POSSIBILITY OF SUCH DAMAGE.
   ----------------------------------------------------------------------------*)
 
-
 include Angstrom
 
 module P = struct
@@ -139,7 +138,7 @@ let response =
   lift4 (fun version status reason headers ->
     Response.create ~reason ~version ~headers status)
     (version              <* char ' ')
-    (status               <* char ' ')
+    (status               <* option ' ' (char ' '))
     (take_till P.is_cr    <* eol <* commit)
     (headers              <* eol)
 
@@ -149,9 +148,6 @@ let finish body =
 
 let schedule_size body n =
   let faraday = Body.Reader.unsafe_faraday body in
-  (* XXX(seliopou): performance regression due to switching to a single output
-   * format in Farady. Once a specialized operation is exposed to avoid the
-   * intemediate copy, this should be back to the original performance. *)
   begin if Faraday.is_closed faraday
   then advance n
   else take n >>| fun s -> Faraday.write_string faraday s

@@ -41,6 +41,8 @@
     1.1 specification, and the basic principles of memory management and
     vectorized IO. *)
 
+
+
 (** {2 Basic HTTP Types} *)
 
 
@@ -58,13 +60,14 @@ module Version : sig
     { major : int (** The major protocol number. *)
     ; minor : int (** The minor protocol number. *)
     }
+  [@@deriving sexp]
 
   val compare : t -> t -> int
 
   val to_string : t -> string
   val of_string : string -> t
 
-  val pp_hum : Format.formatter -> t -> unit [@@ocaml.toplevel_printer]
+  val pp_hum : Format.formatter -> t -> unit
 end
 
 
@@ -95,12 +98,14 @@ module Method : sig
     | `TRACE
     (** {{:https://tools.ietf.org/html/rfc7231#section-4.3.8} RFC7231§4.3.8}. Safe.*)
     ]
+  [@@deriving sexp]
 
   type t = [
     | standard
     | `Other of string
     (** Methods defined outside of RFC7231, or custom methods. *)
     ]
+  [@@deriving sexp]
 
   val is_safe : standard -> bool
   (** Request methods are considered "safe" if their defined semantics are
@@ -131,7 +136,7 @@ module Method : sig
   val to_string : t -> string
   val of_string : string -> t
 
-  val pp_hum : Format.formatter -> t -> unit [@@ocaml.toplevel_printer]
+  val pp_hum : Format.formatter -> t -> unit
 end
 
 
@@ -147,6 +152,7 @@ module Status : sig
     | `Continue
     | `Switching_protocols
     ]
+  [@@deriving sexp]
   (** The 1xx (Informational) class of status code indicates an interim
       response for communicating connection status or request progress
       prior to completing the requested action and sending a final
@@ -164,6 +170,7 @@ module Status : sig
     | `Reset_content
     | `Partial_content
     ]
+  [@@deriving sexp]
   (** The 2xx (Successful) class of status code indicates that the client's
       request was successfully received, understood, and accepted.
 
@@ -179,6 +186,7 @@ module Status : sig
     | `Use_proxy
     | `Temporary_redirect
     ]
+  [@@deriving sexp]
   (** The 3xx (Redirection) class of status code indicates that further
       action needs to be taken by the user agent in order to fulfill the
       request.
@@ -209,6 +217,7 @@ module Status : sig
     | `I_m_a_teapot
     | `Enhance_your_calm
     ]
+  [@@deriving sexp]
   (** The 4xx (Client Error) class of status code indicates that the client
       seems to have erred.
 
@@ -223,6 +232,7 @@ module Status : sig
     | `Gateway_timeout
     | `Http_version_not_supported
     ]
+  [@@deriving sexp]
   (** The 5xx (Server Error) class of status code indicates that the server is
       aware that it has erred or is incapable of performing the requested
       method.
@@ -237,11 +247,13 @@ module Status : sig
     | client_error
     | server_error
     ]
+  [@@deriving sexp]
   (** The status codes defined in the HTTP 1.1 RFCs *)
 
   type t = [
     | standard
     | `Code of int ]
+  [@@deriving sexp]
   (** The standard codes along with support for custom codes. *)
 
   val default_reason_phrase : standard -> string
@@ -288,7 +300,7 @@ module Status : sig
   val to_string : t -> string
   val of_string : string -> t
 
-  val pp_hum : Format.formatter -> t -> unit [@@ocaml.toplevel_printer]
+  val pp_hum : Format.formatter -> t -> unit
 end
 
 
@@ -320,7 +332,7 @@ end
     See {{:https://tools.ietf.org/html/rfc7230#section-3.2} RFC7230§3.2} for
     more details. *)
 module Headers : sig
-  type t
+  type t [@@deriving sexp]
 
   type name = string
   (** The type of a case-insensitive header name. *)
@@ -438,7 +450,7 @@ module Headers : sig
 
   val to_string : t -> string
 
-  val pp_hum : Format.formatter -> t -> unit [@@ocaml.toplevel_printer]
+  val pp_hum : Format.formatter -> t -> unit
 end
 
 (** {2 Message Body} *)
@@ -446,6 +458,9 @@ end
 module Body : sig
   module Reader : sig
     type t
+
+    val create : Bigstringaf.t -> t
+    (** [create bs] creates a [t] using [bs] as the internal buffer. *)
 
     val schedule_read
       :  t
@@ -468,6 +483,9 @@ module Body : sig
     val is_closed : t -> bool
     (** [is_closed t] is [true] if {!close} has been called on [t] and [false]
         otherwise. A closed [t] may still have bytes available for reading. *)
+
+    val unsafe_faraday : t -> Faraday.t
+    (** [unsafe_faraday t] retrieves the raw Faraday object from [t]. Unsafe. *)
   end
 
   module Writer : sig
@@ -527,6 +545,7 @@ module Request : sig
     ; target  : string
     ; version : Version.t
     ; headers : Headers.t }
+  [@@deriving sexp]
 
   val create
     :  ?version:Version.t (** default is HTTP 1.1 *)
@@ -560,7 +579,7 @@ module Request : sig
       See {{:https://tools.ietf.org/html/rfc7230#section-6.3} RFC7230§6.3 for
       more details. *)
 
-  val pp_hum : Format.formatter -> t -> unit [@@ocaml.toplevel_printer]
+  val pp_hum : Format.formatter -> t -> unit
 end
 
 
@@ -573,6 +592,7 @@ module Response : sig
     ; status  : Status.t
     ; reason  : string
     ; headers : Headers.t }
+  [@@deriving sexp]
 
   val create
     :  ?reason:string     (** default is determined by {!Status.default_reason_phrase} *)
@@ -612,7 +632,7 @@ module Response : sig
       See {{:https://tools.ietf.org/html/rfc7230#section-6.3} RFC7230§6.3 for
       more details. *)
 
-  val pp_hum : Format.formatter -> t -> unit [@@ocaml.toplevel_printer]
+  val pp_hum : Format.formatter -> t -> unit
 end
 
 
@@ -629,7 +649,7 @@ module IOVec : sig
   val shift  : 'a t -> int -> 'a t
   val shiftv : 'a t list -> int -> 'a t list
 
-  val pp_hum : Format.formatter -> _ t -> unit [@@ocaml.toplevel_printer]
+  val pp_hum : Format.formatter -> _ t -> unit
 end
 
 (** {2 Request Descriptor} *)
@@ -655,6 +675,8 @@ module Reqd : sig
   val respond_with_string    : t -> Response.t -> string -> unit
   val respond_with_bigstring : t -> Response.t -> Bigstringaf.t -> unit
   val respond_with_streaming : ?flush_headers_immediately:bool -> t -> Response.t -> Body.Writer.t
+
+  val respond_with_upgrade : ?reason:string -> t -> Headers.t -> unit
 
   (** {3 Exception Handling} *)
 
@@ -697,7 +719,7 @@ module Server_connection : sig
   (** [create ?config ?error_handler ~request_handler] creates a connection
       handler that will service individual requests with [request_handler]. *)
 
-  val next_read_operation : t -> [ `Read | `Yield | `Close ]
+  val next_read_operation : t -> [ `Read | `Yield | `Close | `Upgrade ]
   (** [next_read_operation t] returns a value describing the next operation
       that the caller should conduct on behalf of the connection. *)
 
@@ -724,6 +746,7 @@ module Server_connection : sig
   val next_write_operation : t -> [
     | `Write of Bigstringaf.t IOVec.t list
     | `Yield
+    | `Upgrade
     | `Close of int ]
   (** [next_write_operation t] returns a value describing the next operation
       that the caller should conduct on behalf of the connection. *)
@@ -774,6 +797,7 @@ module Client_connection : sig
 
   type error =
     [ `Malformed_response of string | `Invalid_response_body_length of Response.t | `Exn of exn ]
+  [@@deriving sexp_of]
 
   type response_handler = Response.t -> Body.Reader.t  -> unit
 
