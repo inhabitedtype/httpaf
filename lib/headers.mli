@@ -30,4 +30,4 @@ val iter : f:(name -> value -> unit) -> t -> unit
 val fold : f:(name -> value -> 'a -> 'a) -> init:'a -> t -> 'a
 
 val to_string : t -> string
-val pp_hum : Format.formatter -> t -> unit
+val pp_hum : Format.formatter -> t -> unit [@@ocaml.toplevel_printer]

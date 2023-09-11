@@ -67,7 +67,7 @@ module Version : sig
   val to_string : t -> string
   val of_string : string -> t
 
-  val pp_hum : Format.formatter -> t -> unit
+  val pp_hum : Format.formatter -> t -> unit [@@ocaml.toplevel_printer]
 end
 
 
@@ -136,7 +136,7 @@ module Method : sig
   val to_string : t -> string
   val of_string : string -> t
 
-  val pp_hum : Format.formatter -> t -> unit
+  val pp_hum : Format.formatter -> t -> unit [@@ocaml.toplevel_printer]
 end
 
 
@@ -300,7 +300,7 @@ module Status : sig
   val to_string : t -> string
   val of_string : string -> t
 
-  val pp_hum : Format.formatter -> t -> unit
+  val pp_hum : Format.formatter -> t -> unit [@@ocaml.toplevel_printer]
 end
 
 
@@ -450,7 +450,7 @@ module Headers : sig
 
   val to_string : t -> string
 
-  val pp_hum : Format.formatter -> t -> unit
+  val pp_hum : Format.formatter -> t -> unit [@@ocaml.toplevel_printer]
 end
 
 (** {2 Message Body} *)
@@ -579,7 +579,7 @@ module Request : sig
       See {{:https://tools.ietf.org/html/rfc7230#section-6.3} RFC7230§6.3 for
       more details. *)
 
-  val pp_hum : Format.formatter -> t -> unit
+  val pp_hum : Format.formatter -> t -> unit [@@ocaml.toplevel_printer]
 end
 
 
@@ -632,7 +632,7 @@ module Response : sig
       See {{:https://tools.ietf.org/html/rfc7230#section-6.3} RFC7230§6.3 for
       more details. *)
 
-  val pp_hum : Format.formatter -> t -> unit
+  val pp_hum : Format.formatter -> t -> unit [@@ocaml.toplevel_printer]
 end
 
 
@@ -649,7 +649,7 @@ module IOVec : sig
   val shift  : 'a t -> int -> 'a t
   val shiftv : 'a t list -> int -> 'a t list
 
-  val pp_hum : Format.formatter -> _ t -> unit
+  val pp_hum : Format.formatter -> _ t -> unit [@@ocaml.toplevel_printer]
 end
 
 (** {2 Request Descriptor} *)
