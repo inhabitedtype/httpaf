@@ -1,6 +1,6 @@
 (library
  (name        httpaf)
  (public_name httpaf)
- (libraries angstrom faraday bigstringaf base sexplib)
+ (libraries angstrom faraday bigstringaf sexplib)
  (preprocess (pps ppx_sexp_conv))
  (flags (:standard -safe-string)))
