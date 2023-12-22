@@ -80,3 +80,8 @@ let persistent_connection ?proxy { version; headers; _ } =
 let pp_hum fmt { meth; target; version; headers } =
   Format.fprintf fmt "((method \"%a\") (target %S) (version \"%a\") (headers %a))"
     Method.pp_hum meth target Version.pp_hum version Headers.pp_hum headers
+
+let is_upgrade t =
+  match Headers.get t.headers "Connection" with
+  | None -> false
+  | Some header_val -> Headers.ci_equal header_val "upgrade"

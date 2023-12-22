@@ -37,14 +37,17 @@ type error =
 module Response_state = struct
   type t =
     | Waiting
+    | Upgrade of Response.t
     | Fixed     of Response.t
     | Streaming of Response.t * Body.Writer.t
 end
 
 module Input_state = struct
   type t =
+    | Waiting
     | Ready
     | Complete
+    | Upgraded
 end
 
 module Output_state = struct
@@ -52,6 +55,7 @@ module Output_state = struct
     | Waiting
     | Ready
     | Complete
+    | Upgraded
 end
 
 type error_handler =
@@ -111,12 +115,14 @@ let response { response_state; _ } =
   match response_state with
   | Waiting -> None
   | Streaming (response, _)
+  | Upgrade response
   | Fixed response -> Some response
 
 let response_exn { response_state; _ } =
   match response_state with
   | Waiting -> failwith "httpaf.Reqd.response_exn: response has not started"
   | Streaming (response, _)
+  | Upgrade response
   | Fixed response -> response
 
 let respond_with_string t response str =
@@ -133,6 +139,7 @@ let respond_with_string t response str =
     Writer.wakeup t.writer;
   | Streaming _ ->
     failwith "httpaf.Reqd.respond_with_string: response already started"
+  | Upgrade _
   | Fixed _ ->
     failwith "httpaf.Reqd.respond_with_string: response already complete"
 
@@ -150,6 +157,7 @@ let respond_with_bigstring t response (bstr:Bigstringaf.t) =
     Writer.wakeup t.writer;
   | Streaming _ ->
     failwith "httpaf.Reqd.respond_with_bigstring: response already started"
+  | Upgrade _
   | Fixed _ ->
     failwith "httpaf.Reqd.respond_with_bigstring: response already complete"
 
@@ -175,6 +183,7 @@ let unsafe_respond_with_streaming ~flush_headers_immediately t response =
     response_body
   | Streaming _ ->
     failwith "httpaf.Reqd.respond_with_streaming: response already started"
+  | Upgrade _
   | Fixed _ ->
     failwith "httpaf.Reqd.respond_with_streaming: response already complete"
 
@@ -182,6 +191,23 @@ let respond_with_streaming ?(flush_headers_immediately=false) t response =
   if t.error_code <> `Ok then
     failwith "httpaf.Reqd.respond_with_streaming: invalid state, currently handling error";
   unsafe_respond_with_streaming ~flush_headers_immediately t response
+
+let respond_with_upgrade ?reason t headers =
+  match t.response_state with
+  | Waiting ->
+    if not (Request.is_upgrade t.request) then
+      failwith "httpaf.Reqd.respond_with_upgrade: request was not an upgrade request"
+    else (
+      let response = Response.create ?reason ~headers `Switching_protocols in
+      t.response_state <- Upgrade response;
+      Body.Reader.close t.request_body;
+      Writer.write_response t.writer response;
+      Writer.wakeup t.writer);
+  | Streaming _ ->
+    failwith "httpaf.Reqd.respond_with_upgrade: response already started"
+  | Upgrade _
+  | Fixed _ ->
+    failwith "httpaf.Reqd.respond_with_upgrade: response already complete"
 
 let report_error t error =
   t.persistent <- false;
@@ -207,7 +233,7 @@ let report_error t error =
   | Streaming (_response, response_body), `Exn _ ->
     Body.Writer.close response_body;
     Writer.close_and_drain t.writer
-  | (Fixed _ | Streaming _ | Waiting) , _ ->
+  | (Fixed _ | Streaming _ | Waiting | Upgrade _) , _ ->
     (* XXX(seliopou): Once additional logging support is added, log the error
      * in case it is not spurious. *)
     ()
@@ -215,7 +241,7 @@ let report_error t error =
 let report_exn t exn =
   report_error t (`Exn exn)
 
-let try_with t f : (unit, exn) result =
+let try_with t f : (unit, exn) Result.t =
   try f (); Ok () with exn -> report_exn t exn; Error exn
 
 (* Private API, not exposed to the user through httpaf.mli *)
@@ -232,21 +258,41 @@ let persistent_connection t =
   t.persistent
 
 let input_state t : Input_state.t =
-  if Body.Reader.is_closed t.request_body
-  then Complete
-  else Ready
+  let upgrade_status =
+    match Request.is_upgrade t.request with
+    | false -> `Not_upgrading
+    | true ->
+      match t.response_state with
+      | Upgrade _ -> `Finished_upgrading
+      | Fixed _ | Streaming _ -> `Upgrade_declined
+      | Waiting -> `Upgrade_in_progress
+  in
+  match upgrade_status with
+  | `Finished_upgrading -> Upgraded
+  | `Not_upgrading | `Upgrade_declined ->
+    if Body.Reader.is_closed t.request_body
+    then Complete
+    else Ready
+  | `Upgrade_in_progress ->
+    Waiting
 ;;
 
 let output_state t : Output_state.t =
   match t.response_state with
+  | Upgrade _ -> Upgraded
   | Fixed _ -> Complete
   | Streaming (_, response_body) ->
-    if Body.Writer.has_pending_output response_body
+    if Writer.is_closed t.writer
+    then Complete
+    else if Body.Writer.has_pending_output response_body
     then Ready
     else if Body.Writer.is_closed response_body
     then Complete
     else Waiting
-  | Waiting -> Waiting
+  | Waiting ->
+    if Writer.is_closed t.writer
+    then Complete
+    else Waiting
 ;;
 
 let flush_request_body t =

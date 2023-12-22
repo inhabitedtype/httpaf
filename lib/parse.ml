@@ -139,7 +139,7 @@ let response =
   lift4 (fun version status reason headers ->
     Response.create ~reason ~version ~headers status)
     (version              <* char ' ')
-    (status               <* char ' ')
+    (status               <* option ' ' (char ' '))
     (take_till P.is_cr    <* eol <* commit)
     (headers              <* eol)
 

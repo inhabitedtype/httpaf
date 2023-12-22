@@ -70,6 +70,7 @@ module CI = struct
       done;
       !equal_so_far
     )
+  ;;
 end
 
 let ci_equal = CI.equal

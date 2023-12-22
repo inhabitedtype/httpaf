@@ -195,4 +195,6 @@ module Writer = struct
     | `Close         -> `Close (drained_bytes t)
     | `Yield         -> `Yield
     | `Writev iovecs -> `Write iovecs
+
+  let has_pending_output t = Faraday.has_pending_output t.encoder
 end

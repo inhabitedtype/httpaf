@@ -41,6 +41,8 @@
     1.1 specification, and the basic principles of memory management and
     vectorized IO. *)
 
+
+
 (** {2 Basic HTTP Types} *)
 
 
@@ -447,6 +449,9 @@ module Body : sig
   module Reader : sig
     type t
 
+    val create : Bigstringaf.t -> t
+    (** [create bs] creates a [t] using [bs] as the internal buffer. *)
+
     val schedule_read
       :  t
       -> on_eof  : (unit -> unit)
@@ -468,6 +473,9 @@ module Body : sig
     val is_closed : t -> bool
     (** [is_closed t] is [true] if {!close} has been called on [t] and [false]
         otherwise. A closed [t] may still have bytes available for reading. *)
+
+    val unsafe_faraday : t -> Faraday.t
+    (** [unsafe_faraday t] retrieves the raw Faraday object from [t]. Unsafe. *)
   end
 
   module Writer : sig
@@ -656,6 +664,8 @@ module Reqd : sig
   val respond_with_bigstring : t -> Response.t -> Bigstringaf.t -> unit
   val respond_with_streaming : ?flush_headers_immediately:bool -> t -> Response.t -> Body.Writer.t
 
+  val respond_with_upgrade : ?reason:string -> t -> Headers.t -> unit
+
   (** {3 Exception Handling} *)
 
   val report_exn : t -> exn -> unit
@@ -697,7 +707,7 @@ module Server_connection : sig
   (** [create ?config ?error_handler ~request_handler] creates a connection
       handler that will service individual requests with [request_handler]. *)
 
-  val next_read_operation : t -> [ `Read | `Yield | `Close ]
+  val next_read_operation : t -> [ `Read | `Yield | `Close | `Upgrade ]
   (** [next_read_operation t] returns a value describing the next operation
       that the caller should conduct on behalf of the connection. *)
 
@@ -724,6 +734,7 @@ module Server_connection : sig
   val next_write_operation : t -> [
     | `Write of Bigstringaf.t IOVec.t list
     | `Yield
+    | `Upgrade
     | `Close of int ]
   (** [next_write_operation t] returns a value describing the next operation
       that the caller should conduct on behalf of the connection. *)
