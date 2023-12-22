@@ -1,4 +1,4 @@
-type t [@@deriving sexp]
+type t
 
 type name = string
 type value = string

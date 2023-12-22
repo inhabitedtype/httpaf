@@ -31,7 +31,6 @@
     POSSIBILITY OF SUCH DAMAGE.
   ----------------------------------------------------------------------------*)
 
-open Sexplib.Std
 
 type standard =  [
   | `GET
@@ -43,13 +42,11 @@ type standard =  [
   | `OPTIONS
   | `TRACE
 ]
-[@@deriving sexp]
 
 type t = [
   | standard
   | `Other of string
   ]
-[@@deriving sexp]
 
 let is_safe = function
   | `GET | `HEAD | `OPTIONS | `TRACE -> true

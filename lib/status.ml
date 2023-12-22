@@ -31,13 +31,11 @@
     POSSIBILITY OF SUCH DAMAGE.
   ----------------------------------------------------------------------------*)
 
-open Sexplib.Std
 
 type informational = [
   | `Continue
   | `Switching_protocols
   ]
-[@@deriving sexp]
 
 type successful = [
   | `OK
@@ -48,7 +46,6 @@ type successful = [
   | `Reset_content
   | `Partial_content
   ]
-[@@deriving sexp]
 
 type redirection = [
   | `Multiple_choices
@@ -59,7 +56,6 @@ type redirection = [
   | `Use_proxy
   | `Temporary_redirect
   ]
-[@@deriving sexp]
 
 type client_error = [
   | `Bad_request
@@ -84,7 +80,6 @@ type client_error = [
   | `Enhance_your_calm
   | `Upgrade_required
   ]
-[@@deriving sexp]
 
 type server_error = [
   | `Internal_server_error
@@ -94,7 +89,6 @@ type server_error = [
   | `Gateway_timeout
   | `Http_version_not_supported
   ]
-[@@deriving sexp]
 
 type standard = [
   | informational
@@ -103,12 +97,10 @@ type standard = [
   | client_error
   | server_error
   ]
-[@@deriving sexp]
 
 type t = [
   | standard
   | `Code of int ]
-[@@deriving sexp]
 
 let default_reason_phrase = function
  (* Informational *)

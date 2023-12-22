@@ -31,14 +31,10 @@
     POSSIBILITY OF SUCH DAMAGE.
   ----------------------------------------------------------------------------*)
 
-open Sexplib.Std
 
-
-type name = string [@@deriving sexp]
-type value = string [@@deriving sexp]
-type t = (name * value) list [@@deriving sexp]
-
-let sexp_of_t t = sexp_of_t (List.rev t)
+type name = string
+type value = string
+type t = (name * value) list
 
 let empty : t = []
 

@@ -31,14 +31,11 @@
     POSSIBILITY OF SUCH DAMAGE.
   ----------------------------------------------------------------------------*)
 
-open Sexplib.Std
-
 type t =
   { meth    : Method.t
   ; target  : string
   ; version : Version.t
   ; headers : Headers.t }
-[@@deriving sexp]
 
 let create ?(version=Version.v1_1) ?(headers=Headers.empty) meth target =
   { meth; target; version; headers }

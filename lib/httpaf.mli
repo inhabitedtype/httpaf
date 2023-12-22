@@ -60,7 +60,6 @@ module Version : sig
     { major : int (** The major protocol number. *)
     ; minor : int (** The minor protocol number. *)
     }
-  [@@deriving sexp]
 
   val compare : t -> t -> int
 
@@ -98,14 +97,12 @@ module Method : sig
     | `TRACE
     (** {{:https://tools.ietf.org/html/rfc7231#section-4.3.8} RFC7231§4.3.8}. Safe.*)
     ]
-  [@@deriving sexp]
 
   type t = [
     | standard
     | `Other of string
     (** Methods defined outside of RFC7231, or custom methods. *)
     ]
-  [@@deriving sexp]
 
   val is_safe : standard -> bool
   (** Request methods are considered "safe" if their defined semantics are
@@ -152,7 +149,6 @@ module Status : sig
     | `Continue
     | `Switching_protocols
     ]
-  [@@deriving sexp]
   (** The 1xx (Informational) class of status code indicates an interim
       response for communicating connection status or request progress
       prior to completing the requested action and sending a final
@@ -170,7 +166,6 @@ module Status : sig
     | `Reset_content
     | `Partial_content
     ]
-  [@@deriving sexp]
   (** The 2xx (Successful) class of status code indicates that the client's
       request was successfully received, understood, and accepted.
 
@@ -186,7 +181,6 @@ module Status : sig
     | `Use_proxy
     | `Temporary_redirect
     ]
-  [@@deriving sexp]
   (** The 3xx (Redirection) class of status code indicates that further
       action needs to be taken by the user agent in order to fulfill the
       request.
@@ -217,7 +211,6 @@ module Status : sig
     | `I_m_a_teapot
     | `Enhance_your_calm
     ]
-  [@@deriving sexp]
   (** The 4xx (Client Error) class of status code indicates that the client
       seems to have erred.
 
@@ -232,7 +225,6 @@ module Status : sig
     | `Gateway_timeout
     | `Http_version_not_supported
     ]
-  [@@deriving sexp]
   (** The 5xx (Server Error) class of status code indicates that the server is
       aware that it has erred or is incapable of performing the requested
       method.
@@ -247,13 +239,11 @@ module Status : sig
     | client_error
     | server_error
     ]
-  [@@deriving sexp]
   (** The status codes defined in the HTTP 1.1 RFCs *)
 
   type t = [
     | standard
     | `Code of int ]
-  [@@deriving sexp]
   (** The standard codes along with support for custom codes. *)
 
   val default_reason_phrase : standard -> string
@@ -332,7 +322,7 @@ end
     See {{:https://tools.ietf.org/html/rfc7230#section-3.2} RFC7230§3.2} for
     more details. *)
 module Headers : sig
-  type t [@@deriving sexp]
+  type t
 
   type name = string
   (** The type of a case-insensitive header name. *)
@@ -545,7 +535,6 @@ module Request : sig
     ; target  : string
     ; version : Version.t
     ; headers : Headers.t }
-  [@@deriving sexp]
 
   val create
     :  ?version:Version.t (** default is HTTP 1.1 *)
@@ -592,7 +581,6 @@ module Response : sig
     ; status  : Status.t
     ; reason  : string
     ; headers : Headers.t }
-  [@@deriving sexp]
 
   val create
     :  ?reason:string     (** default is determined by {!Status.default_reason_phrase} *)
@@ -797,7 +785,6 @@ module Client_connection : sig
 
   type error =
     [ `Malformed_response of string | `Invalid_response_body_length of Response.t | `Exn of exn ]
-  [@@deriving sexp_of]
 
   type response_handler = Response.t -> Body.Reader.t  -> unit
 
